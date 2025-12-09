@@ -1,0 +1,1 @@
+SERIAL_DEVICE_PATH = '/dev/cu.usbserial-212110'
