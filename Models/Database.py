@@ -72,6 +72,32 @@ class Database:
             conn.commit()
             return int(cur.lastrowid)
 
+    # ---------- PINGS ----------
+    def save_ping(
+        self,
+        from_id: str,
+        to_id: str,
+        data_raw: str,
+        *,
+        from_name: str | None = None,
+        hops: int | None = None,
+    ) -> int:
+        """Guarda un ping en la tabla pings y devuelve el id insertado.
+
+        - from_id se guarda en la columna "from" (id del nodo origen)
+        - from_name se guarda en la columna from_name (nombre del nodo origen)
+        - to_id se guarda en la columna "to"
+        - hops se guarda en la columna hops
+        - data_raw debe ser un string (p.ej., JSON) con los datos crudos
+        """
+        with self._connect() as conn:
+            cur = conn.execute(
+                'INSERT INTO pings ("from", "to", from_name, hops, data_raw) VALUES (?, ?, ?, ?, ?)',
+                (from_id, to_id, from_name, hops, data_raw),
+            )
+            conn.commit()
+            return int(cur.lastrowid)
+
     # ---------- QUEUE ----------
     def get_next_in_queue(self) -> Optional[Dict[str, Any]]:
         """TODO: Obtener el siguiente elemento de la cola (queue).
@@ -110,3 +136,83 @@ class Database:
             )
             conn.commit()
             return int(cur.lastrowid)
+
+    # ---------- NODES ----------
+    def get_node(self, node_id: str) -> Optional[Dict[str, Any]]:
+        """Obtiene un nodo por su node_id."""
+        with self._connect() as conn:
+            cur = conn.execute(
+                """
+                SELECT node_id, name, num, short_name, mac_addr, hw_model, is_favorite,
+                       snr, rssi, public_key, hops, hop_start, uptime, via_mqtt,
+                       last_heard, updated_at
+                FROM nodes
+                WHERE node_id = ?
+                """,
+                (node_id,),
+            )
+            row = cur.fetchone()
+            return dict(row) if row else None
+
+    def create_node_if_not_exists(self, node_id: str, data: Optional[Dict[str, Any]] = None) -> None:
+        """Crea un nodo si no existe. Ignora si ya existe."""
+        now = datetime.now().isoformat(timespec="seconds")
+        with self._connect() as conn:
+            conn.execute(
+                'INSERT OR IGNORE INTO nodes (node_id, updated_at) VALUES (?, ?)',
+                (node_id, now),
+            )
+            conn.commit()
+
+        # Si se pasa data, realizar una actualización inicial
+        if data:
+            self.update_node(node_id, data)
+
+    def update_node(self, node_id: str, data: Dict[str, Any]) -> None:
+        """Actualiza un nodo por node_id con las claves proporcionadas en data."""
+        if not data:
+            return
+
+        allowed = {
+            "name",
+            "num",
+            "short_name",
+            "mac_addr",
+            "hw_model",
+            "is_favorite",
+            "snr",
+            "rssi",
+            "public_key",
+            "hops",
+            "hop_start",
+            "uptime",
+            "via_mqtt",
+            "last_heard",
+        }
+
+        # Filtrar y preparar valores
+        fields: List[str] = []
+        values: List[Any] = []
+
+        for k, v in data.items():
+            if k not in allowed:
+                continue
+            if k in ("is_favorite", "via_mqtt") and v is not None:
+                v = 1 if bool(v) else 0
+            fields.append(f"{k} = ?")
+            values.append(v)
+
+        if not fields:
+            return
+
+        values.append(datetime.now().isoformat(timespec="seconds"))
+        values.append(node_id)
+
+        set_clause = ", ".join(fields + ["updated_at = ?"])  # siempre actualizar updated_at
+
+        with self._connect() as conn:
+            conn.execute(
+                f"UPDATE nodes SET {set_clause} WHERE node_id = ?",
+                tuple(values),
+            )
+            conn.commit()

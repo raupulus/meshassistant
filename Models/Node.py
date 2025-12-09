@@ -1,6 +1,4 @@
-
-
-
+from Models.Database import Database
 
 
 class Node:
@@ -24,6 +22,31 @@ class Node:
     def __init__(self, id):
         self.id = id
         self.updated = False
+
+        # Cargar desde BD si existe o crearlo
+        try:
+            db = Database()
+            row = db.get_node(self.id)
+            if row:
+                self.name = row.get('name', self.name)
+                self.num = row.get('num', self.num)
+                self.short_name = row.get('short_name', self.short_name)
+                self.mac_addr = row.get('mac_addr', self.mac_addr)
+                self.hw_model = row.get('hw_model', self.hw_model)
+                self.is_favorite = bool(row.get('is_favorite')) if row.get('is_favorite') is not None else self.is_favorite
+                self.snr = row.get('snr', self.snr)
+                self.rssi = row.get('rssi', self.rssi)
+                self.public_key = row.get('public_key', self.public_key)
+                self.hops = row.get('hops', self.hops)
+                self.hop_start = row.get('hop_start', self.hop_start)
+                self.uptime = row.get('uptime', self.uptime)
+                self.via_mqtt = bool(row.get('via_mqtt')) if row.get('via_mqtt') is not None else self.via_mqtt
+                self.last_heard = row.get('last_heard', self.last_heard)
+            else:
+                db.create_node_if_not_exists(self.id)
+        except Exception:
+            # Si la BD no está lista o hay error, continuar en memoria
+            pass
 
     def update_metadata(self, node_info):
         self.name = node_info.get('name', self.name)
@@ -50,6 +73,30 @@ class Node:
             self.hops = hops_start - hops_limit
 
         self.updated = True
+
+        # Persistir en BD
+        try:
+            db = Database()
+            db.create_node_if_not_exists(self.id)
+            db.update_node(self.id, {
+                "name": self.name,
+                "num": self.num,
+                "short_name": self.short_name,
+                "mac_addr": self.mac_addr,
+                "hw_model": self.hw_model,
+                "is_favorite": self.is_favorite,
+                "snr": self.snr,
+                "rssi": self.rssi,
+                "public_key": self.public_key,
+                "hops": self.hops,
+                "hop_start": self.hop_start,
+                "uptime": self.uptime,
+                "via_mqtt": self.via_mqtt,
+                "last_heard": self.last_heard,
+            })
+        except Exception:
+            # En caso de error al guardar, continuar sin interrumpir
+            pass
 
     def update_positions(self):
         # al cargar nodos:
@@ -80,3 +127,27 @@ class Node:
             "via_mqtt": self.via_mqtt,
             "last_heard": self.last_heard,
         }
+
+    def refresh_from_db(self):
+        try:
+            db = Database()
+            row = db.get_node(self.id)
+            if row:
+                self.update_metadata({
+                    "name": row.get('name', None),
+                    "num": row.get('num', None),
+                    "short_name": row.get('short_name', None),
+                    "mac_addr": row.get('mac_addr', None),
+                    "hw_model": row.get('hw_model', None),
+                    "is_favorite": bool(row.get('is_favorite')) if row.get('is_favorite') is not None else None,
+                    "snr": row.get('snr', None),
+                    "rssi": row.get('rssi', None),
+                    "public_key": row.get('public_key', None),
+                    "hops": row.get('hops', None),
+                    "hop_start": row.get('hop_start', None),
+                    "uptime": row.get('uptime', None),
+                    "via_mqtt": bool(row.get('via_mqtt')) if row.get('via_mqtt') is not None else None,
+                    "last_heard": row.get('last_heard', None),
+                })
+        except Exception:
+            pass

@@ -33,6 +33,8 @@ def _execute_schema(conn: sqlite3.Connection) -> None:
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             "from" TEXT NOT NULL,
             "to" TEXT NOT NULL,
+            from_name TEXT,
+            hops INTEGER,
             data_raw TEXT NOT NULL
         );
 
@@ -53,17 +55,58 @@ def _execute_schema(conn: sqlite3.Connection) -> None:
         );
 
         CREATE INDEX IF NOT EXISTS idx_agenda_node_moment ON agenda(node_id, moment);
+
+        -- Nodo: persistencia de nodos de la red
+        CREATE TABLE IF NOT EXISTS nodes (
+            node_id TEXT PRIMARY KEY,
+            name TEXT,
+            num INTEGER,
+            short_name TEXT,
+            mac_addr TEXT,
+            hw_model INTEGER,
+            is_favorite INTEGER,
+            snr REAL,
+            rssi REAL,
+            public_key TEXT,
+            hops INTEGER,
+            hop_start INTEGER,
+            uptime INTEGER,
+            via_mqtt INTEGER,
+            last_heard INTEGER,
+            updated_at TEXT
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_nodes_short_name ON nodes(short_name);
+        CREATE INDEX IF NOT EXISTS idx_nodes_num ON nodes(num);
         """
     )
     conn.commit()
 
+    # Idempotent migration: ensure new columns exist in existing databases
+    def _has_column(table: str, column: str) -> bool:
+        cur2 = conn.execute(f'PRAGMA table_info({table})')
+        cols = [r[1] for r in cur2.fetchall()]  # r[1] is name
+        return column in cols
+
+    # Ensure columns in pings: from_name (TEXT), hops (INTEGER)
+    if not _has_column('pings', 'from_name'):
+        conn.execute('ALTER TABLE pings ADD COLUMN from_name TEXT')
+    if not _has_column('pings', 'hops'):
+        conn.execute('ALTER TABLE pings ADD COLUMN hops INTEGER')
+    conn.commit()
+
 
 def ensure_database() -> Path:
-    """Crea la base de datos si no existe y devuelve la ruta al archivo."""
+    """Asegura que la BD existe y aplica el esquema (idempotente)."""
     if not DATABASE_FILE.exists():
         DATABASE_FILE.parent.mkdir(parents=True, exist_ok=True)
-        with sqlite3.connect(DATABASE_FILE) as conn:
-            _execute_schema(conn)
+        # Crear archivo vacío primero
+        with sqlite3.connect(DATABASE_FILE):
+            pass
+
+    # Siempre aplicar esquema para asegurar tablas nuevas
+    with sqlite3.connect(DATABASE_FILE) as conn:
+        _execute_schema(conn)
 
     return DATABASE_FILE
 
