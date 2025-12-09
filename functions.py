@@ -1,19 +1,10 @@
 
-from Commands.help import help_callback
 
 def log_p(x):
 
     # TODO: controlar desde el .env si estamos en debug o quitar
 
     return print(x)
-
-def get_commands_dict():
-    return {
-    "help": {
-        "callback": help_callback,
-        "info": "Muestra este mensaje de ayuda"
-    }
-}
 
 def search_command (msg):
     """
@@ -33,8 +24,10 @@ def search_command (msg):
     # Quedarnos con el primero y quitar el caracter / o !
     comando = parts[0][1:].lower()
 
+    from data import commands_dict
+
     # Buscar la primera palabra de la cadena en diccionario "command_dict"
-    if comando not in get_commands_dict():
+    if comando not in commands_dict:
         return None, []
 
     # Devolver comando y argumentos
