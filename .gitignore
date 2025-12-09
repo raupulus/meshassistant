@@ -214,3 +214,6 @@ htmlcov/
 tmp/
 temp/
 *.tmp
+
+# Local DB
+/database.sql
