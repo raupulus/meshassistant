@@ -1,6 +1,6 @@
 import env
 from time import sleep
-from functions import log_p, get_commands_dict
+from functions import log_p
 from Models.SerialInterface import SerialInterface
 
 # Ruta del dispositivo serial
@@ -14,7 +14,7 @@ def loop():
 
         # Mantener el script ejecutándose
         while True:
-            pass
+            sleep(10)
 
     except KeyboardInterrupt:
         print("\n\n👋 Cerrando conexión...")
