@@ -2,6 +2,7 @@ import env
 from time import sleep
 from functions import log_p
 from Models.SerialInterface import SerialInterface
+from create_db import ensure_database
 
 # Ruta del dispositivo serial
 SERIAL_DEVICE_PATH = env.SERIAL_DEVICE_PATH
@@ -40,6 +41,8 @@ def main():
     log_p("Presiona Ctrl+C para salir\n")
 
     try:
+        # Asegurar base de datos creada (solo crea si no existe)
+        ensure_database()
         loop()
     finally:
         sleep(10)

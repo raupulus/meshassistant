@@ -217,3 +217,5 @@ temp/
 
 # Local DB
 /database.sql
+/database.sql-shm
+/database.sql-wal

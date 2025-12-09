@@ -39,7 +39,9 @@ commands_dict = {
         "callback": chiste_callback,
         "in_group": True,
         "usage": "/chiste o !chiste",
-        "info": "Proyecto de chistes de comunidad, más información en: https://jaja.raupulus.dev"
+        "info": "Proyecto de chistes de comunidad, puedes añadir el tuyo con "
+                "!chiste add [inserta tu chistaco] Más información en: "
+                "https://jaja.raupulus.dev"
     },
     "ia": {
         "callback": ia_callback,
