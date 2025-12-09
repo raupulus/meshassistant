@@ -20,7 +20,12 @@ Las ideas de funcionalidades son:
 - Comando "/about"
 - Comando "/ping" (Responde con "pong" y toda la info como saltos snr...)
 - Comando "/uptime" (Tiempo encendido)
-- Comando "/chiste"
+- Comando "/chiste" (Responde con un chiste de la comunidad)
+- Comando "/weather" (Tiempo en la provincia de Cádiz)
+- Comando "/maremoto" (Días desde el último maremoto en Chipiona)
+
+También puedes usar "/help comando" indicando un "comando" de los anteriores
+para ver más información sobre ese comando.
 
 El Hardware para comenzar es una Raspberry Pi Zero 2w como servidor y una
 raspberry pi pico 2w como cliente mediante la red Meshtastic.
@@ -31,7 +36,11 @@ a la raspberry pi zero por UART, igualmente los recibe.
 
 ## TODO
 
-- Crear archivo de métodos auxiliares
+- Detectar hops y snr desde ping
+- Crear base de datos sqlite y los datos de los ping que me hagan al nodo
+- Crear tablas para mensajes o avisos que se publicarán y el canal/grupo al 
+  que van destinados. Con idea de añadirlos a la base de datos desde otras 
+  aplicaciones.
 
 
 ## Activar el entorno virtual
