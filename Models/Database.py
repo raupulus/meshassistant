@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import sqlite3
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Iterable, Tuple
 
 from create_db import ensure_database
 
@@ -44,6 +44,7 @@ class Database:
         content: str,
         need_upload: bool = False,
         need_approve: bool = False,
+        chiste_id: Optional[int] = None,
     ) -> int:
         """Guarda un chiste y devuelve el id insertado.
 
@@ -55,11 +56,63 @@ class Database:
         """
         with self._connect() as conn:
             cur = conn.execute(
-                'INSERT INTO chistes ("from", content, need_upload, need_approve) VALUES (?, ?, ?, ?)',
-                (from_, content, 1 if need_upload else 0, 1 if need_approve else 0),
+                'INSERT INTO chistes ("from", content, need_upload, need_approve, chiste_id) VALUES (?, ?, ?, ?, ?)',
+                (from_, content, 1 if need_upload else 0, 1 if need_approve else 0, chiste_id),
             )
             conn.commit()
             return int(cur.lastrowid)
+
+    def get_chistes_to_upload(self, limit: int = 100) -> List[Dict[str, Any]]:
+        with self._connect() as conn:
+            cur = conn.execute(
+                'SELECT id, "from", content FROM chistes WHERE need_upload = 1 LIMIT ?',
+                (limit,),
+            )
+            return [dict(r) for r in cur.fetchall()]
+
+    def mark_chistes_uploaded(self, ids: Iterable[int]) -> None:
+        ids = list(ids)
+        if not ids:
+            return
+        placeholders = ",".join(["?"] * len(ids))
+        with self._connect() as conn:
+            conn.execute(f'UPDATE chistes SET need_upload = 0 WHERE id IN ({placeholders})', tuple(ids))
+            conn.commit()
+
+    def get_last_downloaded_chiste_id(self) -> Optional[int]:
+        with self._connect() as conn:
+            cur = conn.execute('SELECT MAX(chiste_id) as last_id FROM chistes WHERE chiste_id IS NOT NULL')
+            row = cur.fetchone()
+            return int(row[0]) if row and row[0] is not None else None
+
+    def bulk_insert_api_chistes(self, items: Iterable[Dict[str, Any]]) -> Tuple[int, int]:
+        """Inserta chistes descargados de la API.
+
+        Cada item debe tener: id (-> chiste_id) y content.
+        Flags need_approve y need_upload se guardan en 0.
+        Devuelve (insertados, ignorados).
+        """
+        inserted = 0
+        ignored = 0
+        with self._connect() as conn:
+            for it in items:
+                api_id = it.get('id')
+                content = it.get('content')
+                if content is None:
+                    continue
+                try:
+                    conn.execute(
+                        'INSERT OR IGNORE INTO chistes ("from", content, need_upload, need_approve, chiste_id) VALUES (?, ?, 0, 0, ?)',
+                        (None, content, api_id),
+                    )
+                    if conn.total_changes > 0:
+                        inserted += 1
+                    else:
+                        ignored += 1
+                except sqlite3.IntegrityError:
+                    ignored += 1
+            conn.commit()
+        return inserted, ignored
 
     # ---------- TRACES ----------
     def save_trace(self, from_: str, to: str, data_raw: str) -> int:
@@ -214,5 +267,60 @@ class Database:
             conn.execute(
                 f"UPDATE nodes SET {set_clause} WHERE node_id = ?",
                 tuple(values),
+            )
+            conn.commit()
+
+    # ---------- TASKS CONTROL ----------
+    def get_task_last_run(self, name: str) -> Optional[str]:
+        with self._connect() as conn:
+            cur = conn.execute('SELECT last_run_at FROM tasks_control WHERE name = ?', (name,))
+            row = cur.fetchone()
+            return row['last_run_at'] if row and row['last_run_at'] else None
+
+    def set_task_run(self, name: str, when: Optional[datetime] = None, extra: Optional[str] = None) -> None:
+        when_str = (when or datetime.now()).isoformat(timespec='seconds')
+        with self._connect() as conn:
+            conn.execute(
+                (
+                    """
+                    INSERT INTO tasks_control (name, last_run_at, extra) VALUES (?, ?, ?)
+                    ON CONFLICT(name) DO UPDATE SET last_run_at = excluded.last_run_at, extra = excluded.extra
+                    """
+                ),
+                (name, when_str, extra),
+            )
+            conn.commit()
+
+    # ---------- NODE TRACE CONTROL ----------
+    def get_next_node_to_trace(self, min_days: int = 7) -> Optional[str]:
+        """Devuelve el próximo node_id candidato a trace, cuyo último trace sea anterior a min_days."""
+        with self._connect() as conn:
+            cur = conn.execute(
+                '''
+                SELECT n.node_id
+                FROM nodes n
+                LEFT JOIN node_trace_runs t ON t.node_id = n.node_id
+                WHERE COALESCE(n.via_mqtt, 0) = 0
+                  AND n.hops = 2
+                  AND (t.last_trace_at IS NULL OR datetime(t.last_trace_at) < datetime('now', ?))
+                ORDER BY n.updated_at DESC
+                LIMIT 1
+                ''',
+                (f'-{min_days} days',),
+            )
+            row = cur.fetchone()
+            return row['node_id'] if row else None
+
+    def set_node_traced(self, node_id: str, when: Optional[datetime] = None) -> None:
+        when_str = (when or datetime.now()).isoformat(timespec='seconds')
+        with self._connect() as conn:
+            conn.execute(
+                (
+                    """
+                    INSERT INTO node_trace_runs (node_id, last_trace_at) VALUES (?, ?)
+                    ON CONFLICT(node_id) DO UPDATE SET last_trace_at = excluded.last_trace_at
+                    """
+                ),
+                (node_id, when_str),
             )
             conn.commit()

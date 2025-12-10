@@ -19,7 +19,8 @@ def _execute_schema(conn: sqlite3.Connection) -> None:
             "from" TEXT,
             content TEXT NOT NULL,
             need_approve INTEGER NOT NULL DEFAULT 0,
-            need_upload INTEGER NOT NULL DEFAULT 0
+            need_upload INTEGER NOT NULL DEFAULT 0,
+            chiste_id INTEGER NULL
         );
 
         CREATE TABLE IF NOT EXISTS traces (
@@ -78,6 +79,19 @@ def _execute_schema(conn: sqlite3.Connection) -> None:
 
         CREATE INDEX IF NOT EXISTS idx_nodes_short_name ON nodes(short_name);
         CREATE INDEX IF NOT EXISTS idx_nodes_num ON nodes(num);
+
+        -- Control de tareas periódicas
+        CREATE TABLE IF NOT EXISTS tasks_control (
+            name TEXT PRIMARY KEY,
+            last_run_at TEXT,
+            extra TEXT
+        );
+
+        -- Registro de último trace por nodo
+        CREATE TABLE IF NOT EXISTS node_trace_runs (
+            node_id TEXT PRIMARY KEY,
+            last_trace_at TEXT
+        );
         """
     )
     conn.commit()
@@ -93,6 +107,17 @@ def _execute_schema(conn: sqlite3.Connection) -> None:
         conn.execute('ALTER TABLE pings ADD COLUMN from_name TEXT')
     if not _has_column('pings', 'hops'):
         conn.execute('ALTER TABLE pings ADD COLUMN hops INTEGER')
+    conn.commit()
+
+    # Ensure new column in chistes: chiste_id
+    if not _has_column('chistes', 'chiste_id'):
+        conn.execute('ALTER TABLE chistes ADD COLUMN chiste_id INTEGER NULL')
+        conn.commit()
+
+    # Create indexes if not exist
+    cur.execute('CREATE INDEX IF NOT EXISTS idx_chistes_need_upload ON chistes(need_upload)')
+    cur.execute('CREATE INDEX IF NOT EXISTS idx_chistes_need_approve ON chistes(need_approve)')
+    cur.execute('CREATE UNIQUE INDEX IF NOT EXISTS idx_chistes_chiste_id ON chistes(chiste_id)')
     conn.commit()
 
 
