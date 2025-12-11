@@ -122,31 +122,45 @@ def send_trace() -> None:
     """Encola la ejecución de un traceroute para que lo procese el proceso principal.
 
     Restricciones:
-    - Throttle global: 1 intento cada 5 minutos medido con traces.updated_at del último procesado
-    - Cada nodo como máximo 1 vez por semana (selección de candidato)
+    - Throttle global: 1 intento cada TRACES_INTERVAL minutos medido con traces.updated_at del último procesado
+    - Ventanas por nodo configurables: TRACES_RELOAD_INTERVAL (éxito) y TRACES_RETRY_INTERVAL (error)
     """
+    # Permitir deshabilitar traces por configuración
+    if not getattr(env, 'ENABLE_TRACES', False):
+        log_p("[cron] send_trace: deshabilitado por ENABLE_TRACES=False")
+        return
+
     db = Database()
 
     # Throttle global 5 minutos basado en el último trace realizado (updated_at)
     last_done_iso = db.get_last_trace_updated_at()
     log_p(f"[cron] send_trace: last_done={last_done_iso}")
+    interval_min = int(getattr(env, 'TRACES_INTERVAL', 5) or 5)
     if last_done_iso:
         try:
             last_dt = datetime.fromisoformat(last_done_iso)
-            if datetime.now() - last_dt < timedelta(minutes=5):
-                log_p("[cron] send_trace: omitido (cooldown global 5min)")
+            if datetime.now() - last_dt < timedelta(minutes=interval_min):
+                log_p(f"[cron] send_trace: omitido (cooldown global {interval_min}min)")
                 return
         except Exception:
             pass
 
-    # Seleccionar próximo nodo candidato (>= 7 días desde último trace) y sin pendientes
-    node_id = db.get_next_node_to_trace(min_days=7)
+    # Seleccionar próximo nodo candidato respetando configuración
+    hops_limit = int(getattr(env, 'TRACES_HOPS', 2) or 2)
+    reload_hours = int(getattr(env, 'TRACES_RELOAD_INTERVAL', 24 * 7) or (24 * 7))
+    retry_hours = int(getattr(env, 'TRACES_RETRY_INTERVAL', 24) or 24)
+
+    node_id = db.get_next_node_to_trace(
+        hops_limit=hops_limit,
+        reload_hours=reload_hours,
+        retry_hours=retry_hours,
+    )
     if node_id:
         # Encolar petición en la propia tabla traces (status='pending')
         trace_id = db.enqueue_trace(node_id)
         log_p(f"[cron] send_trace: encolado trace id={trace_id} para nodo {node_id}")
     else:
-        log_p("[cron] send_trace: ningún nodo candidato (2 hops, no MQTT, ventanas cumplidas)")
+        log_p(f"[cron] send_trace: ningún nodo candidato (≤{hops_limit} hops, no MQTT, ventanas cumplidas)")
 
 
 def check_aemet() -> None:

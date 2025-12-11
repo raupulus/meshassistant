@@ -418,12 +418,21 @@ class Database:
             conn.commit()
 
     # ---------- NODE TRACE CONTROL ----------
-    def get_next_node_to_trace(self, min_days: int = 7) -> Optional[str]:
-        """Devuelve el próximo node_id candidato (2 hops, no MQTT), sin pendientes,
-        con ventana de reintento según último estado:
-          - último status='done' => ≥7 días
-          - último status='error' => ≥1 día
-        Si no hay trazas previas: elegible.
+    def get_next_node_to_trace(
+        self,
+        *,
+        hops_limit: int = 2,
+        reload_hours: int = 24 * 7,
+        retry_hours: int = 24,
+    ) -> Optional[str]:
+        """Devuelve el próximo node_id candidato cumpliendo:
+        - COALESCE(via_mqtt, 0) = 0
+        - hops <= hops_limit
+        - sin traces pendientes
+        - ventanas:
+            • último status='done'  → ahora - updated_at ≥ reload_hours
+            • último status='error' → ahora - updated_at ≥ retry_hours
+          Si no hay trazas previas → elegible.
         """
         with self._connect() as conn:
             cur = conn.execute(
@@ -453,18 +462,23 @@ class Database:
                 LEFT JOIN last_status ls ON ls.node_id = n.node_id
                 LEFT JOIN pend p ON p.node_id = n.node_id
                 WHERE COALESCE(n.via_mqtt, 0) = 0
-                  AND n.hops = 2
+                  AND (n.hops IS NULL OR n.hops <= ?)
                   AND COALESCE(p.pendings, 0) = 0
                   AND (
                         lp.last_updated IS NULL
                      OR (
-                          (ls.last_status = 'done'  AND datetime(lp.last_updated) < datetime('now', '-7 days'))
-                       OR (ls.last_status = 'error' AND datetime(lp.last_updated) < datetime('now', '-1 days'))
+                          (ls.last_status = 'done'  AND strftime('%s','now') - strftime('%s', lp.last_updated) >= ?)
+                       OR (ls.last_status = 'error' AND strftime('%s','now') - strftime('%s', lp.last_updated) >= ?)
                         )
                   )
                 ORDER BY n.updated_at DESC
                 LIMIT 1
                 '''
+                , (
+                    int(hops_limit),
+                    int(reload_hours) * 3600,
+                    int(retry_hours) * 3600,
+                )
             )
             row = cur.fetchone()
             return row['node_id'] if row else None

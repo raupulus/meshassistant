@@ -74,8 +74,11 @@ while true; do .venv/bin/python cron_tasks.py && sleep 60; done
 Notas sobre traceroute (sin tablas auxiliares):
 - `cron_tasks.py` encola el trace insertando en `traces` una fila con campos mínimos: `to=<node_id>`, `status='pending'`, `created_at=NOW()`.
 - `main.py` en su bucle (`loop()`) busca el trace pendiente más antiguo y lo ejecuta con la conexión serial abierta. Al terminar, actualiza esa misma fila con `status='done'|'error'`, `from='local'`, `data_raw=<JSON>` y `updated_at=NOW()`.
-- Límite global: se envía como máximo un trace cada 5 minutos, calculado mirando el `updated_at` del último trace procesado.
-- Límite por nodo: solo se intenta un trace por nodo cada semana, calculado también en base al `updated_at` del último trace de ese nodo.
+- Límite global configurable: como máximo un trace cada `TRACES_INTERVAL` minutos, calculado mirando el `updated_at` del último trace procesado.
+- Ventanas por nodo configurables:
+  - Tras éxito (`status='done'`): repetir pasado `TRACES_RELOAD_INTERVAL` horas.
+  - Tras error (`status='error'`): reintentar pasado `TRACES_RETRY_INTERVAL` horas.
+  - Solo se consideran nodos con `via_mqtt=0` y con `hops <= TRACES_HOPS`.
 
 Esto evita conflictos por el puerto serie ya que solo el proceso principal lo abre y lo mantiene.
 
@@ -98,6 +101,22 @@ Flujo de AEMET:
 Notas:
 - La tabla `aemet` actúa como histórico con un indicador `published` para evitar repeticiones.
 - La periodicidad por canal se controla con la tabla `tasks_control` (marcas `aemet_publish_ch_<canal>`).
+
+
+## Variables de entorno para Traces
+
+Configúralas en `env.py` (consulta `env.example.py`):
+
+- `ENABLE_TRACES` (bool): Si es `False`, el cron no encola traceroutes (deshabilitado por completo). Por defecto `False` en el ejemplo.
+- `TRACES_HOPS` (int): Máximo de saltos permitidos para seleccionar nodos candidatos (se usa `hops <= TRACES_HOPS`). Por defecto `2`.
+- `TRACES_INTERVAL` (int, minutos): Intervalo global mínimo entre traces (de distintos nodos). Por defecto `5`.
+- `TRACES_RETRY_INTERVAL` (int, horas): Tiempo de espera para reintentar un trace tras un fallo (`status='error'`). Por defecto `24` (1 día).
+- `TRACES_RELOAD_INTERVAL` (int, horas): Tiempo de espera para volver a trazar un nodo tras un éxito (`status='done'`). Por defecto `168` (7 días).
+
+Cómo funciona con estas variables:
+- El cron (`cron_tasks.send_trace`) respeta `ENABLE_TRACES` y el `TRACES_INTERVAL` global mirando el `updated_at` del último trace realizado.
+- La selección de candidatos lee los parámetros y solo elige nodos que cumplen `via_mqtt=0` y `hops <= TRACES_HOPS` y cuyas ventanas por nodo hayan expirado (`TRACES_RETRY_INTERVAL` o `TRACES_RELOAD_INTERVAL`).
+- El proceso principal no cambia: simplemente toma el `pending` más antiguo de la tabla `traces` y lo ejecuta.
 
 
 ## Activar el entorno virtual
