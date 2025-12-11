@@ -116,14 +116,138 @@ class Database:
 
     # ---------- TRACES ----------
     def save_trace(self, from_: str, to: str, data_raw: str) -> int:
-        """Guarda un trace y devuelve el id insertado."""
+        """Guarda un trace clásico (registro completo) y devuelve el id insertado."""
         with self._connect() as conn:
+            now = datetime.now().isoformat(timespec='seconds')
             cur = conn.execute(
-                'INSERT INTO traces ("from", "to", data_raw) VALUES (?, ?, ?)',
-                (from_, to, data_raw),
+                'INSERT INTO traces ("from", "to", data_raw, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)',
+                (from_, to, data_raw, 'done', now, now),
             )
             conn.commit()
             return int(cur.lastrowid)
+
+    def enqueue_trace(self, node_id: str) -> int:
+        """Encola un trace para un node_id en la propia tabla `traces`.
+
+        Inserta un registro con "to"=node_id, status='pending', created_at=ahora,
+        y deja NULL los campos "from", data_raw, updated_at.
+
+        Si ya existe un pendiente para ese nodo, devuelve su id sin crear otro.
+        """
+        now = datetime.now().isoformat(timespec='seconds')
+        with self._connect() as conn:
+            cur = conn.execute(
+                'SELECT id FROM traces WHERE "to" = ? AND status = "pending" ORDER BY created_at ASC LIMIT 1',
+                (node_id,),
+            )
+            row = cur.fetchone()
+            if row:
+                return int(row['id'])
+            cur2 = conn.execute(
+                'INSERT INTO traces ("to", status, created_at) VALUES (?, "pending", ?)',
+                (node_id, now),
+            )
+            conn.commit()
+            return int(cur2.lastrowid)
+
+    def get_next_pending_trace(self) -> Optional[Dict[str, Any]]:
+        """Obtiene el trace pendiente más antiguo (status='pending') o None."""
+        with self._connect() as conn:
+            cur = conn.execute(
+                'SELECT id, "to", created_at FROM traces WHERE status = "pending" ORDER BY created_at ASC LIMIT 1'
+            )
+            row = cur.fetchone()
+            return dict(row) if row else None
+
+    def mark_trace_done(self, trace_id: int, ok: bool, payload: str, from_: str = 'local') -> None:
+        """Marca un trace pendiente como procesado, guardando resultado y sellando updated_at.
+
+        - ok=True -> status='done'
+        - ok=False -> status='error'
+        - payload debe ser string (ej. JSON)
+        """
+        when_str = datetime.now().isoformat(timespec='seconds')
+        status = 'done' if ok else 'error'
+        with self._connect() as conn:
+            conn.execute(
+                'UPDATE traces SET status = ?, data_raw = ?, "from" = ?, updated_at = ? WHERE id = ?',
+                (status, payload, from_, when_str, trace_id),
+            )
+            conn.commit()
+
+    def mark_trace_done_with_route(
+        self,
+        trace_id: int,
+        ok: bool,
+        *,
+        text: str,
+        to_name: Optional[str] = None,
+        to_name_short: Optional[str] = None,
+        hops: Optional[List[Dict[str, Any]]] = None,
+        return_hops: Optional[List[Dict[str, Any]]] = None,
+        from_: str = 'local',
+    ) -> None:
+        """Marca un trace pendiente como procesado y guarda campos enriquecidos.
+
+        - text: cadena completa del trace (se almacena en data_raw)
+        - to_name / to_name_short: nombres del destino (si disponibles)
+        - hops: lista de hasta 7 dicts con claves: id, name, name_short, snr, rssi (ida)
+        - return_hops: lista de hasta 7 dicts (regreso) con las mismas claves
+        """
+        when_str = datetime.now().isoformat(timespec='seconds')
+        status = 'done' if ok else 'error'
+        hops = hops or []
+        return_hops = return_hops or []
+
+        # Preparar columnas y valores
+        set_cols: List[str] = [
+            'status = ?',
+            'data_raw = ?',
+            '"from" = ?',
+            'updated_at = ?',
+            'hops = ?',
+            'hops_back = ?',
+            'to_name = ?',
+            'to_name_short = ?',
+        ]
+        # Cálculo de número de saltos: contamos nodos en la lista y restamos 1 para excluir el destino/origen final
+        hops_count = max(len(hops) - 1, 0) if hops else 0
+        hops_back_count = max(len(return_hops) - 1, 0) if return_hops else 0
+        values: List[Any] = [status, text, from_, when_str, hops_count, hops_back_count, to_name, to_name_short]
+
+        # Rellenar hop1..hop7
+        for i in range(1, 8):
+            item = hops[i - 1] if i - 1 < len(hops) else None
+            for suffix in ('id', 'name', 'name_short', 'snr', 'rssi'):
+                set_cols.append(f'hop{i}_{suffix} = ?')
+                if item:
+                    values.append(item.get(suffix))
+                else:
+                    values.append(None)
+
+        # Rellenar hop_return1..hop_return7
+        for i in range(1, 8):
+            item = return_hops[i - 1] if i - 1 < len(return_hops) else None
+            for suffix in ('id', 'name', 'name_short', 'snr', 'rssi'):
+                set_cols.append(f'hop_return{i}_{suffix} = ?')
+                if item:
+                    values.append(item.get(suffix))
+                else:
+                    values.append(None)
+
+        values.append(trace_id)
+
+        sql = f'UPDATE traces SET {", ".join(set_cols)} WHERE id = ?'
+        with self._connect() as conn:
+            conn.execute(sql, tuple(values))
+            conn.commit()
+
+    def get_last_trace_updated_at(self) -> Optional[str]:
+        """Devuelve el timestamp (ISO) del último trace procesado (updated_at no NULL)."""
+        with self._connect() as conn:
+            cur = conn.execute('SELECT MAX(updated_at) AS last FROM traces WHERE updated_at IS NOT NULL')
+            row = cur.fetchone()
+            return row['last'] if row and row['last'] else None
 
     # ---------- PINGS ----------
     def save_ping(
@@ -293,34 +417,54 @@ class Database:
 
     # ---------- NODE TRACE CONTROL ----------
     def get_next_node_to_trace(self, min_days: int = 7) -> Optional[str]:
-        """Devuelve el próximo node_id candidato a trace, cuyo último trace sea anterior a min_days."""
+        """Devuelve el próximo node_id candidato (2 hops, no MQTT), sin pendientes,
+        con ventana de reintento según último estado:
+          - último status='done' => ≥7 días
+          - último status='error' => ≥1 día
+        Si no hay trazas previas: elegible.
+        """
         with self._connect() as conn:
             cur = conn.execute(
                 '''
+                WITH last_processed AS (
+                    SELECT "to" AS node_id, MAX(updated_at) AS last_updated
+                    FROM traces
+                    WHERE updated_at IS NOT NULL AND status IN ('done','error')
+                    GROUP BY "to"
+                ), last_status AS (
+                    SELECT t."to" AS node_id, t.status AS last_status, t.updated_at AS last_updated
+                    FROM traces t
+                    WHERE t.updated_at IS NOT NULL AND t.status IN ('done','error')
+                    AND t.updated_at = (
+                        SELECT MAX(t2.updated_at) FROM traces t2
+                        WHERE t2."to" = t."to" AND t2.updated_at IS NOT NULL AND t2.status IN ('done','error')
+                    )
+                ), pend AS (
+                    SELECT "to" AS node_id, COUNT(*) AS pendings
+                    FROM traces
+                    WHERE status = 'pending'
+                    GROUP BY "to"
+                )
                 SELECT n.node_id
                 FROM nodes n
-                LEFT JOIN node_trace_runs t ON t.node_id = n.node_id
+                LEFT JOIN last_processed lp ON lp.node_id = n.node_id
+                LEFT JOIN last_status ls ON ls.node_id = n.node_id
+                LEFT JOIN pend p ON p.node_id = n.node_id
                 WHERE COALESCE(n.via_mqtt, 0) = 0
                   AND n.hops = 2
-                  AND (t.last_trace_at IS NULL OR datetime(t.last_trace_at) < datetime('now', ?))
+                  AND COALESCE(p.pendings, 0) = 0
+                  AND (
+                        lp.last_updated IS NULL
+                     OR (
+                          (ls.last_status = 'done'  AND datetime(lp.last_updated) < datetime('now', '-7 days'))
+                       OR (ls.last_status = 'error' AND datetime(lp.last_updated) < datetime('now', '-1 days'))
+                        )
+                  )
                 ORDER BY n.updated_at DESC
                 LIMIT 1
-                ''',
-                (f'-{min_days} days',),
+                '''
             )
             row = cur.fetchone()
             return row['node_id'] if row else None
 
-    def set_node_traced(self, node_id: str, when: Optional[datetime] = None) -> None:
-        when_str = (when or datetime.now()).isoformat(timespec='seconds')
-        with self._connect() as conn:
-            conn.execute(
-                (
-                    """
-                    INSERT INTO node_trace_runs (node_id, last_trace_at) VALUES (?, ?)
-                    ON CONFLICT(node_id) DO UPDATE SET last_trace_at = excluded.last_trace_at
-                    """
-                ),
-                (node_id, when_str),
-            )
-            conn.commit()
+    # Trace requests: eliminadas en favor de usar la propia tabla `traces` como cola

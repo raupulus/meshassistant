@@ -109,7 +109,17 @@ class SerialInterface:
        print('on_receive_data', packet, interface)
 
     def disconnect(self):
-        self.interface.close()
+        # Cerrar la interfaz solo si está inicializada
+        if self.interface:
+            try:
+                self.interface.close()
+            except Exception:
+                pass
+            finally:
+                self.interface = None
+        else:
+            # Asegurar estado consistente
+            self.interface = None
 
     def reconnect(self):
         self.disconnect()
@@ -262,6 +272,188 @@ class SerialInterface:
         """
         log_p("Conexión establecida con el dispositivo Meshtastic")
         self.get_nodes()
+
+    def traceroute(self, node_id: str, timeout: float = 10.0):
+        """Ejecuta un TraceRoute real usando Meshtastic `sendTraceRoute` y capta la salida textual.
+
+        Compatibilidad de llamada (variantes probadas en orden):
+          1) sendTraceRoute(node_id, 3, False, callback)
+          2) sendTraceRoute(node_id, callback)
+          3) sendTraceRoute(node_id, 3, False)
+          4) sendTraceRoute(node_id)
+          5) sendTraceRoute(destinationId=node_id, onResponse=callback)
+          6) sendTraceRoute(id=node_id, onResponse=callback)
+          7) sendTraceRoute(destinationId=node_id)
+
+        Devuelve: dict con claves:
+          - text: str con la salida completa capturada (incluye líneas "Route traced ...")
+          - forward: lista de hops hacia destino (cada item: {id: str, snr: float|None})
+          - backward: lista de hops de regreso (cada item: {id: str, snr: float|None})
+        """
+        if not self.interface:
+            raise RuntimeError("Interfaz Meshtastic no conectada")
+
+        send_fn = getattr(self.interface, 'sendTraceRoute', None)
+        if send_fn is None or not callable(send_fn):
+            raise AttributeError("La interfaz Meshtastic no soporta sendTraceRoute()")
+
+        # Callback (por si la lib lo usa) – mantenemos por si aporta datos
+        results = []
+
+        def _on_response(*args, **kwargs):
+            try:
+                if args and isinstance(args[0], dict) and not kwargs:
+                    results.append(args[0])
+                else:
+                    results.append({'args': args, 'kwargs': kwargs})
+            except Exception:
+                results.append({'repr': repr((args, kwargs))})
+
+        # Capturar la salida textual que imprime la librería durante el trace
+        import time
+        import io
+        import contextlib
+
+        buf_out = io.StringIO()
+        buf_err = io.StringIO()
+
+        # Intentar variantes en orden de máxima compatibilidad (posicionales primero)
+        tried: list[str] = []
+        called = False
+
+        with contextlib.redirect_stdout(buf_out), contextlib.redirect_stderr(buf_err):
+            # 1) Posicional completa con hopLimit e isRepeat y callback
+            try:
+                send_fn(node_id, 3, False, _on_response)
+                called = True
+            except TypeError as e:
+                tried.append(str(e))
+
+            # 2) Posicional con callback como segundo argumento
+            if not called:
+                try:
+                    send_fn(node_id, _on_response)
+                    called = True
+                except TypeError as e:
+                    tried.append(str(e))
+
+            # 3) Posicional sin callback pero con hopLimit/isRepeat
+            if not called:
+                try:
+                    send_fn(node_id, 3, False)
+                    called = True
+                except TypeError as e:
+                    tried.append(str(e))
+
+            # 4) Posicional mínimo solo id
+            if not called:
+                try:
+                    send_fn(node_id)
+                    called = True
+                except TypeError as e:
+                    tried.append(str(e))
+
+            # 5) Keywords modernas (por si la versión sí las soporta)
+            if not called:
+                try:
+                    send_fn(destinationId=node_id, onResponse=_on_response)
+                    called = True
+                except TypeError as e:
+                    tried.append(str(e))
+                    try:
+                        send_fn(id=node_id, onResponse=_on_response)
+                        called = True
+                    except TypeError as e2:
+                        tried.append(str(e2))
+
+            # 6) Último recurso: keyword mínima sin callback
+            if not called:
+                try:
+                    send_fn(destinationId=node_id)
+                    called = True
+                except Exception as e:
+                    tried.append(str(e))
+
+            if not called:
+                # Dejar la salida capturada hasta ahora y lanzar error
+                text_now = (buf_out.getvalue() or '') + (buf_err.getvalue() or '')
+                raise TypeError("sendTraceRoute no pudo ser invocado de forma compatible; errores: " + " | ".join(tried) + f"\n{text_now}")
+
+            # Ventana de espera para que se impriman las rutas
+            start = time.time()
+            last_len = 0
+            while time.time() - start < timeout:
+                # Si el callback recibe algo, ampliamos un poco la espera
+                if len(results) != last_len:
+                    last_len = len(results)
+                    time.sleep(0.3)
+                time.sleep(0.2)
+
+        text = (buf_out.getvalue() or '')
+        err_text = (buf_err.getvalue() or '')
+        if err_text and (not text):
+            text = err_text
+
+        # Parsear las líneas para extraer hops de ida y regreso
+        def _parse_forward_hops(txt: str):
+            import re
+            hops = []
+            lines = [l.strip() for l in txt.splitlines() if l.strip()]
+            # Buscar la línea inmediatamente posterior a "Route traced towards destination:"
+            for i, l in enumerate(lines):
+                if l.lower().startswith('route traced towards destination'):
+                    if i + 1 < len(lines):
+                        path_line = lines[i + 1]
+                        # Split por flechas
+                        parts = [p.strip() for p in path_line.split('-->')]
+                        # Cada parte puede ser "!id (X dB)" o solo "!id"
+                        # El primer elemento es el origen; hops son los siguientes
+                        def parse_part(part: str):
+                            m = re.search(r'(![0-9a-fA-F]+)', part)
+                            node = m.group(1) if m else None
+                            m2 = re.search(r'\(([-+]?\d+(?:\.\d+)?)\s*dB\)', part)
+                            snr = float(m2.group(1)) if m2 else None
+                            return node, snr
+                        parsed = [parse_part(p) for p in parts]
+                        # Tomar solo después del primero como hops
+                        for node, snr in parsed[1:]:
+                            if node:
+                                hops.append({'id': node, 'snr': snr})
+                    break
+            return hops
+
+        def _parse_backward_hops(txt: str):
+            import re
+            hops = []
+            lines = [l.strip() for l in txt.splitlines() if l.strip()]
+            # Buscar la línea inmediatamente posterior a "Route traced back to us:"
+            for i, l in enumerate(lines):
+                if l.lower().startswith('route traced back to us'):
+                    if i + 1 < len(lines):
+                        path_line = lines[i + 1]
+                        parts = [p.strip() for p in path_line.split('-->')]
+                        def parse_part(part: str):
+                            m = re.search(r'(![0-9a-fA-F]+)', part)
+                            node = m.group(1) if m else None
+                            m2 = re.search(r'\(([-+]?\d+(?:\.\d+)?)\s*dB\)', part)
+                            snr = float(m2.group(1)) if m2 else None
+                            return node, snr
+                        parsed = [parse_part(p) for p in parts]
+                        # El primer elemento es el destino y los siguientes los saltos de vuelta
+                        for node, snr in parsed[1:]:
+                            if node:
+                                hops.append({'id': node, 'snr': snr})
+                    break
+            return hops
+
+        forward_hops = _parse_forward_hops(text)
+        backward_hops = _parse_backward_hops(text)
+
+        return {
+            'text': text.strip(),
+            'forward': forward_hops,
+            'backward': backward_hops,
+        }
 
     def get_nodes (self):
         """

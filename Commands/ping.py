@@ -50,5 +50,5 @@ def ping_callback(interface, args, msg, metadata):
         hops = metadata.get('node_from').get('hops')
 
         if hops is not None:
-            response = f'Pong, {hops} hops'
+            response = f'Pong desde Chipiona, {hops} hops'
             interface.reply_to_message(response, metadata)

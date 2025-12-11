@@ -36,11 +36,47 @@ a la raspberry pi zero por UART, igualmente los recibe.
 
 ## TODO
 
-- Detectar hops y snr desde ping
 - Crear base de datos sqlite y los datos de los ping que me hagan al nodo
 - Crear tablas para mensajes o avisos que se publicarán y el canal/grupo al 
   que van destinados. Con idea de añadirlos a la base de datos desde otras 
   aplicaciones.
+- Crear tabla para almacenar los comandos recibidos. Si alguien abusa de los 
+  comandos, se puede bloquear el nodo enviando antes una advertencia.  
+
+## Ejecución con cron (solo Linux)
+
+Para tareas periódicas (subir/descargar chistes, encolar traceroutes y revisar AEMET) se proporciona el script `cron_tasks.py`. La idea es ejecutarlo cada minuto desde `cron` en Linux. El proceso principal `main.py` mantiene el puerto serie abierto; por eso, el cron no realiza el traceroute directamente, sino que encola un registro en la propia tabla `traces` con `status='pending'` para que `main.py` lo ejecute de forma segura cuando corresponda.
+
+Pasos recomendados en un despliegue Linux:
+
+1. Crear y activar el entorno virtual (si no existe):
+   ```bash
+   python3 -m venv venv
+   source venv/bin/activate
+   pip install -r requirements.txt
+   ```
+
+Puedes probar el cron como un comando manualmente en bucle para probar que funciona:
+
+```bash
+while true; do .venv/bin/python cron_tasks.py && sleep 60; done
+```
+
+
+2. Configurar `env.py` con los valores adecuados (por ejemplo `SERIAL_DEVICE_PATH`, URLs y API keys).
+
+3. Añadir una entrada al `crontab` del sistema para ejecutar las tareas cada minuto:
+   ```cron
+   * * * * * cd /ruta/a/meshassistant && . venv/bin/activate && python3 cron_tasks.py >> cron.log 2>&1
+   ```
+
+Notas sobre traceroute (sin tablas auxiliares):
+- `cron_tasks.py` encola el trace insertando en `traces` una fila con campos mínimos: `to=<node_id>`, `status='pending'`, `created_at=NOW()`.
+- `main.py` en su bucle (`loop()`) busca el trace pendiente más antiguo y lo ejecuta con la conexión serial abierta. Al terminar, actualiza esa misma fila con `status='done'|'error'`, `from='local'`, `data_raw=<JSON>` y `updated_at=NOW()`.
+- Límite global: se envía como máximo un trace cada 5 minutos, calculado mirando el `updated_at` del último trace procesado.
+- Límite por nodo: solo se intenta un trace por nodo cada semana, calculado también en base al `updated_at` del último trace de ese nodo.
+
+Esto evita conflictos por el puerto serie ya que solo el proceso principal lo abre y lo mantiene.
 
 
 ## Activar el entorno virtual

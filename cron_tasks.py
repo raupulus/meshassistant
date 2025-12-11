@@ -102,36 +102,29 @@ def chiste_download() -> None:
 
 
 def send_trace() -> None:
-    """Realiza un trace a un nodo a 2 hops (no MQTT).
+    """Encola la ejecución de un traceroute para que lo procese el proceso principal.
 
     Restricciones:
-    - Solo 1 trace cada 5 minutos (global)
-    - Cada nodo como máximo 1 vez por semana
+    - Throttle global: 1 intento cada 5 minutos medido con traces.updated_at del último procesado
+    - Cada nodo como máximo 1 vez por semana (selección de candidato)
     """
     db = Database()
-    # Throttle global 5 minutos
-    if not _should_run(db, 'send_trace_global', 5):
-        return
 
-    # Seleccionar próximo nodo candidato (>= 7 días desde último trace)
+    # Throttle global 5 minutos basado en el último trace realizado (updated_at)
+    last_done_iso = db.get_last_trace_updated_at()
+    if last_done_iso:
+        try:
+            last_dt = datetime.fromisoformat(last_done_iso)
+            if datetime.now() - last_dt < timedelta(minutes=5):
+                return
+        except Exception:
+            pass
+
+    # Seleccionar próximo nodo candidato (>= 7 días desde último trace) y sin pendientes
     node_id = db.get_next_node_to_trace(min_days=7)
-    if not node_id:
-        db.set_task_run('send_trace_global')
-        return
-
-    # TODO: Implementar traceroute real con dispositivo. Por ahora, simulamos.
-    result = {
-        'status': 'pending-impl',
-        'node_id': node_id,
-        'ts': datetime.now().isoformat(timespec='seconds'),
-        'note': 'Implementar traceroute real a través de la interfaz Meshtastic.'
-    }
-    import json
-    db.save_trace(from_='local', to=node_id, data_raw=json.dumps(result, ensure_ascii=False))
-
-    # Marcar ejecuciones
-    db.set_node_traced(node_id)
-    db.set_task_run('send_trace_global')
+    if node_id:
+        # Encolar petición en la propia tabla traces (status='pending')
+        db.enqueue_trace(node_id)
 
 
 def check_aemet() -> None:
