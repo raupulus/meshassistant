@@ -3,8 +3,10 @@ from __future__ import annotations
 import sqlite3
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Iterable, Tuple
+import hashlib
 
 from create_db import ensure_database
+from functions import sanitize_text
 
 
 class Database:
@@ -468,3 +470,292 @@ class Database:
             return row['node_id'] if row else None
 
     # Trace requests: eliminadas en favor de usar la propia tabla `traces` como cola
+
+    # ---------- AEMET ALERTS ----------
+    def _hash_text(self, text: str) -> str:
+        return hashlib.sha256(text.encode('utf-8')).hexdigest()
+
+    def aemet_insert_alert(self, province: Optional[str], data_raw: str, message: Optional[str] = None) -> Optional[int]:
+        """Inserta una alerta AEMET si no existe (deduplicada por hash). Devuelve id o None si ya existía.
+
+        data_raw: texto del "mensaje de alerta" (ES) extraído del XML (no el XML completo).
+        message: texto a publicar (ES) ya preparado para mostrarse.
+        """
+        # Sanitizar ambos campos y calcular hash sobre el mensaje prioritariamente
+        data_raw_s = sanitize_text(data_raw)
+        message_s = sanitize_text(message) if message is not None else None
+        basis = message_s if (message_s and len(message_s) > 0) else data_raw_s
+        if not basis:
+            return None
+        h = self._hash_text(basis)
+        now = datetime.now().isoformat(timespec='seconds')
+        with self._connect() as conn:
+            try:
+                cur = conn.execute(
+                    'INSERT INTO aemet (province, data_raw, message, data_hash, created_at, published) VALUES (?, ?, ?, ?, ?, 0)',
+                    (province, data_raw_s, message_s, h, now),
+                )
+                conn.commit()
+                return int(cur.lastrowid)
+            except sqlite3.IntegrityError:
+                # Duplicada por hash
+                return None
+
+    def aemet_bulk_insert(self, province: Optional[str], items: Iterable[Any]) -> Tuple[int, int]:
+        """Inserta múltiples alertas.
+
+        - items suelen ser cadenas XML CAP (texto). También se ignoran JSON de error.
+        - Extrae el bloque ES y guarda:
+          - data_raw: mensaje de alerta (ES) breve (headline + descripción)
+          - message: texto a publicar (ES) más completo
+        Devuelve (insertadas, ignoradas).
+        """
+        inserted = 0
+        ignored = 0
+        for it in items:
+            # 1) Filtrar respuestas JSON de error de AEMET (p.ej., {"estado":404,...})
+            try:
+                import json as _json
+                candidate_dict = None
+                if isinstance(it, str):
+                    s = (it or '').strip()
+                    if s.startswith('{') and s.endswith('}'):
+                        try:
+                            candidate_dict = _json.loads(s)
+                        except Exception:
+                            candidate_dict = None
+                    else:
+                        candidate_dict = None
+                elif isinstance(it, dict):
+                    candidate_dict = it
+                else:
+                    candidate_dict = None
+
+                if isinstance(candidate_dict, dict):
+                    estado = candidate_dict.get('estado')
+                    if estado is not None and int(str(estado)) != 200:
+                        ignored += 1
+                        continue
+            except Exception:
+                pass
+
+            # 2) Obtener XML como texto
+            if isinstance(it, str):
+                xml_text = it
+            else:
+                try:
+                    xml_text = _json.dumps(it, ensure_ascii=False)
+                except Exception:
+                    xml_text = str(it)
+
+            # 3) Parsear ES y construir mensajes; si falla, ignorar (nunca almacenar XML)
+            alert_text, publish_text = self._parse_cap_es(xml_text)
+            if not alert_text and not publish_text:
+                ignored += 1
+                continue
+
+            # Sanitizar textos y validar que no contengan marcas XML
+            alert_text_s = sanitize_text(alert_text or '')
+            publish_text_s = sanitize_text(publish_text or alert_text_s)
+            if not alert_text_s and not publish_text_s:
+                ignored += 1
+                continue
+
+            if self.aemet_insert_alert(province, alert_text_s, publish_text_s) is not None:
+                inserted += 1
+            else:
+                ignored += 1
+        return inserted, ignored
+
+    @staticmethod
+    def _parse_cap_es(xml_text: str) -> Tuple[Optional[str], Optional[str]]:
+        """Extrae información en español del XML CAP y construye dos textos:
+        - alert_text: mensaje breve (headline + descripción) para almacenar en data_raw
+        - publish_text: texto para publicar (evento, nivel, área, horarios, descripción, url)
+        Devuelve (alert_text, publish_text). Si falla, devuelve (None, None).
+        """
+        try:
+            import xml.etree.ElementTree as ET
+            from datetime import datetime
+
+            # Manejo de espacios de nombres CAP 1.2
+            ns = {'cap': 'urn:oasis:names:tc:emergency:cap:1.2'}
+            root = ET.fromstring(xml_text)
+
+            # Buscar bloque <info> con idioma español
+            infos = root.findall('cap:info', ns)
+            info_es = None
+            for info in infos:
+                lang = (info.findtext('cap:language', default='', namespaces=ns) or '').lower()
+                if lang.startswith('es'):
+                    info_es = info
+                    break
+            if info_es is None:
+                info_es = infos[0] if infos else None
+            if info_es is None:
+                return None, None
+
+            # Campos clave
+            event = (info_es.findtext('cap:event', default='', namespaces=ns) or '').strip()
+            headline = (info_es.findtext('cap:headline', default='', namespaces=ns) or '').strip()
+            description = (info_es.findtext('cap:description', default='', namespaces=ns) or '').strip()
+            instruction = (info_es.findtext('cap:instruction', default='', namespaces=ns) or '').strip()
+            onset = (info_es.findtext('cap:onset', default='', namespaces=ns) or '').strip()
+            expires = (info_es.findtext('cap:expires', default='', namespaces=ns) or '').strip()
+            sender_name = (info_es.findtext('cap:senderName', default='', namespaces=ns) or '').strip()
+            web = (info_es.findtext('cap:web', default='', namespaces=ns) or '').strip()
+
+            # Área
+            area_el = info_es.find('cap:area', ns)
+            area = ''
+            if area_el is not None:
+                area = (area_el.findtext('cap:areaDesc', default='', namespaces=ns) or '').strip()
+
+            # Parámetros AEMET
+            nivel = ''
+            prob = ''
+            fenomeno = ''
+            for par in info_es.findall('cap:parameter', ns):
+                vname = (par.findtext('cap:valueName', default='', namespaces=ns) or '').strip()
+                v = (par.findtext('cap:value', default='', namespaces=ns) or '').strip()
+                vn = vname.lower()
+                if 'nivel' in vn:
+                    nivel = v
+                elif 'probabilidad' in vn:
+                    prob = v
+                elif 'fenomeno' in vn or 'fenómeno' in vn:
+                    fenomeno = v
+
+            # Componer textos
+            parts_short: list[str] = []
+            if headline:
+                parts_short.append(headline)
+            else:
+                base = event
+                if nivel:
+                    base = f"{event} de nivel {nivel}" if event else f"Nivel {nivel}"
+                if area:
+                    base = f"{base}. {area}" if base else area
+                parts_short.append(base)
+            if description:
+                parts_short.append(description)
+            alert_text = ' '.join(' '.join(parts_short).split())
+
+            # Fecha/hora: mantener tal cual (CAP incluye zona); opcionalmente formatear HH:MM
+            def _fmt_time(t: str) -> str:
+                try:
+                    # Admite formatos con offset o 'Z' o '+01:00'
+                    # Tomamos solo fecha y hora local textual
+                    return t.replace('T', ' ').replace('Z', '+00:00')
+                except Exception:
+                    return t
+
+            parts_pub: list[str] = []
+            if event:
+                if nivel:
+                    parts_pub.append(f"{event} (nivel {nivel})")
+                else:
+                    parts_pub.append(event)
+            elif headline:
+                parts_pub.append(headline)
+            if area:
+                parts_pub.append(area)
+            # Ventana temporal
+            if onset or expires:
+                if onset and expires:
+                    parts_pub.append(f"De { _fmt_time(onset) } a { _fmt_time(expires) }")
+                elif onset:
+                    parts_pub.append(f"Desde { _fmt_time(onset) }")
+                elif expires:
+                    parts_pub.append(f"Hasta { _fmt_time(expires) }")
+            if prob:
+                parts_pub.append(f"Prob.: {prob}")
+            if description:
+                parts_pub.append(description)
+            if instruction:
+                parts_pub.append(instruction)
+            if web and 'aemet' in web.lower():
+                parts_pub.append(web)
+
+            publish_text = ' '.join(' '.join(parts_pub).split())
+            return alert_text, publish_text
+        except Exception:
+            return None, None
+
+    def aemet_get_next_unpublished(self) -> Optional[Dict[str, Any]]:
+        with self._connect() as conn:
+            cur = conn.execute(
+                'SELECT id, province, data_raw, message, created_at FROM aemet WHERE published = 0 ORDER BY created_at ASC LIMIT 1'
+            )
+            row = cur.fetchone()
+            return dict(row) if row else None
+
+    def aemet_mark_published(self, alert_id: int) -> None:
+        now = datetime.now().isoformat(timespec='seconds')
+        with self._connect() as conn:
+            conn.execute('UPDATE aemet SET published = 1, published_at = ? WHERE id = ?', (now, alert_id))
+            conn.commit()
+
+    # ---------- AEMET LEGACY FIX ----------
+    def aemet_fix_legacy_rows(self, limit: int = 500) -> Tuple[int, int, int]:
+        """Convierte filas antiguas que almacenaron XML crudo a texto en español.
+
+        Busca filas donde data_raw o message parecen contener XML ('<' al inicio o '<?xml').
+        Intenta parsear y actualizar data_raw/message con texto saneado y recomputa data_hash.
+        Si al actualizar se produce colisión de hash con otra fila existente, elimina la fila actual (duplicado).
+
+        Devuelve (procesadas, actualizadas, eliminadas).
+        """
+        processed = 0
+        updated = 0
+        deleted = 0
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT id, province, data_raw, message
+                FROM aemet
+                WHERE (data_raw LIKE '<%' OR data_raw LIKE '<?xml%' OR (message IS NOT NULL AND message LIKE '<%'))
+                ORDER BY id ASC
+                LIMIT ?
+                """,
+                (int(limit),),
+            ).fetchall()
+
+            for r in rows:
+                processed += 1
+                rid = int(r['id'])
+                xml_candidate = r['data_raw'] or r['message'] or ''
+                alert_text, publish_text = self._parse_cap_es(xml_candidate)
+                if not alert_text and not publish_text:
+                    # No se pudo parsear; intentar eliminar marcas XML básicas y continuar
+                    import re
+                    txt = re.sub(r'<[^>]+>', ' ', xml_candidate)
+                    txt = sanitize_text(txt)
+                    if not txt:
+                        continue
+                    alert_s = txt
+                    pub_s = txt
+                else:
+                    alert_s = sanitize_text(alert_text or '')
+                    pub_s = sanitize_text(publish_text or alert_s)
+
+                if not alert_s and not pub_s:
+                    continue
+
+                basis = pub_s if pub_s else alert_s
+                new_hash = self._hash_text(basis)
+
+                try:
+                    conn.execute(
+                        'UPDATE aemet SET data_raw = ?, message = ?, data_hash = ? WHERE id = ?',
+                        (alert_s, pub_s, new_hash, rid),
+                    )
+                    conn.commit()
+                    updated += 1
+                except sqlite3.IntegrityError:
+                    # Duplicado tras normalizar: eliminar esta fila
+                    conn.execute('DELETE FROM aemet WHERE id = ?', (rid,))
+                    conn.commit()
+                    deleted += 1
+
+        return processed, updated, deleted

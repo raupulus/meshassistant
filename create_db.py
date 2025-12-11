@@ -110,6 +110,18 @@ def _execute_schema(conn: sqlite3.Connection) -> None:
             extra TEXT
         );
 
+        -- Histórico de alertas AEMET descargadas
+        CREATE TABLE IF NOT EXISTS aemet (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            province TEXT,
+            data_raw TEXT NOT NULL,
+            message TEXT NULL,
+            data_hash TEXT UNIQUE,
+            created_at TEXT,
+            published INTEGER NOT NULL DEFAULT 0,
+            published_at TEXT NULL
+        );
+
         -- Tablas antiguas de control de traces eliminadas del esquema
         """
     )
@@ -131,6 +143,11 @@ def _execute_schema(conn: sqlite3.Connection) -> None:
     # Ensure new column in chistes: chiste_id
     if not _has_column('chistes', 'chiste_id'):
         conn.execute('ALTER TABLE chistes ADD COLUMN chiste_id INTEGER NULL')
+        conn.commit()
+
+    # Ensure new column in aemet: message
+    if not _has_column('aemet', 'message'):
+        conn.execute('ALTER TABLE aemet ADD COLUMN message TEXT NULL')
         conn.commit()
 
     # Create indexes if not exist

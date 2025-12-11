@@ -42,6 +42,7 @@ a la raspberry pi zero por UART, igualmente los recibe.
   aplicaciones.
 - Crear tabla para almacenar los comandos recibidos. Si alguien abusa de los 
   comandos, se puede bloquear el nodo enviando antes una advertencia.  
+- Poner traces como opcional, añadir variable de entorno para habilitarlos.
 
 ## Ejecución con cron (solo Linux)
 
@@ -77,6 +78,26 @@ Notas sobre traceroute (sin tablas auxiliares):
 - Límite por nodo: solo se intenta un trace por nodo cada semana, calculado también en base al `updated_at` del último trace de ese nodo.
 
 Esto evita conflictos por el puerto serie ya que solo el proceso principal lo abre y lo mantiene.
+
+
+## Variables de entorno para AEMET
+
+Estas variables se configuran en `env.py` (puedes copiar desde `env.example.py`). La integración solo se activa si `AEMET_API_KEY` tiene un valor.
+
+- `AEMET_API_KEY`: Clave de API de AEMET (OpenData). Si está vacía, no se consulta la API ni se publican avisos.
+- `AEMET_CHANNELS`: Lista de canales Meshtastic donde publicar alertas. Ejemplo: `[6]`. Los nombres de canales se definen en `data.py`.
+- `AEMET_PROVINCE`: Provincia para la que se vigilan alertas. Puede ser el nombre (p. ej. `Cádiz`) o el código que acepte el endpoint de AEMET utilizado.
+- `AEMET_PERIOD`: Periodicidad mínima entre publicaciones por canal. Valores admitidos: `Hour`, `Three_hour`, `Six_hour`, `Twelve_hour`, `Day` (insensible a mayúsculas). Se traduce a 60, 180, 360, 720 y 1440 minutos respectivamente.
+- `AEMET_HOUR_MIN`: Hora mínima (0-23) del día a partir de la cual se puede empezar a publicar alertas (respetando `AEMET_PERIOD`).
+- `AEMET_HOUR_MAX`: Hora máxima (0-23) del día hasta la cual se puede empezar a publicar alertas (respetando `AEMET_PERIOD`).
+
+Flujo de AEMET:
+- `cron_tasks.py` (cada hora): si hay `AEMET_API_KEY`, consulta OpenData de AEMET (últimos avisos CAP para la provincia indicada si es posible), y guarda cualquier novedad en la tabla `aemet` (evitando duplicados).
+- `main.py` (bucle): si hay API key y la hora actual está entre `AEMET_HOUR_MIN` y `AEMET_HOUR_MAX`, toma la próxima alerta no publicada y la envía a los canales definidos en `AEMET_CHANNELS`, respetando `AEMET_PERIOD` por canal. Tras publicar, marca la alerta como publicada en BD.
+
+Notas:
+- La tabla `aemet` actúa como histórico con un indicador `published` para evitar repeticiones.
+- La periodicidad por canal se controla con la tabla `tasks_control` (marcas `aemet_publish_ch_<canal>`).
 
 
 ## Activar el entorno virtual
