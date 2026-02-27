@@ -12,6 +12,16 @@ def chiste_callback(interface, args, msg, metadata):
         else:
             response = 'Comando no encontrado'
         interface.reply_to_message(response, metadata)
+        # Log comando
+        try:
+            from Models.Database import Database
+            node_from = (metadata or {}).get('node_from') or {}
+            node_id = node_from.get('id')
+            cmd = 'chiste'
+            message_tail = 'help'
+            Database().log_command(node_id=node_id, command=cmd, message=message_tail, parameters=None)
+        except Exception:
+            pass
         return
 
     # Añadir chiste: "/chiste add ..." o "!chiste add ..."
@@ -24,6 +34,14 @@ def chiste_callback(interface, args, msg, metadata):
 
         if not content:
             interface.reply_to_message('Uso: !chiste add Tu chiste aquí', metadata)
+            # Log comando (sin contenido)
+            try:
+                from Models.Database import Database
+                node_from = (metadata or {}).get('node_from') or {}
+                node_id = node_from.get('id')
+                Database().log_command(node_id=node_id, command='chiste', message='add', parameters=None)
+            except Exception:
+                pass
             return
 
         # Determinar origen del chiste
@@ -38,6 +56,15 @@ def chiste_callback(interface, args, msg, metadata):
             interface.reply_to_message('✅ Chiste recibido. Queda pendiente de aprobación. ¡Gracias!', metadata)
         except Exception as e:
             interface.reply_to_message(f'❌ Error guardando el chiste: {e}', metadata)
+        finally:
+            # Log comando (guardar el contenido completo tras 'add')
+            try:
+                from Models.Database import Database
+                node_from = (metadata or {}).get('node_from') or {}
+                node_id = node_from.get('id')
+                Database().log_command(node_id=node_id, command='chiste', message=content, parameters=None)
+            except Exception:
+                pass
         return
 
     # Obtener chiste aleatorio aprobado
@@ -53,3 +80,13 @@ def chiste_callback(interface, args, msg, metadata):
         response = f'Error al obtener chistes: {e}'
 
     interface.reply_to_message(response, metadata)
+    # Log comando
+    try:
+        from Models.Database import Database
+        node_from = (metadata or {}).get('node_from') or {}
+        node_id = node_from.get('id')
+        cmd = 'chiste'
+        message_tail = ' '.join(args) if args else None
+        Database().log_command(node_id=node_id, command=cmd, message=message_tail, parameters=None)
+    except Exception:
+        pass

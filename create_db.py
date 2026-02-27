@@ -122,6 +122,16 @@ def _execute_schema(conn: sqlite3.Connection) -> None:
             published_at TEXT NULL
         );
 
+        -- Histórico de comandos recibidos por el bot
+        CREATE TABLE IF NOT EXISTS commands_sent (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            node_id TEXT,
+            command TEXT,
+            parameters TEXT NULL,
+            message TEXT,
+            created_at TEXT
+        );
+
         -- Tablas antiguas de control de traces eliminadas del esquema
         """
     )

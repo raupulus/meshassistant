@@ -30,6 +30,11 @@ def chiste_upload() -> None:
     """Sube chistes con need_upload=True. Frecuencia: máxima 1/hora."""
     db = Database()
     task_name = 'chiste_upload'
+    # Comprobar feature flag
+    if not getattr(env, 'CHISTES_API_ENABLED', False):
+        log_p("[cron] chiste_upload: CHISTES_API_ENABLED=False (omitido)")
+        db.set_task_run(task_name)
+        return
     if not _should_run(db, task_name, 60):
         log_p(f"[cron] chiste_upload: omitido (cooldown 60min)")
         return
@@ -84,6 +89,11 @@ def chiste_download() -> None:
     """Descarga chistes nuevos desde la API. Frecuencia: máxima 1/hora."""
     db = Database()
     task_name = 'chiste_download'
+    # Comprobar feature flag
+    if not getattr(env, 'CHISTES_API_ENABLED', False):
+        log_p("[cron] chiste_download: CHISTES_API_ENABLED=False (omitido)")
+        db.set_task_run(task_name)
+        return
     if not _should_run(db, task_name, 60):
         log_p(f"[cron] chiste_download: omitido (cooldown 60min)")
         return

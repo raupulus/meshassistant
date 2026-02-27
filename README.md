@@ -42,7 +42,6 @@ a la raspberry pi zero por UART, igualmente los recibe.
   aplicaciones.
 - Crear tabla para almacenar los comandos recibidos. Si alguien abusa de los 
   comandos, se puede bloquear el nodo enviando antes una advertencia.  
-- Poner traces como opcional, añadir variable de entorno para habilitarlos.
 
 ## Ejecución con cron (solo Linux)
 

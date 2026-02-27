@@ -773,3 +773,28 @@ class Database:
                     deleted += 1
 
         return processed, updated, deleted
+
+    # ---------- COMMANDS LOG ----------
+    def log_command(
+        self,
+        *,
+        node_id: Optional[str],
+        command: Optional[str],
+        message: Optional[str] = None,
+        parameters: Optional[str] = None,
+    ) -> int:
+        """Guarda un registro del comando recibido en `commands_sent` y devuelve el id.
+
+        - node_id: id del nodo que envía el comando (puede ser None)
+        - command: nombre del comando (sin prefijo / o !), p.ej. 'ping', 'help'
+        - message: texto posterior al comando y parámetros
+        - parameters: reservado para uso futuro (se almacena tal cual)
+        """
+        when_str = datetime.now().isoformat(timespec='seconds')
+        with self._connect() as conn:
+            cur = conn.execute(
+                'INSERT INTO commands_sent (node_id, command, parameters, message, created_at) VALUES (?, ?, ?, ?, ?)',
+                (node_id, command, parameters, message, when_str),
+            )
+            conn.commit()
+            return int(cur.lastrowid)

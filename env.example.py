@@ -12,6 +12,7 @@ TRACES_RETRY_INTERVAL = 24         # Horas para reintentar tras un fallo
 TRACES_RELOAD_INTERVAL = 24 * 7    # Horas para repetir tras un éxito (una semana por defecto)
 
 ## Api para Chistes, habilitado solo si tiene API key
+CHISTES_API_ENABLED = False
 CHISTES_API_KEY = ''
 CHISTES_URL_UPLOAD = 'https://tuweb/chiste/add'
 CHISTES_URL_DOWNLOAD = 'https://tuweb/chiste/get'
