@@ -90,7 +90,7 @@ class Database:
     def bulk_insert_api_chistes(self, items: Iterable[Dict[str, Any]]) -> Tuple[int, int]:
         """Inserta chistes descargados de la API.
 
-        Cada item debe tener: id (-> chiste_id) y content.
+        Cada item debe tener: id (-> chiste_id), content y uploaded_by (-> from).
         Flags need_approve y need_upload se guardan en 0.
         Devuelve (insertados, ignorados).
         """
@@ -100,12 +100,13 @@ class Database:
             for it in items:
                 api_id = it.get('id')
                 content = it.get('content')
+                uploaded_by = it.get('uploaded_by')
                 if content is None:
                     continue
                 try:
                     conn.execute(
                         'INSERT OR IGNORE INTO chistes ("from", content, need_upload, need_approve, chiste_id) VALUES (?, ?, 0, 0, ?)',
-                        (None, content, api_id),
+                        (uploaded_by, content, api_id),
                     )
                     if conn.total_changes > 0:
                         inserted += 1

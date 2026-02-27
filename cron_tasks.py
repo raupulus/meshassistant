@@ -89,40 +89,39 @@ def chiste_download() -> None:
     """Descarga chistes nuevos desde la API. Frecuencia: máxima 1/hora."""
     db = Database()
     task_name = 'chiste_download'
-    # Comprobar feature flag
-    if not getattr(env, 'CHISTES_API_ENABLED', False):
-        log_p("[cron] chiste_download: CHISTES_API_ENABLED=False (omitido)")
-        db.set_task_run(task_name)
-        return
+
     if not _should_run(db, task_name, 60):
         log_p(f"[cron] chiste_download: omitido (cooldown 60min)")
         return
 
-    api = Api()
-    # Configurar API key específica para este endpoint si está definida
-    api_key = getattr(env, 'CHISTES_API_KEY', None)
-    if api_key:
-        api.set_apikey(api_key)
     url = getattr(env, 'CHISTES_URL_DOWNLOAD', None)
     if not url:
         log_p("[cron] chiste_download: CHISTES_URL_DOWNLOAD no configurado")
+        db.set_task_run(task_name)
         return
 
+    api = Api()
+    # Configurar API key si existe (Bearer token)
+    api_key = getattr(env, 'CHISTES_API_KEY', None)
+    if api_key:
+        api.set_apikey(api_key)
+
     last_id = db.get_last_downloaded_chiste_id()
-    log_p(f"[cron] chiste_download: solicitando desde last_id={last_id} → {url}")
-    payload = {'last_id': last_id}
+    params = {
+        'limit': 25,
+        'after_id': last_id if last_id is not None else 0
+    }
+    log_p(f"[cron] chiste_download: solicitando desde after_id={params['after_id']} → {url}")
+
     try:
-        data = api.download(url, payload)
-        if isinstance(data, dict) and 'items' in data:
-            items = data['items']
-        elif isinstance(data, list):
-            items = data
+        data = api.download(url, params)
+        if isinstance(data, dict) and data.get('success') is True:
+            items = data.get('data', [])
+            inserted, ignored = db.bulk_insert_api_chistes(items)
+            log_p(f"[cron] chiste_download: recibidos {len(items)} → insertados {inserted}, ignorados {ignored}")
         else:
-            items = []
-        inserted, ignored = db.bulk_insert_api_chistes(items)
-        log_p(f"[cron] chiste_download: recibidos {len(items)} → insertados {inserted}, ignorados {ignored}")
+            log_p(f"[cron] chiste_download: respuesta inesperada o error en API: {data}", level="WARN")
     except Exception as e:
-        # ignorar errores de red momentáneos
         log_p(f"[cron] chiste_download: error descargando: {e}", level="WARN")
     finally:
         db.set_task_run(task_name)

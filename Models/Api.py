@@ -58,6 +58,23 @@ class Api:
     def upload(self, url: str, data: Optional[Dict[str, Any]] = None) -> Any:
         return self._request("POST", url, data)
 
-    def download(self, url: str, data: Optional[Dict[str, Any]] = None) -> Any:
-        # Prefer POST for payload; if server expects GET with params, adjust calling side
-        return self._request("POST", url, data)
+    def download(self, url: str, params: Optional[Dict[str, Any]] = None) -> Any:
+        """Realiza una petición GET para descargar datos."""
+        last_err: Optional[Exception] = None
+        for _ in range(self.retries):
+            try:
+                resp = requests.get(
+                    url=url,
+                    params=params,
+                    headers=self._headers(),
+                    timeout=self.timeout,
+                )
+                resp.raise_for_status()
+                if resp.content:
+                    return resp.json()
+                return None
+            except Exception as e:
+                last_err = e
+        if last_err:
+            raise last_err
+        return None
