@@ -1,0 +1,46 @@
+[Unit]
+Description=meshbotassistant — Bot Meshtastic para Raspberry Pi
+Documentation=https://github.com/raupulus/meshassistant
+# Esperar a que la red esté disponible (el bot es tolerante si el nodo no responde,
+# pero conviene que la interfaz de red exista antes de arrancar)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pi
+Group=dialout
+
+# Directorio de trabajo: debe coincidir con la raíz del repositorio clonado
+WorkingDirectory=/home/pi/meshbotassistant
+
+# Ejecutar el proceso principal con el intérprete del venv
+ExecStart=/home/pi/meshbotassistant/.venv/bin/python main.py
+
+# Reiniciar siempre el proceso si muere por cualquier motivo
+# (excepción no capturada, señal, OOM…).
+# Los errores de conexión al nodo los gestiona el propio bot esperando y
+# reintentando; Restart=always cubre caídas inesperadas del proceso.
+Restart=always
+
+# Esperar 30 s antes de reiniciar para no saturar logs si hay un fallo continuo
+RestartSec=30
+
+# Tiempo máximo para que el proceso arranque antes de considerarlo fallido
+TimeoutStartSec=60
+
+# Tiempo máximo para parada limpia antes de matar el proceso
+TimeoutStopSec=15
+
+# Variables de entorno adicionales (opcional)
+# Si necesitas forzar alguna variable sin tocar env.py puedes descomentarlas:
+# Environment="DEBUG=False"
+# Environment="PYTHONUNBUFFERED=1"
+
+# Redirigir stdout/stderr al journal (ver con: journalctl -u meshbotassistant -f)
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=meshbotassistant
+
+[Install]
+WantedBy=multi-user.target

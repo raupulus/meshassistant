@@ -171,19 +171,27 @@ consola serie** (`raspi-config` → *Interface Options* → *Serial Port*: login
 - Acceso al puerto serie del sistema.
 - Dependencias en `requirements.txt`: `meshtastic`, `pypubsub`, `requests`.
 
+**En Raspberry Pi** usa el script de instalación automática (ver sección
+[Despliegue en producción](#despliegue-en-producción-raspberry-pi)).
+
+**En desarrollo / macOS / Linux:**
+
 ```bash
-# 1. Crear y activar el entorno virtual
+# 1. Clonar el repositorio
+git clone https://github.com/raupulus/meshassistant.git && cd meshassistant
+
+# 2. Crear y activar el entorno virtual
 python3 -m venv .venv
 source .venv/bin/activate
 
-# 2. Instalar dependencias
+# 3. Instalar dependencias
 pip install -r requirements.txt
 
-# 3. Crear el fichero de configuración a partir del ejemplo
+# 4. Crear el fichero de configuración a partir del ejemplo
 cp env.example.py env.py
-#   …y editar env.py con tus valores
+#   …y editar env.py con tus valores (SERIAL_DEVICE_PATH, etc.)
 
-# 4. (Opcional) Crear/migrar la base de datos manualmente
+# 5. (Opcional) Crear/migrar la base de datos manualmente
 python3 create_db.py     # main.py también la crea al arrancar
 ```
 
@@ -264,7 +272,48 @@ Detalle completo del esquema en
 
 ---
 
-## Ejecución del proceso principal
+## Despliegue en producción (Raspberry Pi)
+
+### Instalación automática
+
+El script `install.sh` automatiza todo el proceso con un solo comando:
+
+```bash
+curl -sSL https://raw.githubusercontent.com/raupulus/meshassistant/main/install.sh | bash
+```
+
+O si ya tienes el repo clonado:
+
+```bash
+bash install.sh
+```
+
+El script clona/actualiza el repo en `/home/pi/meshbotassistant`, crea el entorno
+virtual, instala dependencias, genera `env.py` si no existe, migra la BD, instala
+el servicio systemd y configura el cron automáticamente. Para **actualizar**
+el bot en el futuro basta con volver a ejecutar el mismo comando.
+
+Tras la instalación, edita `env.py` (al menos `SERIAL_DEVICE_PATH`) y arranca:
+
+```bash
+nano /home/pi/meshbotassistant/env.py
+sudo systemctl start meshbotassistant
+```
+
+### Gestión del servicio
+
+```bash
+sudo systemctl status  meshbotassistant   # estado
+sudo systemctl restart meshbotassistant   # reiniciar
+journalctl -u meshbotassistant -f         # logs en tiempo real
+```
+
+El servicio usa `Restart=always` con 30 s de espera entre reinicios. Los errores
+de conexión al nodo (puerto serie caído, nodo apagado o ocupado) los gestiona el
+propio bot esperando y reintentando; `Restart=always` cubre caídas inesperadas del
+proceso.
+
+### Ejecución del proceso principal (manual / desarrollo)
 
 ```bash
 source .venv/bin/activate
@@ -273,33 +322,32 @@ python3 main.py
 
 `main.py` asegura la base de datos, abre el puerto serie, queda a la escucha de
 mensajes y, en bucle, procesa traces pendientes y publica alertas AEMET. Se detiene
-con `Ctrl+C`. En producción conviene lanzarlo como servicio (p. ej. `systemd`) para
-que se reinicie automáticamente.
+con `Ctrl+C`.
 
 ---
 
 ## Ejecución con cron (solo Linux)
 
 Para tareas periódicas (subir/descargar chistes, encolar traceroutes y revisar
-AEMET) se proporciona el script `cron_tasks.py`. La idea es ejecutarlo cada minuto
-desde `cron`. El proceso principal `main.py` mantiene el puerto serie abierto; por
+AEMET) se proporciona el script `cron_tasks.py`. Se ejecuta cada minuto desde
+`cron`. El proceso principal `main.py` mantiene el puerto serie abierto; por
 eso el cron no realiza el traceroute directamente, sino que **encola** un registro
 en la tabla `traces` con `status='pending'` para que `main.py` lo ejecute de forma
 segura.
 
-Prueba manual en bucle:
+El script `install.sh` instala la entrada de cron automáticamente. Para revisarla:
 
 ```bash
-while true; do .venv/bin/python cron_tasks.py && sleep 60; done
+crontab -l
 ```
 
-Entrada de `crontab` para ejecutar cada minuto:
+Entrada manual si prefieres configurarlo tú mismo:
 
 ```cron
-* * * * * cd /ruta/a/meshassistant && . .venv/bin/activate && python3 cron_tasks.py >> cron.log 2>&1
+* * * * * cd /home/pi/meshbotassistant && .venv/bin/python cron_tasks.py >> /home/pi/meshbotassistant/cron.log 2>&1
 ```
 
-Notas sobre traceroute (sin tablas auxiliares):
+Notas sobre traceroute:
 
 - `cron_tasks.py` encola el trace insertando en `traces` una fila mínima:
   `to=<node_id>`, `status='pending'`, `created_at=NOW()`.
