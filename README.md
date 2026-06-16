@@ -156,9 +156,19 @@ Conexión por los pines UART de la Raspberry Pi (GPIO):
 
 En la Raspberry Pi hay que habilitar el puerto serie por hardware y **liberar la
 consola serie** (`raspi-config` → *Interface Options* → *Serial Port*: login shell
-*No*, hardware *Yes*). El dispositivo suele exponerse como `/dev/serial0` (o
-`/dev/ttyAMA0` / `/dev/ttyS0` según el modelo). Ese valor se configura en
-`SERIAL_DEVICE_PATH` dentro de `env.py`.
+*No*, hardware *Yes*).
+
+**Importante en Pi Zero 2 W:** por defecto el Bluetooth ocupa el UART completo
+(PL011) y GPIO 14/15 quedan en el mini UART, que es inestable porque su baudrate
+depende del reloj de la CPU. Para usar el PL011 (estable) hay que añadir
+`dtoverlay=disable-bt` en `/boot/firmware/config.txt` y deshabilitar el servicio
+`hciuart`. Con eso activo, el dispositivo serie es `/dev/ttyAMA0`. Ver detalle
+completo en [`docs/info/13-instalacion-despliegue.md`](docs/info/13-instalacion-despliegue.md).
+
+```python
+# env.py — valor correcto para Pi Zero 2 W con dtoverlay=disable-bt
+SERIAL_DEVICE_PATH = "/dev/ttyAMA0"
+```
 
 > Si se conecta el nodo por USB (durante desarrollo en un PC), `SERIAL_DEVICE_PATH`
 > apuntará a algo como `/dev/ttyUSB0` (Linux) o `/dev/cu.usbserial-XXXX` (macOS).

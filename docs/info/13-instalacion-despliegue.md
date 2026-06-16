@@ -17,21 +17,88 @@ Cruzar TX↔RX y compartir GND. Niveles **3.3 V** (no conectar a 5 V).
 
 ### Habilitar el puerto serie en la Pi
 
+Este paso es **obligatorio** antes de que el bot pueda acceder al nodo. Sin él,
+`/dev/serial0` no existe y el proceso falla al arrancar.
+
 ```bash
 sudo raspi-config
-# → Interface Options → Serial Port
-#   "Would you like a login shell over serial?" → No
-#   "Would you like the serial port hardware enabled?" → Yes
 ```
 
-Reiniciar. El puerto suele quedar como `/dev/serial0` (alias de `/dev/ttyAMA0` o
-`/dev/ttyS0` según modelo). Configúralo en `SERIAL_DEVICE_PATH` dentro de `env.py`.
+Navegar a: **Interface Options → Serial Port**
+
+| Pregunta | Respuesta |
+|---|---|
+| Would you like a login shell to be accessible over serial? | **No** |
+| Would you like the serial port hardware to be enabled? | **Yes** |
+
+Aceptar y reiniciar cuando `raspi-config` lo solicite. Tras el reinicio, verificar
+que el dispositivo existe:
+
+```bash
+ls -la /dev/serial0 /dev/ttyAMA0
+# Deben aparecer ambos (serial0 es un alias de ttyAMA0 con disable-bt activo)
+```
 
 Añadir el usuario al grupo `dialout` para acceder al puerto serie sin sudo:
 
 ```bash
 sudo usermod -aG dialout pi   # requiere cerrar sesión y volver a entrar
 ```
+
+---
+
+### UART en Raspberry Pi Zero 2 W — lectura obligatoria
+
+La Pi Zero 2 W tiene Bluetooth integrado y esto afecta directamente a qué UART
+queda disponible en GPIO 14/15.
+
+**Situación por defecto (sin tocar nada):**
+
+| UART | Dispositivo | Asignado a |
+|---|---|---|
+| PL011 (completo) | `/dev/ttyAMA0` | Bluetooth |
+| mini UART | `/dev/ttyS0` | GPIO 14 / 15 |
+| alias | `/dev/serial0` | → `/dev/ttyS0` |
+
+El **mini UART** tiene un defecto grave: su baudrate está ligado al reloj de la
+CPU. Si el governor de frecuencia cambia la velocidad del procesador, el baudrate
+varía y la comunicación serie se corrompe. Esto hace que el mini UART sea
+**inestable para Meshtastic**.
+
+**Solución: deshabilitar Bluetooth para liberar el PL011**
+
+Añadir en `/boot/firmware/config.txt` (Raspberry Pi OS Bookworm):
+
+```ini
+[all]
+dtoverlay=disable-bt
+```
+
+Y deshabilitar el servicio que inicializa el BT sobre ese UART:
+
+```bash
+sudo systemctl disable hciuart
+sudo reboot
+```
+
+Tras reiniciar, el PL011 queda libre en GPIO 14/15:
+
+| UART | Dispositivo | Asignado a |
+|---|---|---|
+| PL011 (completo) | `/dev/ttyAMA0` | GPIO 14 / 15 ✅ |
+| alias | `/dev/serial0` | → `/dev/ttyAMA0` |
+
+**Configuración en `env.py`:**
+
+```python
+SERIAL_DEVICE_PATH = "/dev/ttyAMA0"   # PL011, estable, recomendado
+# o el alias portable:
+SERIAL_DEVICE_PATH = "/dev/serial0"   # apunta a ttyAMA0 si BT está deshabilitado
+```
+
+> **Estado actual del proyecto:** el `config.txt` del sistema ya incluye
+> `dtoverlay=disable-bt` bajo `[all]`, por lo que el PL011 está activo en
+> GPIO 14/15 y `SERIAL_DEVICE_PATH = "/dev/ttyAMA0"` es el valor correcto.
 
 > **Conexión USB (desarrollo):** si conectas el nodo por USB desde un PC,
 > `SERIAL_DEVICE_PATH` apuntará a `/dev/ttyUSB0` (Linux) o
@@ -95,6 +162,17 @@ sudo systemctl start meshbotassistant
 Si prefieres hacerlo tú mismo sin el script:
 
 ```bash
+# 0. Prerrequisitos de hardware (una sola vez)
+#    a) Deshabilitar BT para liberar el PL011:
+#       Añadir en /boot/firmware/config.txt → [all] → dtoverlay=disable-bt
+sudo systemctl disable hciuart
+
+#    b) Habilitar puerto serie (sin login shell):
+#       sudo raspi-config → Interface Options → Serial Port → No / Yes → reboot
+
+#    c) Acceso al puerto serie sin sudo:
+sudo usermod -aG dialout pi   # requiere re-login
+
 # 1. Clonar el repositorio
 git clone https://github.com/raupulus/meshassistant.git /home/pi/meshbotassistant
 cd /home/pi/meshbotassistant
