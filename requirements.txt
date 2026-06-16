@@ -1,3 +1,12 @@
-meshtastic>=2.3.0
-pypubsub>=4.0.3
-requests>=2.31.0
+# Dependencias de meshassistant
+# Probado con Python 3.11 - 3.14
+#
+# Las versiones minimas se alinean con las instaladas y validadas en el .venv actual.
+# Ultimas publicadas (jun 2026): meshtastic 2.7.8 - pypubsub 4.0.3 - requests 2.34.x
+# El codigo es compatible con esas versiones; SerialInterface.traceroute() esta
+# escrito de forma defensiva para tolerar cambios de API entre versiones de meshtastic
+# (ver docs/info/04-interfaz-serial.md).
+
+meshtastic>=2.7.5     # API/CLI Meshtastic por puerto serie
+pypubsub>=4.0.3       # Bus de eventos (pub/sub) usado por meshtastic y el proyecto
+requests>=2.32.0      # Cliente HTTP (AEMET y API de chistes)

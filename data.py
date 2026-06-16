@@ -5,7 +5,7 @@ from Commands.ia import ia_callback
 from Commands.maremoto import maremoto_callback
 from Commands.ping import ping_callback
 from Commands.uptime import uptime_callback
-from Commands.weahter import weather_callback
+from Commands.weather import weather_callback
 
 from datetime import date
 

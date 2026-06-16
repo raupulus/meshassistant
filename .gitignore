@@ -143,6 +143,9 @@ cython_debug/
 out/
 .idea_modules/
 
+# JetBrains Junie (asistente IA)
+.junie/
+
 # VSCode
 .vscode/
 *.code-workspace

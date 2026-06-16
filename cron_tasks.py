@@ -27,29 +27,27 @@ def _should_run(db: Database, name: str, min_interval_minutes: int) -> bool:
 
 
 def chiste_upload() -> None:
-    """Sube chistes con need_upload=True. Frecuencia: máxima 1/hora."""
+    """Sube chistes con need_upload=True. Frecuencia: máxima 5/minutos."""
     db = Database()
     task_name = 'chiste_upload'
-    # Comprobar feature flag
-    if not getattr(env, 'CHISTES_API_ENABLED', False):
-        log_p("[cron] chiste_upload: CHISTES_API_ENABLED=False (omitido)")
-        db.set_task_run(task_name)
-        return
-    if not _should_run(db, task_name, 60):
-        log_p(f"[cron] chiste_upload: omitido (cooldown 60min)")
+
+    if not _should_run(db, task_name, 5):
+        log_p(f"[cron] chiste_upload: omitido (cooldown 5min)")
         return
 
-    api = Api()
-    # Configurar API key específica para este endpoint si está definida
-    api_key = getattr(env, 'CHISTES_API_KEY', None)
-    if api_key:
-        api.set_apikey(api_key)
     url = getattr(env, 'CHISTES_URL_UPLOAD', None)
     if not url:
         log_p("[cron] chiste_upload: CHISTES_URL_UPLOAD no configurado")
+        db.set_task_run(task_name)
         return
 
-    to_send = db.get_chistes_to_upload(limit=200)
+    api = Api()
+    # Configurar API key si existe (Bearer token)
+    api_key = getattr(env, 'CHISTES_API_KEY', None)
+    if api_key:
+        api.set_apikey(api_key)
+
+    to_send = db.get_chistes_to_upload(limit=5)
     if not to_send:
         log_p("[cron] chiste_upload: no hay chistes para subir")
         db.set_task_run(task_name)
@@ -60,16 +58,18 @@ def chiste_upload() -> None:
     log_p(f"[cron] chiste_upload: intentando subir {len(to_send)} chistes → {url}")
     for item in to_send:
         payload = {
-            'from': item.get('from'),
+            'nick': item.get('from'),
+            'title': None,
             'content': item.get('content'),
-            'id_local': item.get('id'),
         }
         try:
             resp = api.upload(url, payload)
-            # Asumimos éxito si no lanza excepción; si la API devuelve ok, mejor
-            if isinstance(resp, dict) and ('ok' in resp) and not resp.get('ok'):
-                log_p(f"[cron] chiste_upload: respuesta no OK para id={item['id']}: {resp}", level="WARN")
+            # La API devuelve success: true según el patrón visto en descarga
+            if isinstance(resp, dict) and resp.get('success') is False:
+                log_p(f"[cron] chiste_upload: respuesta error para id={item['id']}: {resp}", level="WARN")
+                errors += 1
                 continue
+
             uploaded_ids.append(item['id'])
         except Exception as e:
             # continuar con el siguiente
@@ -82,6 +82,7 @@ def chiste_upload() -> None:
         log_p(f"[cron] chiste_upload: subidos y marcados {len(uploaded_ids)}; errores {errors}")
     else:
         log_p(f"[cron] chiste_upload: nada subido; errores {errors}")
+
     db.set_task_run(task_name)
 
 
@@ -90,8 +91,8 @@ def chiste_download() -> None:
     db = Database()
     task_name = 'chiste_download'
 
-    if not _should_run(db, task_name, 60):
-        log_p(f"[cron] chiste_download: omitido (cooldown 60min)")
+    if not _should_run(db, task_name, 10):
+        log_p(f"[cron] chiste_download: omitido (cooldown 10min)")
         return
 
     url = getattr(env, 'CHISTES_URL_DOWNLOAD', None)
