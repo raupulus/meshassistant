@@ -209,9 +209,22 @@ def main():
     try:
         # Asegurar base de datos creada (solo crea si no existe)
         ensure_database()
-        loop()
-    finally:
-        sleep(10)
+
+        # El daemon debe seguir vivo pase lo que pase: si loop() cae por una
+        # desconexión del puerto serie o una excepción no controlada, esperamos
+        # un margen prudencial y reintentamos el bucle/reconexión indefinidamente.
+        while True:
+            try:
+                loop()
+            except KeyboardInterrupt:
+                # Salida controlada por el usuario
+                break
+            except Exception as e:
+                log_p(f"Reconexión tras caída del loop: {e}", level="WARN")
+                sleep(10)
+    except KeyboardInterrupt:
+        # Fin controlado durante el arranque
+        pass
 
 if __name__ == "__main__":
     main()

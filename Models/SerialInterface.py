@@ -383,9 +383,12 @@ class SerialInterface:
             start = time.time()
             last_len = 0
             while time.time() - start < timeout:
-                # Si el callback recibe algo, ampliamos un poco la espera
+                # Si el callback recibe algo, reseteamos el contador para
+                # volver a esperar 'timeout' completo desde la última actividad
+                # (de lo contrario los sleep extra no prolongan la ventana real).
                 if len(results) != last_len:
                     last_len = len(results)
+                    start = time.time()
                     time.sleep(0.3)
                 time.sleep(0.2)
 
@@ -557,6 +560,22 @@ class SerialInterface:
                     self.command_dict[command]["callback"](self,
                                                            cmd_args, msg,
                                                            metadata)
+
+                    # Registro centralizado del comando en histórico
+                    # (commands_sent). Se hace aquí, tras ejecutar el callback,
+                    # para no duplicar esta lógica en cada Commands/*.py.
+                    try:
+                        from Models.Database import Database
+                        node_id = (metadata.get('node_from') or {}).get('id')
+                        message_tail = ' '.join(cmd_args) if cmd_args else None
+                        Database().log_command(
+                            node_id=node_id,
+                            command=command,
+                            message=message_tail,
+                            parameters=None,
+                        )
+                    except Exception as e:
+                        log_p(f"Error registrando comando: {e}", level="WARN")
 
         except Exception as e:
             log_p(f"Error procesando paquete: {e}")

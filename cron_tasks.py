@@ -182,9 +182,14 @@ def check_aemet() -> None:
     """
     db = Database()
     task_name = 'aemet_fetch'
-    # Ejecutar como mucho cada hora
-    if not _should_run(db, task_name, 60):
-        log_p("[cron] check_aemet: omitido (cooldown 60min)")
+
+    # El cooldown de descarga debe alinearse con AEMET_PERIOD (no fijo a 60 min).
+    # Reutilizamos el helper ya existente para traducir el periodo a minutos.
+    aemet = Aemet()
+    period_min = aemet.period_to_minutes(aemet.period)
+
+    if not _should_run(db, task_name, period_min):
+        log_p(f"[cron] check_aemet: omitido (cooldown {period_min}min)")
         return
 
     # Solo si hay API key configurada
@@ -193,7 +198,6 @@ def check_aemet() -> None:
         db.set_task_run(task_name)
         return
 
-    aemet = Aemet()
     log_p(f"[cron] check_aemet: provincia='{aemet.province}' canales={aemet.channels} periodo={aemet.period}")
     try:
         # One-shot: arreglar filas antiguas que guardaron XML crudo
@@ -226,6 +230,82 @@ def check_aemet() -> None:
     except Exception as e:
         # Ignorar errores temporales
         log_p(f"[cron] check_aemet: excepción general: {e}", level="WARN")
+    finally:
+        db.set_task_run(task_name)
+
+
+def weather_aemet() -> None:
+    """Descarga la predicción meteorológica (clima) y la guarda como histórico.
+
+    - Cadencia: según AEMET_PERIOD (mismo helper que el resto de AEMET).
+    - Solo si hay AEMET_API_KEY configurada.
+    - Prioriza el texto general de la PROVINCIA (AEMET_PROVINCE). Si la API no lo
+      devuelve, hace fallback a la predicción del municipio (AEMET_CITY).
+    - Guarda en la tabla `aemet_weather` para que /weather lo sirva offline.
+    """
+    db = Database()
+    task_name = 'aemet_weather_fetch'
+
+    aemet = Aemet()
+    period_min = aemet.period_to_minutes(aemet.period)
+
+    if not _should_run(db, task_name, period_min):
+        log_p(f"[cron] weather_aemet: omitido (cooldown {period_min}min)")
+        return
+
+    if not getattr(env, 'AEMET_API_KEY', None):
+        log_p("[cron] weather_aemet: AEMET_API_KEY vacío; no se consulta API")
+        db.set_task_run(task_name)
+        return
+
+    try:
+        prov_code = aemet.province_code()
+        log_p(f"[cron] weather_aemet: provincia='{aemet.province}' code={prov_code} ciudad='{aemet.city}'")
+
+        # 1) Vía principal: predicción general de la provincia (texto)
+        text = None
+        try:
+            text = aemet.fetch_province_forecast(day='hoy')
+        except Exception as e:
+            log_p(f"[cron] weather_aemet: error provincia: {e}", level="WARN")
+
+        if text:
+            new_id = db.aemet_weather_insert(
+                scope='province',
+                content=text,
+                province=aemet.province,
+                province_code=prov_code,
+                day='hoy',
+                data_raw=text,
+            )
+            log_p(f"[cron] weather_aemet: provincia guardada id={new_id} len={len(text)}")
+            db.set_task_run(task_name)
+            return
+
+        # 2) Fallback: predicción del municipio (AEMET_CITY)
+        log_p("[cron] weather_aemet: sin texto de provincia; probando municipio")
+        city_text = None
+        try:
+            city_text = aemet.fetch_city_forecast()
+        except Exception as e:
+            log_p(f"[cron] weather_aemet: error municipio: {e}", level="WARN")
+
+        if city_text:
+            new_id = db.aemet_weather_insert(
+                scope='city',
+                content=city_text,
+                province=aemet.province,
+                province_code=prov_code,
+                city=aemet.city,
+                city_code=aemet.resolve_city_code(),
+                day='hoy',
+                data_raw=city_text,
+            )
+            log_p(f"[cron] weather_aemet: municipio guardado id={new_id} len={len(city_text)}")
+        else:
+            log_p("[cron] weather_aemet: sin datos de provincia ni municipio")
+    except Exception as e:
+        log_p(f"[cron] weather_aemet: excepción general: {e}", level="WARN")
     finally:
         db.set_task_run(task_name)
 
@@ -277,6 +357,9 @@ def fetch_aemet_alerts_for_province(aemet: Aemet) -> list[str]:
 
     prov_norm = _normalize_name(prov_raw) if prov_raw else ''
     prov_title = prov_raw.title() if prov_raw else ''
+    # Variante capitalizada SIN tilde (formato que AEMET exige en /area/{NOMBRE}),
+    # p.ej. "Cadiz" o "Andalucia". Derivada del nombre ya normalizado.
+    prov_unaccented_title = prov_norm.title() if prov_norm else ''
 
     # Determinar orden de prueba: para Galicia probamos AREA primero; para Cádiz, PROVINCIA
     AREA_NAMES = {
@@ -319,8 +402,9 @@ def fetch_aemet_alerts_for_province(aemet: Aemet) -> list[str]:
 
         # Si es una CCAA conocida, usar /area únicamente
         if prov_norm in AREA_NAMES:
-            # Probar varias variantes de nombre de área
-            for area_name in [prov_norm, prov_title, prov_raw]:
+            # Probar varias variantes de nombre de área (incluida la capitalizada
+            # sin tilde, que es el formato real que acepta AEMET en /area/)
+            for area_name in [prov_unaccented_title, prov_norm, prov_title, prov_raw]:
                 if area_name:
                     endpoints.append(f"{base_filter}/area/{quote(area_name)}")
             # Fallback: si área falla, probar por provincias que componen esa CCAA
@@ -335,8 +419,9 @@ def fetch_aemet_alerts_for_province(aemet: Aemet) -> list[str]:
                 if code:
                     endpoints.append(f"{base_filter}/provincia/{quote(code)}")
                 else:
-                    # Último recurso: intentar área con distintas variantes de nombre
-                    for area_name in [prov_norm, prov_title, prov_raw]:
+                    # Último recurso: intentar área con distintas variantes de
+                    # nombre, priorizando la capitalizada sin tilde ("Cadiz").
+                    for area_name in [prov_unaccented_title, prov_norm, prov_title, prov_raw]:
                         if area_name:
                             endpoints.append(f"{base_filter}/area/{quote(area_name)}")
     # Fallback sin filtro (plural) siempre al final
@@ -577,6 +662,7 @@ def run_all():
     chiste_download()
     send_trace()
     check_aemet()
+    weather_aemet()
     log_p("[cron] run_all: fin")
 
 

@@ -20,7 +20,9 @@ CHISTES_URL_DOWNLOAD = 'https://tuweb/chiste/get'
 ## Aemet, habilitado solo si tiene API key
 AEMET_API_KEY = ''
 AEMET_CHANNELS = [6]
-AEMET_PROVINCE = 'Cadiz' # Poner igual que en AEMET
-AEMET_PERIOD = 'Day' # Hour, Three_hour, Six_hour, Day
+AEMET_PROVINCE = 'Cadiz' # Provincia para la predicción/avisos (nombre o código INE 2 dígitos)
+AEMET_CITY = 'Chipiona' # Municipio de fallback si no hay predicción provincial
+AEMET_CITY_CODE = '11016' # Código INE (5 dígitos) del municipio; '' para autodetectar por nombre
+AEMET_PERIOD = 'Day' # Cadencia de descarga del clima y publicación: Hour, Three_hour, Six_hour, Day
 AEMET_HOUR_MIN = 8
 AEMET_HOUR_MAX = 22

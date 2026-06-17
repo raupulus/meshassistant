@@ -71,6 +71,39 @@ Solo si hay `AEMET_API_KEY` y la hora está dentro de la ventana
 | `Twelve_hour` | 720 |
 | `Day` | 1440 |
 
+## Clima / predicción (`/weather`)
+
+Independiente de los avisos CAP. Descarga la **predicción meteorológica** y la
+guarda como histórico en la tabla `aemet_weather`, para que el comando `/weather`
+la sirva **offline** desde BD (sin llamar a la API en tiempo de comando).
+
+- **Cadencia de descarga**: según `AEMET_PERIOD` (mismo helper
+  `period_to_minutes`), no fija. Tarea cron `weather_aemet()` (control en
+  `tasks_control['aemet_weather_fetch']`). Solo si hay `AEMET_API_KEY`.
+- **Fuente principal — provincia (texto general)**:
+  `GET /prediccion/provincia/hoy/{códigoINE2}` (flujo OpenData de 2 pasos →
+  devuelve **texto plano** de toda la provincia). Código resuelto desde
+  `AEMET_PROVINCE` (`Aemet.province_code`). Se le retira la cabecera burocrática
+  (agencia, "DÍA … HORA OFICIAL", "VÁLIDA PARA …") y se queda solo con el
+  pronóstico, sin fechas ni etiquetas. Conexión con reintento SSL `verify=False`
+  (el certificado de AEMET falla en muchos sistemas).
+- **Fallback — municipio**: si la provincia no devuelve datos,
+  `GET /prediccion/especifica/municipio/diaria/{códigoINE5}` (JSON) formateado a
+  un texto breve (temperaturas, estado del cielo, prob. de lluvia). El municipio
+  se define con `AEMET_CITY` (display) y `AEMET_CITY_CODE` (INE 5 dígitos, p.ej.
+  Chipiona = `11015`); si falta el código se intenta resolver por nombre.
+- **Comando `/weather`**: lee el último registro de `aemet_weather` y responde
+  troceando el texto en **1–2 mensajes de ~200 caracteres** (límite Meshtastic).
+
+### Variables de entorno (clima)
+
+| Variable | Ejemplo | Descripción |
+|---|---|---|
+| `AEMET_PROVINCE` | `Cadiz` | Provincia (nombre o código INE 2 dígitos) |
+| `AEMET_CITY` | `Chipiona` | Municipio de fallback (nombre para mostrar) |
+| `AEMET_CITY_CODE` | `11015` | Código INE de 5 dígitos del municipio (`''` = autodetectar) |
+| `AEMET_PERIOD` | `Hour` | Cadencia de descarga del clima y de publicación de avisos |
+
 ## Notas
 
 - La provincia puede ser nombre (`Cádiz`) o, para Galicia, una CCAA con mapa a sus

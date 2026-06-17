@@ -122,6 +122,22 @@ def _execute_schema(conn: sqlite3.Connection) -> None:
             published_at TEXT NULL
         );
 
+        -- Histórico de predicción meteorológica (clima) descargada de AEMET
+        CREATE TABLE IF NOT EXISTS aemet_weather (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            scope TEXT,              -- 'province' | 'city'
+            province TEXT,           -- nombre de provincia (AEMET_PROVINCE)
+            province_code TEXT,      -- código INE de 2 dígitos
+            city TEXT,               -- nombre de municipio (AEMET_CITY)
+            city_code TEXT,          -- código INE de 5 dígitos
+            day TEXT,                -- 'hoy' | 'manana' | ...
+            content TEXT NOT NULL,   -- texto listo para mostrar (provincia o ciudad)
+            data_raw TEXT NULL,      -- payload original (texto/JSON) por si acaso
+            created_at TEXT
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_aemet_weather_created ON aemet_weather(created_at);
+
         -- Histórico de comandos recibidos por el bot
         CREATE TABLE IF NOT EXISTS commands_sent (
             id INTEGER PRIMARY KEY AUTOINCREMENT,

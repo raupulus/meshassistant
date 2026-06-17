@@ -227,8 +227,10 @@ está excluido del repositorio** porque puede contener claves de API.
 | `CHISTES_URL_DOWNLOAD` | str | Endpoint para descargar chistes. |
 | `AEMET_API_KEY` | str | Clave de AEMET OpenData. Si está vacía, AEMET no se usa. |
 | `AEMET_CHANNELS` | list[int] | Canales donde publicar alertas (p. ej. `[6]`). |
-| `AEMET_PROVINCE` | str | Provincia/CCAA vigilada (p. ej. `Cádiz`). |
-| `AEMET_PERIOD` | str | Periodicidad mínima por canal (`Hour`, `Three_hour`, `Six_hour`, `Twelve_hour`, `Day`). |
+| `AEMET_PROVINCE` | str | Provincia/CCAA vigilada y para la predicción (nombre `Cádiz` o código INE 2 dígitos). |
+| `AEMET_CITY` | str | Municipio de fallback para el clima si no hay predicción provincial (p. ej. `Chipiona`). |
+| `AEMET_CITY_CODE` | str | Código INE de 5 dígitos del municipio (p. ej. `11015`); `''` para autodetectar por nombre. |
+| `AEMET_PERIOD` | str | Cadencia de descarga del clima y periodicidad mínima de publicación por canal (`Hour`, `Three_hour`, `Six_hour`, `Twelve_hour`, `Day`). |
 | `AEMET_HOUR_MIN` | int (0-23) | Hora mínima a partir de la cual publicar. |
 | `AEMET_HOUR_MAX` | int (0-23) | Hora máxima hasta la cual publicar. |
 
@@ -385,9 +387,15 @@ integración solo se activa si `AEMET_API_KEY` tiene un valor.
   API ni se publican avisos.
 - `AEMET_CHANNELS`: Lista de canales Meshtastic donde publicar alertas. Ejemplo:
   `[6]`. Los nombres de canales se definen en `data.py`.
-- `AEMET_PROVINCE`: Provincia para la que se vigilan alertas. Puede ser el nombre
-  (p. ej. `Cádiz`) o el código que acepte el endpoint de AEMET utilizado.
-- `AEMET_PERIOD`: Periodicidad mínima entre publicaciones por canal. Valores
+- `AEMET_PROVINCE`: Provincia para la que se vigilan alertas y se descarga la
+  predicción general. Puede ser el nombre (p. ej. `Cádiz`) o el código INE de 2
+  dígitos (Cádiz = `11`).
+- `AEMET_CITY`: Municipio usado como *fallback* del clima (comando `/weather`)
+  cuando la API no devuelve predicción provincial. Por defecto `Chipiona`.
+- `AEMET_CITY_CODE`: Código INE de 5 dígitos del municipio de `AEMET_CITY`
+  (Chipiona = `11015`). Si se deja vacío (`''`) se intenta resolver por nombre.
+- `AEMET_PERIOD`: Cadencia de descarga del clima (tarea `weather_aemet`) y
+  periodicidad mínima entre publicaciones de avisos por canal. Valores
   admitidos: `Hour`, `Three_hour`, `Six_hour`, `Twelve_hour`, `Day` (insensible a
   mayúsculas). Se traduce a 60, 180, 360, 720 y 1440 minutos respectivamente.
 - `AEMET_HOUR_MIN`: Hora mínima (0-23) a partir de la cual se puede empezar a
@@ -404,6 +412,15 @@ Flujo de AEMET:
   `AEMET_HOUR_MAX`, toma la próxima alerta no publicada y la envía a los canales de
   `AEMET_CHANNELS`, respetando `AEMET_PERIOD` por canal. Tras publicar, marca la
   alerta como publicada.
+
+Clima / predicción (comando `/weather`):
+
+- `cron_tasks.py` → `weather_aemet()` descarga la predicción cada `AEMET_PERIOD`
+  (no fija): primero el texto general de la provincia
+  (`/prediccion/provincia/hoy/{códigoINE}`) y, si falla, la del municipio
+  `AEMET_CITY` (`/prediccion/especifica/municipio/diaria/{códigoINE5}`).
+- Se guarda como histórico en la tabla `aemet_weather`. El comando `/weather` lee
+  el último registro y responde **offline** desde BD, troceado en 1-2 mensajes.
 
 Notas:
 

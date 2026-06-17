@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sqlite3
+from contextlib import closing
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Iterable, Tuple
 import hashlib
@@ -16,7 +17,11 @@ class Database:
         self.db_path = str(db_path) if db_path else str(ensure_database())
 
     def _connect(self) -> sqlite3.Connection:
-        conn = sqlite3.connect(self.db_path)
+        # timeout: tiempo que el driver espera por un lock antes de lanzar
+        # OperationalError. busy_timeout: equivalente a nivel SQLite (ms).
+        # Ambos protegen frente a escrituras concurrentes (daemon + cron).
+        conn = sqlite3.connect(self.db_path, timeout=10.0)
+        conn.execute('PRAGMA busy_timeout = 10000')
         conn.row_factory = sqlite3.Row
         return conn
 
@@ -26,7 +31,7 @@ class Database:
 
         Si approved_only es True, solo devuelve chistes con need_approve = 0.
         """
-        with self._connect() as conn:
+        with closing(self._connect()) as conn:
             if approved_only:
                 cur = conn.execute(
                     'SELECT id, "from", content, need_upload FROM chistes WHERE need_approve = 0 ORDER BY RANDOM() LIMIT 1'
@@ -56,7 +61,7 @@ class Database:
         - need_upload: si necesita subirse a un origen externo (por defecto False)
         - need_approve: si requiere aprobación antes de mostrarse (por defecto False)
         """
-        with self._connect() as conn:
+        with closing(self._connect()) as conn:
             cur = conn.execute(
                 'INSERT INTO chistes ("from", content, need_upload, need_approve, chiste_id) VALUES (?, ?, ?, ?, ?)',
                 (from_, content, 1 if need_upload else 0, 1 if need_approve else 0, chiste_id),
@@ -65,7 +70,7 @@ class Database:
             return int(cur.lastrowid)
 
     def get_chistes_to_upload(self, limit: int = 100) -> List[Dict[str, Any]]:
-        with self._connect() as conn:
+        with closing(self._connect()) as conn:
             cur = conn.execute(
                 'SELECT id, "from", content FROM chistes WHERE need_upload = 1 LIMIT ?',
                 (limit,),
@@ -77,12 +82,12 @@ class Database:
         if not ids:
             return
         placeholders = ",".join(["?"] * len(ids))
-        with self._connect() as conn:
+        with closing(self._connect()) as conn:
             conn.execute(f'UPDATE chistes SET need_upload = 0 WHERE id IN ({placeholders})', tuple(ids))
             conn.commit()
 
     def get_last_downloaded_chiste_id(self) -> Optional[int]:
-        with self._connect() as conn:
+        with closing(self._connect()) as conn:
             cur = conn.execute('SELECT MAX(chiste_id) as last_id FROM chistes WHERE chiste_id IS NOT NULL')
             row = cur.fetchone()
             return int(row[0]) if row and row[0] is not None else None
@@ -96,7 +101,7 @@ class Database:
         """
         inserted = 0
         ignored = 0
-        with self._connect() as conn:
+        with closing(self._connect()) as conn:
             for it in items:
                 api_id = it.get('id')
                 content = it.get('content')
@@ -120,7 +125,7 @@ class Database:
     # ---------- TRACES ----------
     def save_trace(self, from_: str, to: str, data_raw: str) -> int:
         """Guarda un trace clásico (registro completo) y devuelve el id insertado."""
-        with self._connect() as conn:
+        with closing(self._connect()) as conn:
             now = datetime.now().isoformat(timespec='seconds')
             cur = conn.execute(
                 'INSERT INTO traces ("from", "to", data_raw, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)',
@@ -138,7 +143,7 @@ class Database:
         Si ya existe un pendiente para ese nodo, devuelve su id sin crear otro.
         """
         now = datetime.now().isoformat(timespec='seconds')
-        with self._connect() as conn:
+        with closing(self._connect()) as conn:
             cur = conn.execute(
                 'SELECT id FROM traces WHERE "to" = ? AND status = "pending" ORDER BY created_at ASC LIMIT 1',
                 (node_id,),
@@ -155,7 +160,7 @@ class Database:
 
     def get_next_pending_trace(self) -> Optional[Dict[str, Any]]:
         """Obtiene el trace pendiente más antiguo (status='pending') o None."""
-        with self._connect() as conn:
+        with closing(self._connect()) as conn:
             cur = conn.execute(
                 'SELECT id, "to", created_at FROM traces WHERE status = "pending" ORDER BY created_at ASC LIMIT 1'
             )
@@ -171,7 +176,7 @@ class Database:
         """
         when_str = datetime.now().isoformat(timespec='seconds')
         status = 'done' if ok else 'error'
-        with self._connect() as conn:
+        with closing(self._connect()) as conn:
             conn.execute(
                 'UPDATE traces SET status = ?, data_raw = ?, "from" = ?, updated_at = ? WHERE id = ?',
                 (status, payload, from_, when_str, trace_id),
@@ -241,13 +246,13 @@ class Database:
         values.append(trace_id)
 
         sql = f'UPDATE traces SET {", ".join(set_cols)} WHERE id = ?'
-        with self._connect() as conn:
+        with closing(self._connect()) as conn:
             conn.execute(sql, tuple(values))
             conn.commit()
 
     def get_last_trace_updated_at(self) -> Optional[str]:
         """Devuelve el timestamp (ISO) del último trace procesado (updated_at no NULL)."""
-        with self._connect() as conn:
+        with closing(self._connect()) as conn:
             cur = conn.execute('SELECT MAX(updated_at) AS last FROM traces WHERE updated_at IS NOT NULL')
             row = cur.fetchone()
             return row['last'] if row and row['last'] else None
@@ -270,7 +275,7 @@ class Database:
         - hops se guarda en la columna hops
         - data_raw debe ser un string (p.ej., JSON) con los datos crudos
         """
-        with self._connect() as conn:
+        with closing(self._connect()) as conn:
             cur = conn.execute(
                 'INSERT INTO pings ("from", "to", from_name, hops, data_raw) VALUES (?, ?, ?, ?, ?)',
                 (from_id, to_id, from_name, hops, data_raw),
@@ -289,7 +294,7 @@ class Database:
     # ---------- AGENDA ----------
     def get_agenda(self, node_id: str) -> List[Dict[str, Any]]:
         """Devuelve todos los elementos de la agenda para un node_id."""
-        with self._connect() as conn:
+        with closing(self._connect()) as conn:
             cur = conn.execute(
                 'SELECT id, node_id, content, moment FROM agenda WHERE node_id = ? ORDER BY moment ASC',
                 (node_id,),
@@ -309,7 +314,7 @@ class Database:
         else:
             moment_str = str(moment)
 
-        with self._connect() as conn:
+        with closing(self._connect()) as conn:
             cur = conn.execute(
                 'INSERT INTO agenda (node_id, content, moment) VALUES (?, ?, ?)',
                 (node_id, content, moment_str),
@@ -320,7 +325,7 @@ class Database:
     # ---------- NODES ----------
     def get_node(self, node_id: str) -> Optional[Dict[str, Any]]:
         """Obtiene un nodo por su node_id."""
-        with self._connect() as conn:
+        with closing(self._connect()) as conn:
             cur = conn.execute(
                 """
                 SELECT node_id, name, num, short_name, mac_addr, hw_model, is_favorite,
@@ -337,7 +342,7 @@ class Database:
     def create_node_if_not_exists(self, node_id: str, data: Optional[Dict[str, Any]] = None) -> None:
         """Crea un nodo si no existe. Ignora si ya existe."""
         now = datetime.now().isoformat(timespec="seconds")
-        with self._connect() as conn:
+        with closing(self._connect()) as conn:
             conn.execute(
                 'INSERT OR IGNORE INTO nodes (node_id, updated_at) VALUES (?, ?)',
                 (node_id, now),
@@ -390,7 +395,7 @@ class Database:
 
         set_clause = ", ".join(fields + ["updated_at = ?"])  # siempre actualizar updated_at
 
-        with self._connect() as conn:
+        with closing(self._connect()) as conn:
             conn.execute(
                 f"UPDATE nodes SET {set_clause} WHERE node_id = ?",
                 tuple(values),
@@ -399,14 +404,14 @@ class Database:
 
     # ---------- TASKS CONTROL ----------
     def get_task_last_run(self, name: str) -> Optional[str]:
-        with self._connect() as conn:
+        with closing(self._connect()) as conn:
             cur = conn.execute('SELECT last_run_at FROM tasks_control WHERE name = ?', (name,))
             row = cur.fetchone()
             return row['last_run_at'] if row and row['last_run_at'] else None
 
     def set_task_run(self, name: str, when: Optional[datetime] = None, extra: Optional[str] = None) -> None:
         when_str = (when or datetime.now()).isoformat(timespec='seconds')
-        with self._connect() as conn:
+        with closing(self._connect()) as conn:
             conn.execute(
                 (
                     """
@@ -435,7 +440,7 @@ class Database:
             • último status='error' → ahora - updated_at ≥ retry_hours
           Si no hay trazas previas → elegible.
         """
-        with self._connect() as conn:
+        with closing(self._connect()) as conn:
             cur = conn.execute(
                 '''
                 WITH last_processed AS (
@@ -504,7 +509,7 @@ class Database:
             return None
         h = self._hash_text(basis)
         now = datetime.now().isoformat(timespec='seconds')
-        with self._connect() as conn:
+        with closing(self._connect()) as conn:
             try:
                 cur = conn.execute(
                     'INSERT INTO aemet (province, data_raw, message, data_hash, created_at, published) VALUES (?, ?, ?, ?, ?, 0)',
@@ -698,7 +703,7 @@ class Database:
             return None, None
 
     def aemet_get_next_unpublished(self) -> Optional[Dict[str, Any]]:
-        with self._connect() as conn:
+        with closing(self._connect()) as conn:
             cur = conn.execute(
                 'SELECT id, province, data_raw, message, created_at FROM aemet WHERE published = 0 ORDER BY created_at ASC LIMIT 1'
             )
@@ -707,7 +712,7 @@ class Database:
 
     def aemet_mark_published(self, alert_id: int) -> None:
         now = datetime.now().isoformat(timespec='seconds')
-        with self._connect() as conn:
+        with closing(self._connect()) as conn:
             conn.execute('UPDATE aemet SET published = 1, published_at = ? WHERE id = ?', (now, alert_id))
             conn.commit()
 
@@ -724,7 +729,7 @@ class Database:
         processed = 0
         updated = 0
         deleted = 0
-        with self._connect() as conn:
+        with closing(self._connect()) as conn:
             rows = conn.execute(
                 """
                 SELECT id, province, data_raw, message
@@ -775,6 +780,47 @@ class Database:
 
         return processed, updated, deleted
 
+    # ---------- AEMET WEATHER (clima histórico) ----------
+    def aemet_weather_insert(
+        self,
+        *,
+        scope: str,
+        content: str,
+        province: Optional[str] = None,
+        province_code: Optional[str] = None,
+        city: Optional[str] = None,
+        city_code: Optional[str] = None,
+        day: str = 'hoy',
+        data_raw: Optional[str] = None,
+    ) -> Optional[int]:
+        """Inserta un registro de clima descargado (histórico). Devuelve id o None.
+
+        - scope: 'province' (texto general de provincia) o 'city' (municipio).
+        - content: texto ya saneado y listo para mostrar por el comando /weather.
+        """
+        content_s = sanitize_text(content)
+        if not content_s:
+            return None
+        now = datetime.now().isoformat(timespec='seconds')
+        with closing(self._connect()) as conn:
+            cur = conn.execute(
+                'INSERT INTO aemet_weather (scope, province, province_code, city, city_code, day, content, data_raw, created_at) '
+                'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                (scope, province, province_code, city, city_code, day, content_s, data_raw, now),
+            )
+            conn.commit()
+            return int(cur.lastrowid)
+
+    def aemet_weather_get_latest(self) -> Optional[Dict[str, Any]]:
+        """Devuelve el último registro de clima descargado o None."""
+        with closing(self._connect()) as conn:
+            cur = conn.execute(
+                'SELECT id, scope, province, province_code, city, city_code, day, content, created_at '
+                'FROM aemet_weather ORDER BY created_at DESC, id DESC LIMIT 1'
+            )
+            row = cur.fetchone()
+            return dict(row) if row else None
+
     # ---------- COMMANDS LOG ----------
     def log_command(
         self,
@@ -792,7 +838,7 @@ class Database:
         - parameters: reservado para uso futuro (se almacena tal cual)
         """
         when_str = datetime.now().isoformat(timespec='seconds')
-        with self._connect() as conn:
+        with closing(self._connect()) as conn:
             cur = conn.execute(
                 'INSERT INTO commands_sent (node_id, command, parameters, message, created_at) VALUES (?, ?, ?, ?, ?)',
                 (node_id, command, parameters, message, when_str),
