@@ -31,7 +31,7 @@ commands_dict = {
     },
     "weather": {
         "callback": weather_callback,
-        "in_group": False,
+        "in_group": True,
         "usage": "/weather o !weather",
         "info": "Muestra información climatológica relevante"
     },
