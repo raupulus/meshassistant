@@ -7,6 +7,17 @@ cron; son utilidades puntuales para el operador.
 > Recomendación general: ejecuta estos scripts con el bot detenido para evitar
 > bloqueos de SQLite (la BD usa modo WAL).
 
+## Requisitos
+
+Estos scripts usan la CLI `sqlite3`, que en Raspberry Pi OS **no viene
+preinstalada**:
+
+```bash
+sudo apt update && sudo apt install -y sqlite3
+```
+
+En macOS suele venir incluida.
+
 ---
 
 ## reset_traces.sh

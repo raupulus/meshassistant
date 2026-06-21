@@ -48,6 +48,9 @@ error()   { echo -e "${RED}[ERROR]${NC} $*" >&2; exit 1; }
 # ─── Comprobaciones previas ───────────────────────────────────────────────────
 command -v python3 >/dev/null 2>&1 || error "Python 3 no encontrado. Instala con: sudo apt install python3 python3-venv"
 command -v git     >/dev/null 2>&1 || error "Git no encontrado. Instala con: sudo apt install git"
+# sqlite3 (CLI) no lo necesita el bot (Python trae su propio módulo), pero sí los
+# scripts de mantenimiento de scripts/ (p. ej. reset_traces.sh) y los backups.
+command -v sqlite3 >/dev/null 2>&1 || warning "sqlite3 (CLI) no encontrado. Necesario para scripts/ y backups: sudo apt install sqlite3"
 
 PYTHON_VERSION=$(python3 -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')
 PYTHON_MAJOR=$(echo "$PYTHON_VERSION" | cut -d. -f1)

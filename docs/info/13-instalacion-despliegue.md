@@ -173,6 +173,13 @@ sudo systemctl disable hciuart
 #    c) Acceso al puerto serie sin sudo:
 sudo usermod -aG dialout pi   # requiere re-login
 
+# 0.bis Paquetes del sistema
+#       sqlite3 (CLI) es necesario para los scripts de mantenimiento de
+#       scripts/ (p. ej. reset_traces.sh) y para los backups manuales de la BD.
+#       En Raspberry Pi OS no viene preinstalado:
+sudo apt update
+sudo apt install -y sqlite3
+
 # 1. Clonar el repositorio
 git clone https://github.com/raupulus/meshassistant.git /home/pi/meshbotassistant
 cd /home/pi/meshbotassistant
