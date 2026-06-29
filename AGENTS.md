@@ -119,8 +119,22 @@ Tras responder, el callback **registra el comando** en `commands_sent` vía
    `callback`, `in_group` (¿responde en canal o solo en directo?), `usage` e `info`.
 5. Documentarlo en `README.md` (tabla de comandos) y en `docs/info/07-comandos.md`.
 
-Respetar el límite de **~200 caracteres** por mensaje de Meshtastic en las
-respuestas. Para textos largos, trocear (ver el ejemplo de AEMET en `main.py`).
+Respetar las reglas de longitud de mensaje (ver sección 5.1).
+
+### 5.1. Longitud de los mensajes (OBLIGATORIO)
+
+Meshtastic limita cada mensaje a ~**200 caracteres**. Un texto más largo se corta
+y la información se pierde (es lo que pasaba con `/weather`). Reglas:
+
+- **Máximo 200 caracteres por mensaje.** Usa la constante `MESH_MAX_LEN`.
+- **Máximo 3 mensajes por respuesta** de un comando básico. Usa `MESH_MAX_PARTS`.
+  Si el contenido no cabe en 3 partes, se trunca con `…` en la última (preferible a
+  reventar el límite o a inundar la malla).
+- **No trocees a mano.** Usa `split_messages(texto)` de `functions.py`, que corta por
+  palabras y añade `…` si hace falta. Las alertas AEMET de `main.py` y `/weather`
+  ya lo usan; sigue ese patrón.
+- Entre parte y parte, espera unos segundos (`sleep(5)`) para no saturar la malla,
+  pero **nunca tras la última**.
 
 ---
 

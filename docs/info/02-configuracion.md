@@ -61,7 +61,7 @@ Los nombres de los canales Meshtastic se definen en `data.py` (`channels`), no e
 `env.py`. `AEMET_CHANNELS` referencia los índices de ese mapa. Mapa actual:
 
 ```
-0 General · 1 Iberia · 2 Andalucia · 3 Cadiz · 4 Chipiona
+0 SFNarrow · 1 Iberia · 2 Andalucia · 3 Cadiz · 4 Chipiona
 5 TEST · 6 raupulus · 7 Frikidevs
 ```
 
