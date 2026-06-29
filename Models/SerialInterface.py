@@ -540,7 +540,7 @@ class SerialInterface:
                         "id": to_id,
                         "num": packet.get('to', 'N/A'),
                     },
-                    "channel": packet.get('channel', None),
+                    "channel": packet.get('channel', 0),
                     "is_direct": is_direct,
                     "rx_snr": fromNodeInfo.snr,
                     "rx_rssi": fromNodeInfo.rssi,
