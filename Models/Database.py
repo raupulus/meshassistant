@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import sqlite3
 from contextlib import closing
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Iterable, Tuple
 import hashlib
 
@@ -811,15 +811,50 @@ class Database:
             conn.commit()
             return int(cur.lastrowid)
 
-    def aemet_weather_get_latest(self) -> Optional[Dict[str, Any]]:
-        """Devuelve el último registro de clima descargado o None."""
+    def aemet_weather_get_latest(self, scope: Optional[str] = None) -> Optional[Dict[str, Any]]:
+        """Devuelve el último registro de clima descargado o None.
+
+        Si se indica `scope` ('province' | 'city' | 'forecast'), filtra por él.
+        Sin scope, devuelve el más reciente independientemente del tipo, pero
+        excluye los de previsión multi-día ('forecast') para no mezclarlos con
+        el tiempo actual de /weather.
+        """
         with closing(self._connect()) as conn:
-            cur = conn.execute(
-                'SELECT id, scope, province, province_code, city, city_code, day, content, created_at '
-                'FROM aemet_weather ORDER BY created_at DESC, id DESC LIMIT 1'
-            )
+            if scope:
+                cur = conn.execute(
+                    'SELECT id, scope, province, province_code, city, city_code, day, content, created_at '
+                    'FROM aemet_weather WHERE scope = ? ORDER BY created_at DESC, id DESC LIMIT 1',
+                    (scope,),
+                )
+            else:
+                cur = conn.execute(
+                    'SELECT id, scope, province, province_code, city, city_code, day, content, created_at '
+                    "FROM aemet_weather WHERE scope != 'forecast' ORDER BY created_at DESC, id DESC LIMIT 1"
+                )
             row = cur.fetchone()
             return dict(row) if row else None
+
+    def aemet_get_recent_alerts(self, limit: int = 3, hours: Optional[int] = 48) -> List[Dict[str, Any]]:
+        """Devuelve las alertas AEMET más recientes (para el comando /avisos).
+
+        - limit: número máximo de alertas a devolver.
+        - hours: ventana temporal (None = sin límite temporal).
+        """
+        with closing(self._connect()) as conn:
+            if hours is not None:
+                threshold = (datetime.now() - timedelta(hours=int(hours))).isoformat(timespec='seconds')
+                cur = conn.execute(
+                    'SELECT id, province, data_raw, message, created_at FROM aemet '
+                    'WHERE created_at >= ? ORDER BY created_at DESC LIMIT ?',
+                    (threshold, int(limit)),
+                )
+            else:
+                cur = conn.execute(
+                    'SELECT id, province, data_raw, message, created_at FROM aemet '
+                    'ORDER BY created_at DESC LIMIT ?',
+                    (int(limit),),
+                )
+            return [dict(r) for r in cur.fetchall()]
 
     # ---------- COMMANDS LOG ----------
     def log_command(
@@ -845,3 +880,314 @@ class Database:
             )
             conn.commit()
             return int(cur.lastrowid)
+
+    # ---------- TIDES (mareas) ----------
+    def tides_insert(self, *, location: Optional[str], source: str, approximate: bool,
+                     extremes: List[Dict[str, Any]]) -> int:
+        """Guarda una predicción de mareas (lista de extremos) como histórico.
+
+        - extremes: lista de dicts con claves time (datetime|str ISO), type, height.
+        Se serializa a JSON con las horas en ISO 8601.
+        """
+        import json
+        norm: List[Dict[str, Any]] = []
+        for e in extremes or []:
+            t = e.get('time')
+            t_iso = t.isoformat() if isinstance(t, datetime) else str(t)
+            norm.append({'time': t_iso, 'type': e.get('type'), 'height': e.get('height')})
+        now = datetime.now().isoformat(timespec='seconds')
+        with closing(self._connect()) as conn:
+            cur = conn.execute(
+                'INSERT INTO tides (location, source, approximate, extremes, created_at) VALUES (?, ?, ?, ?, ?)',
+                (location, source, 1 if approximate else 0, json.dumps(norm, ensure_ascii=False), now),
+            )
+            conn.commit()
+            return int(cur.lastrowid)
+
+    def tides_get_latest(self) -> Optional[Dict[str, Any]]:
+        """Devuelve la última predicción de mareas (extremos ya parseados) o None."""
+        import json
+        with closing(self._connect()) as conn:
+            cur = conn.execute(
+                'SELECT id, location, source, approximate, extremes, created_at '
+                'FROM tides ORDER BY created_at DESC, id DESC LIMIT 1'
+            )
+            row = cur.fetchone()
+            if not row:
+                return None
+            d = dict(row)
+            try:
+                d['extremes'] = json.loads(d.get('extremes') or '[]')
+            except Exception:
+                d['extremes'] = []
+            d['approximate'] = bool(d.get('approximate'))
+            return d
+
+    # ---------- ENCUESTAS ----------
+    def encuesta_expire_due(self) -> int:
+        """Cierra automáticamente las encuestas activas cuyo ends_at ya pasó.
+
+        Devuelve el número de encuestas cerradas.
+
+        NOTA (punto 2 de la revisión): este método ESCRIBE, por lo que NO debe
+        llamarse desde las lecturas (provocaría un UPDATE en cada /encuesta). Se
+        invoca solo desde el barrido periódico del cron (run_all). Las lecturas
+        calculan el estado efectivo en memoria (ver _row_to_encuesta) sin tocar
+        la BD.
+        """
+        now = datetime.now()
+        now_iso = now.isoformat(timespec='seconds')
+        with closing(self._connect()) as conn:
+            cur = conn.execute(
+                "UPDATE encuestas SET status = 'closed', closed_at = ? "
+                "WHERE status = 'active' AND ends_at IS NOT NULL AND ends_at <= ?",
+                (now_iso, now_iso),
+            )
+            conn.commit()
+            return cur.rowcount or 0
+
+    def encuesta_create(self, *, owner_node_id: str, question: str,
+                        options: List[str], days: int = 7) -> int:
+        """Crea una encuesta y devuelve su id. days entre 1 y 30.
+
+        NOTA (punto 5 de la revisión): se usa datetime.now() en hora LOCAL naive,
+        igual que el resto del esquema (created_at, tasks_control, etc.). Es una
+        decisión consciente de coherencia: pasar solo las encuestas a UTC las
+        dejaría inconsistentes con las demás tablas, y el único efecto de un
+        cambio de horario (DST) sería un desfase de ±1 h en el cierre de una
+        encuesta que dura días, algo irrelevante para este caso de uso.
+        """
+        import json
+        days = max(1, min(30, int(days)))
+        now = datetime.now()
+        ends = now + timedelta(days=days)
+        with closing(self._connect()) as conn:
+            cur = conn.execute(
+                'INSERT INTO encuestas (owner_node_id, question, options, created_at, ends_at, status) '
+                "VALUES (?, ?, ?, ?, ?, 'active')",
+                (owner_node_id, question, json.dumps(options, ensure_ascii=False),
+                 now.isoformat(timespec='seconds'), ends.isoformat(timespec='seconds')),
+            )
+            conn.commit()
+            return int(cur.lastrowid)
+
+    def _row_to_encuesta(self, row) -> Dict[str, Any]:
+        import json
+        d = dict(row)
+        try:
+            d['options'] = json.loads(d.get('options') or '[]')
+        except Exception:
+            d['options'] = []
+        # Estado EFECTIVO sin persistir (punto 2 de la revisión): si ya venció
+        # ends_at, se presenta como cerrada aunque la BD aún diga 'active'. El
+        # cierre real en BD lo hace el cron con encuesta_expire_due(). Así las
+        # lecturas no escriben.
+        try:
+            if d.get('status') == 'active' and d.get('ends_at'):
+                if datetime.fromisoformat(d['ends_at']) <= datetime.now():
+                    d['status'] = 'closed'
+        except Exception:
+            pass
+        return d
+
+    def encuesta_get(self, encuesta_id: int) -> Optional[Dict[str, Any]]:
+        """Devuelve una encuesta por id (con opciones parseadas) o None.
+
+        Calcula el estado efectivo en memoria; no escribe en BD.
+        """
+        with closing(self._connect()) as conn:
+            cur = conn.execute(
+                'SELECT id, owner_node_id, question, options, created_at, ends_at, status, closed_at '
+                'FROM encuestas WHERE id = ?',
+                (encuesta_id,),
+            )
+            row = cur.fetchone()
+            return self._row_to_encuesta(row) if row else None
+
+    def encuesta_get_active_by_owner(self, owner_node_id: str) -> Optional[Dict[str, Any]]:
+        # Filtra por ends_at en el propio SELECT (sin escribir): una encuesta
+        # vencida pero aún no barrida por el cron NO cuenta como activa.
+        now = datetime.now().isoformat(timespec='seconds')
+        with closing(self._connect()) as conn:
+            cur = conn.execute(
+                "SELECT id, owner_node_id, question, options, created_at, ends_at, status, closed_at "
+                "FROM encuestas WHERE owner_node_id = ? AND status = 'active' "
+                "AND (ends_at IS NULL OR ends_at > ?) "
+                "ORDER BY created_at DESC LIMIT 1",
+                (owner_node_id, now),
+            )
+            row = cur.fetchone()
+            return self._row_to_encuesta(row) if row else None
+
+    def encuesta_list_active(self, limit: int = 10) -> List[Dict[str, Any]]:
+        # Solo activas no vencidas; sin escribir en BD (ver punto 2 revisión).
+        now = datetime.now().isoformat(timespec='seconds')
+        with closing(self._connect()) as conn:
+            cur = conn.execute(
+                "SELECT id, owner_node_id, question, options, created_at, ends_at, status, closed_at "
+                "FROM encuestas WHERE status = 'active' AND (ends_at IS NULL OR ends_at > ?) "
+                "ORDER BY created_at DESC LIMIT ?",
+                (now, int(limit)),
+            )
+            return [self._row_to_encuesta(r) for r in cur.fetchall()]
+
+    def encuesta_close(self, encuesta_id: int, owner_node_id: str) -> bool:
+        """Cierra una encuesta. Solo el nodo dueño. Devuelve True si se cerró."""
+        now = datetime.now().isoformat(timespec='seconds')
+        with closing(self._connect()) as conn:
+            cur = conn.execute(
+                "UPDATE encuestas SET status = 'closed', closed_at = ? "
+                "WHERE id = ? AND owner_node_id = ? AND status = 'active'",
+                (now, encuesta_id, owner_node_id),
+            )
+            conn.commit()
+            return (cur.rowcount or 0) > 0
+
+    def encuesta_delete(self, encuesta_id: int, owner_node_id: str) -> bool:
+        """Borra una encuesta y sus votos. Solo el nodo dueño.
+
+        NOTA (punto 6 de la revisión): los dos DELETE van en la MISMA transacción
+        con un único commit() al final, así que la operación es atómica: si el
+        proceso muriera entre medias, ambos se revierten y no quedan votos
+        huérfanos. Por eso no se añade FOREIGN KEY ... ON DELETE CASCADE (exigiría
+        PRAGMA foreign_keys=ON por conexión y reconstruir la tabla).
+        """
+        with closing(self._connect()) as conn:
+            cur = conn.execute(
+                'DELETE FROM encuestas WHERE id = ? AND owner_node_id = ?',
+                (encuesta_id, owner_node_id),
+            )
+            if cur.rowcount:
+                conn.execute('DELETE FROM encuesta_votos WHERE encuesta_id = ?', (encuesta_id,))
+            conn.commit()
+            return (cur.rowcount or 0) > 0
+
+    def encuesta_vote(self, encuesta_id: int, node_id: str, option_index: int) -> str:
+        """Registra o cambia el voto de un nodo. Devuelve 'new'|'changed'|'same'.
+
+        NOTA (punto 3 de la revisión): la escritura usa un UPSERT atómico
+        (INSERT ... ON CONFLICT DO UPDATE) sobre el índice UNIQUE
+        (encuesta_id, node_id). El SELECT previo es SOLO para decidir el mensaje
+        de respuesta ('new'/'changed'/'same'); aunque haya una escritura
+        concurrente entre el SELECT y el UPSERT, este último no lanza
+        IntegrityError (a diferencia de un INSERT a secas).
+
+        En la práctica el daemon procesa los mensajes en un único hilo y el cron
+        no vota, así que dos votos del MISMO nodo no coinciden en el tiempo; el
+        UPSERT se adopta como buena práctica de robustez, no para corregir un
+        fallo que se diera hoy.
+        """
+        now = datetime.now().isoformat(timespec='seconds')
+        with closing(self._connect()) as conn:
+            cur = conn.execute(
+                'SELECT option_index FROM encuesta_votos WHERE encuesta_id = ? AND node_id = ?',
+                (encuesta_id, node_id),
+            )
+            row = cur.fetchone()
+            if row is not None and int(row['option_index']) == int(option_index):
+                return 'same'
+
+            conn.execute(
+                'INSERT INTO encuesta_votos (encuesta_id, node_id, option_index, created_at, updated_at) '
+                'VALUES (?, ?, ?, ?, ?) '
+                'ON CONFLICT(encuesta_id, node_id) DO UPDATE SET '
+                'option_index = excluded.option_index, updated_at = excluded.updated_at',
+                (encuesta_id, node_id, option_index, now, now),
+            )
+            conn.commit()
+            return 'new' if row is None else 'changed'
+
+    def encuesta_results(self, encuesta_id: int) -> Dict[str, Any]:
+        """Devuelve {counts: [n por opción], total: int}."""
+        enc = self.encuesta_get(encuesta_id)
+        n_opts = len(enc['options']) if enc else 0
+        counts = [0] * n_opts
+        with closing(self._connect()) as conn:
+            cur = conn.execute(
+                'SELECT option_index, COUNT(*) AS c FROM encuesta_votos WHERE encuesta_id = ? GROUP BY option_index',
+                (encuesta_id,),
+            )
+            total = 0
+            for r in cur.fetchall():
+                idx = int(r['option_index'])
+                c = int(r['c'])
+                total += c
+                if 0 <= idx < n_opts:
+                    counts[idx] = c
+        return {'counts': counts, 'total': total}
+
+    # ---------- STATS ----------
+    def stats_summary(self) -> Dict[str, Any]:
+        """Resumen para /stats: comandos (hoy/total), comando top, pings y nodos."""
+        today = datetime.now().date().isoformat()
+        out: Dict[str, Any] = {}
+        with closing(self._connect()) as conn:
+            row = conn.execute('SELECT COUNT(*) AS c FROM commands_sent').fetchone()
+            out['cmd_total'] = int(row['c']) if row else 0
+
+            row = conn.execute(
+                'SELECT COUNT(*) AS c FROM commands_sent WHERE substr(created_at, 1, 10) = ?',
+                (today,),
+            ).fetchone()
+            out['cmd_today'] = int(row['c']) if row else 0
+
+            row = conn.execute(
+                'SELECT command, COUNT(*) AS c FROM commands_sent '
+                'WHERE command IS NOT NULL GROUP BY command ORDER BY c DESC LIMIT 1'
+            ).fetchone()
+            out['cmd_top'] = (row['command'], int(row['c'])) if row else (None, 0)
+
+            row = conn.execute('SELECT COUNT(*) AS c FROM pings').fetchone()
+            out['pings_total'] = int(row['c']) if row else 0
+
+            row = conn.execute('SELECT COUNT(*) AS c FROM nodes').fetchone()
+            out['nodes_total'] = int(row['c']) if row else 0
+            row = conn.execute('SELECT COUNT(*) AS c FROM nodes WHERE COALESCE(via_mqtt,0) = 1').fetchone()
+            out['nodes_mqtt'] = int(row['c']) if row else 0
+            out['nodes_rf'] = out['nodes_total'] - out['nodes_mqtt']
+
+            row = conn.execute('SELECT COUNT(*) AS c FROM encuestas WHERE status = "active"').fetchone()
+            out['encuestas_activas'] = int(row['c']) if row else 0
+        return out
+
+    def nodes_overview(self, active_hours: int = 24) -> Dict[str, Any]:
+        """Resumen de nodos para /nodos: total, RF, MQTT, activos recientes."""
+        out: Dict[str, Any] = {}
+        with closing(self._connect()) as conn:
+            row = conn.execute('SELECT COUNT(*) AS c FROM nodes').fetchone()
+            out['total'] = int(row['c']) if row else 0
+            row = conn.execute('SELECT COUNT(*) AS c FROM nodes WHERE COALESCE(via_mqtt,0) = 1').fetchone()
+            out['mqtt'] = int(row['c']) if row else 0
+            out['rf'] = out['total'] - out['mqtt']
+            # last_heard es epoch (segundos). Activos en las últimas N horas.
+            try:
+                threshold = int((datetime.now() - timedelta(hours=active_hours)).timestamp())
+                row = conn.execute(
+                    'SELECT COUNT(*) AS c FROM nodes WHERE last_heard IS NOT NULL AND last_heard >= ?',
+                    (threshold,),
+                ).fetchone()
+                out['active'] = int(row['c']) if row else 0
+            except Exception:
+                out['active'] = None
+        return out
+
+    def get_node_by_short_name(self, short_name: str) -> Optional[Dict[str, Any]]:
+        """Busca un nodo por nombre corto (case-insensitive). Devuelve dict o None."""
+        with closing(self._connect()) as conn:
+            cur = conn.execute(
+                'SELECT node_id, name, short_name, snr, rssi, hops, via_mqtt, last_heard '
+                'FROM nodes WHERE UPPER(short_name) = UPPER(?) ORDER BY updated_at DESC LIMIT 1',
+                (short_name,),
+            )
+            row = cur.fetchone()
+            return dict(row) if row else None
+
+    def snr_average(self, exclude_mqtt: bool = True) -> Dict[str, Any]:
+        """Media de SNR de los nodos con SNR conocido. Devuelve {avg, count}."""
+        with closing(self._connect()) as conn:
+            sql = 'SELECT AVG(snr) AS avg, COUNT(*) AS c FROM nodes WHERE snr IS NOT NULL'
+            if exclude_mqtt:
+                sql += ' AND COALESCE(via_mqtt,0) = 0'
+            row = conn.execute(sql).fetchone()
+            avg = row['avg'] if row and row['avg'] is not None else None
+            return {'avg': float(avg) if avg is not None else None, 'count': int(row['c']) if row else 0}

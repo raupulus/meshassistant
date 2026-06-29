@@ -331,6 +331,86 @@ class Aemet:
         data = self._opendata_two_step(url, raw=True)
         return self._format_city_forecast(data)
 
+    def fetch_city_forecast_multi(self, days: int = 4) -> Optional[str]:
+        """Predicción del municipio (AEMET_CITY) para varios días, compacta.
+
+        Endpoint: /prediccion/especifica/municipio/diaria/{codigo5}.
+        Devuelve un texto breve con hasta `days` días (cada uno: día, temperaturas,
+        cielo y prob. de lluvia) o None si no está disponible.
+        """
+        code = self.resolve_city_code()
+        if not code:
+            return None
+        url = f"{AEMET_OPENDATA_BASE}/prediccion/especifica/municipio/diaria/{code}"
+        data = self._opendata_two_step(url, raw=True)
+        return self._format_city_forecast_multi(data, days=days)
+
+    def _format_city_forecast_multi(self, data: Any, days: int = 4) -> Optional[str]:
+        """Convierte el JSON de predicción municipal en un texto breve multi-día."""
+        try:
+            if isinstance(data, str):
+                data = json.loads(data)
+            root = data[0] if isinstance(data, list) and data else data
+            if not isinstance(root, dict):
+                return None
+
+            nombre = root.get('nombre') or self.city
+            dias = (((root.get('prediccion') or {}).get('dia')) or [])
+            if not dias:
+                return None
+
+            # Nombres de día de la semana en español a partir de la fecha
+            import datetime as _dt
+            dow = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom']
+
+            partes_dias: List[str] = []
+            for d in dias[:max(1, min(7, days))]:
+                if not isinstance(d, dict):
+                    continue
+                fecha = d.get('fecha') or ''
+                etiqueta = fecha[:10]
+                try:
+                    dt = _dt.date.fromisoformat(fecha[:10])
+                    etiqueta = f"{dow[dt.weekday()]} {dt.day}"
+                except Exception:
+                    pass
+
+                temp = d.get('temperatura') or {}
+                tmax = temp.get('maxima')
+                tmin = temp.get('minima')
+
+                cielo = ''
+                for ec in (d.get('estadoCielo') or []):
+                    desc = (ec or {}).get('descripcion') or ''
+                    if desc.strip():
+                        cielo = desc.strip()
+                        break
+
+                probs = []
+                for pp in (d.get('probPrecipitacion') or []):
+                    v = (pp or {}).get('value')
+                    try:
+                        if v is not None and str(v) != '':
+                            probs.append(int(float(v)))
+                    except Exception:
+                        pass
+                prob = max(probs) if probs else None
+
+                campos: List[str] = [etiqueta]
+                if tmin is not None and tmax is not None:
+                    campos.append(f"{tmin}-{tmax}°C")
+                if cielo:
+                    campos.append(cielo)
+                if prob is not None:
+                    campos.append(f"lluvia {prob}%")
+                partes_dias.append(' '.join(campos))
+
+            if not partes_dias:
+                return None
+            return f"{nombre}: " + ' | '.join(partes_dias)
+        except Exception:
+            return None
+
     def _format_city_forecast(self, data: Any) -> Optional[str]:
         """Convierte el JSON de predicción municipal en un texto breve."""
         try:

@@ -249,9 +249,28 @@ comando declara en `data.py` si responde también **en grupo/canal** (`in_group`
 | `/ping` | Sí | Devuelve saltos/SNR/MQTT y guarda el ping | ✅ |
 | `/chiste [add …]` | Sí | Chiste aleatorio o alta de uno nuevo | ✅ |
 | `/maremoto` | Sí | Tiempo desde el último maremoto en Chipiona | ✅ |
-| `/weather` | No | Tiempo en Cádiz | 🟡 Placeholder |
+| `/weather` | No | Tiempo actual de la zona (datos AEMET, desde BD) | ✅ |
+| `/tiempo` | Sí | Alias de `/weather`, usable en canal | ✅ |
+| `/prevision` | Sí | Previsión de varios días (AEMET); BD + en vivo si hace falta | ✅ |
+| `/avisos` | Sí | Últimos avisos AEMET de la provincia (desde BD) | ✅ |
+| `/marea` | Sí | Próximas pleamares/bajamares (offline, con estimación de respaldo) | ✅ |
+| `/sol` | Sí | Orto, ocaso y duración del día (cálculo offline) | ✅ |
+| `/luna` | Sí | Fase lunar e iluminación (cálculo offline) | ✅ |
+| `/nodos` | Sí | Total de nodos: RF, MQTT y activos 24h | ✅ |
+| `/snr` | Sí | Señal del nodo pasarela (RAU0) y media de la malla RF | ✅ |
+| `/stats` | Sí | Estadísticas del bot (comandos, pings, nodos, uptime) | ✅ |
+| `/encuesta …` | Sí | Encuestas comunitarias (crear, votar, ver, cerrar) | ✅ |
+| `/dado [NdM]` | Sí | Tira dados (1d6 por defecto) | ✅ |
+| `/bola8` (`/8ball`) | Sí | Bola 8 mágica (sí/no, diversión) | ✅ |
 | `/uptime` | No | Tiempo encendido | 🟡 Placeholder |
 | `/ia` | Sí | Respuesta de la micro-IA | 🟡 Placeholder |
+
+Origen de los datos:
+
+- `/weather`, `/tiempo`, `/prevision` y `/avisos` usan **AEMET** (requiere `AEMET_API_KEY`). El cron descarga y guarda en BD; los comandos sirven **offline** desde ahí. `/prevision` intenta además una descarga en vivo si el dato de BD está obsoleto (>12 h).
+- `/marea` usa **Open-Meteo Marine** (gratis, sin clave) o **WorldTides** (si configuras `TIDES_API_KEY`) vía cron→BD. Si no hay dato ni Internet, hace una **estimación astronómica** offline (se marca con `~`).
+- `/sol` y `/luna` se calculan **100% offline** desde la ubicación configurada (`LOCATION_*`; por defecto Chipiona).
+- `/nodos`, `/snr` y `/stats` leen la BD local (`nodes`, `pings`, `commands_sent`, `encuestas`).
 
 Todos los comandos quedan registrados en la tabla `commands_sent`, lo que permite
 detectar abusos y, en el futuro, bloquear nodos.
@@ -274,6 +293,9 @@ SQLite (`database.sql`, modo WAL) creada y migrada de forma **idempotente** por
   hasta 7 saltos de ida y 7 de vuelta).
 - `chistes` — chistes locales y sincronizados con la API externa.
 - `aemet` — histórico de alertas AEMET con marca `published`.
+- `aemet_weather` — histórico de clima/previsión (scopes `province`/`city`/`forecast`).
+- `tides` — predicción de mareas descargada (servida offline por `/marea`).
+- `encuestas` / `encuesta_votos` — encuestas comunitarias y sus votos.
 - `agenda` — avisos programados por nodo (modelo listo).
 - `queue` — cola de publicaciones programadas (parcial).
 - `tasks_control` — marcas de última ejecución de tareas periódicas.

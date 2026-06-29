@@ -112,10 +112,13 @@ def chiste_download() -> None:
         'limit': 25,
         'after_id': last_id if last_id is not None else 0
     }
+    data_payload = {
+        'exclude_groups': [3]
+    }
     log_p(f"[cron] chiste_download: solicitando desde after_id={params['after_id']} → {url}")
 
     try:
-        data = api.download(url, params)
+        data = api.download(url, params=params, data=data_payload)
         if isinstance(data, dict) and data.get('success') is True:
             items = data.get('data', [])
             inserted, ignored = db.bulk_insert_api_chistes(items)
@@ -206,16 +209,18 @@ def check_aemet() -> None:
         except Exception as e:
             log_p(f"[cron] check_aemet: fixer legacy error: {e}", level="WARN")
 
-        texts: list[str] = []
-        # Nueva vía oficial para provincias: endpoint de archivo por rango temporal (tar.gz con XMLs)
+        # Nueva vía oficial para provincias: endpoint de archivo por rango temporal (tar.gz con XMLs).
+        # Distinguimos None (error → toca fallback) de [] (día sin alertas → no martillear /provincia).
+        texts: Optional[list[str]] = None
         try:
             texts = fetch_aemet_alerts_archive(aemet)
         except Exception as e:
             log_p(f"[cron] check_aemet: error en fetch-archivo: {e}", level="WARN")
-            texts = []
+            texts = None
 
-        # Fallback opcional: intentar endpoints anteriores (áreas/CCAA o base general)
-        if not texts:
+        # Fallback SOLO si el archivo falló (texts is None). Si devolvió [] es que
+        # la descarga fue correcta y no hay alertas: no gastamos otra petición.
+        if texts is None:
             try:
                 texts = fetch_aemet_alerts_for_province(aemet)
             except Exception as e:
@@ -226,7 +231,7 @@ def check_aemet() -> None:
             inserted, ignored = db.aemet_bulk_insert(aemet.province, texts)
             log_p(f"[cron] check_aemet: descargadas {len(texts)} → insertadas {inserted}, ignoradas {ignored}")
         else:
-            log_p("[cron] check_aemet: sin contenido recibido")
+            log_p("[cron] check_aemet: sin alertas para la provincia")
     except Exception as e:
         # Ignorar errores temporales
         log_p(f"[cron] check_aemet: excepción general: {e}", level="WARN")
@@ -502,7 +507,7 @@ def fetch_aemet_alerts_for_province(aemet: Aemet) -> list[str]:
     return []
 
 
-def fetch_aemet_alerts_archive(aemet: Aemet) -> list[str]:
+def fetch_aemet_alerts_archive(aemet: Aemet) -> Optional[list[str]]:
     """Obtiene alertas CAP desde el endpoint de ARCHIVO por rango temporal (tar.gz) y filtra por provincia.
 
     Flujo:
@@ -514,6 +519,14 @@ def fetch_aemet_alerts_archive(aemet: Aemet) -> list[str]:
     Filtro por provincia:
       - Si AEMET_PROVINCE es una CCAA conocida (ej. Galicia), se filtra por nombres de sus provincias.
       - Si es una provincia, se filtra por su nombre normalizado dentro del XML (búsqueda textual).
+
+    Valor de retorno (distingue error de día-sin-alertas):
+      - `None`  → hubo un error HTTP/JSON/parsing (la descarga no es fiable). El
+                   llamador debe recurrir al fallback de la API provincial.
+      - `[]`    → la descarga fue correcta pero no hay ninguna alerta para la
+                   provincia (caso normal la mayoría de días). NO hay que hacer
+                   fallback: simplemente no hay nada que publicar.
+      - `[...]` → lista de textos XML CAP que afectan a la provincia.
     """
     import requests
     import io
@@ -561,12 +574,22 @@ def fetch_aemet_alerts_archive(aemet: Aemet) -> list[str]:
     estado = j.get('estado') if isinstance(j, dict) else None
     if estado is None or int(str(estado)) != 200:
         desc = j.get('descripcion') if isinstance(j, dict) else None
-        log_p(f"[cron] fetch_aemet-archivo: estado={estado} desc={desc} (descartado)", level='WARN')
-        return []
+        # estado 404 de AEMET = "no hay datos para el rango" (día sin alertas),
+        # no es un fallo de red: devolvemos [] para no disparar el fallback.
+        # Cualquier otro estado (429, 5xx, etc.) sí es error → None.
+        try:
+            estado_int = int(str(estado))
+        except Exception:
+            estado_int = None
+        if estado_int == 404:
+            log_p(f"[cron] fetch_aemet-archivo: estado=404 (sin avisos para el rango)", level='INFO')
+            return []
+        log_p(f"[cron] fetch_aemet-archivo: estado={estado} desc={desc} (error)", level='WARN')
+        return None
     datos_url = j.get('datos')
     if not datos_url:
-        log_p("[cron] fetch_aemet-archivo: paso1 JSON sin 'datos' (descartado)", level='WARN')
-        return []
+        log_p("[cron] fetch_aemet-archivo: paso1 JSON sin 'datos' (error)", level='WARN')
+        return None
 
     # Descargar tar.gz con los avisos
     log_p(f"[cron] fetch_aemet-archivo: GET datos {datos_url}")
@@ -652,6 +675,89 @@ def fetch_aemet_alerts_archive(aemet: Aemet) -> list[str]:
     return texts
 
 
+def weather_forecast_aemet() -> None:
+    """Descarga la predicción multi-día del municipio y la guarda como histórico.
+
+    - Cadencia: según AEMET_PERIOD (mismo helper que el resto de AEMET).
+    - Solo si hay AEMET_API_KEY configurada.
+    - Guarda en `aemet_weather` con scope='forecast' para que /prevision lo
+      sirva offline (BD-first) con fallback on-demand en el propio comando.
+    """
+    db = Database()
+    task_name = 'aemet_forecast_fetch'
+
+    aemet = Aemet()
+    period_min = aemet.period_to_minutes(aemet.period)
+
+    if not _should_run(db, task_name, period_min):
+        log_p(f"[cron] weather_forecast_aemet: omitido (cooldown {period_min}min)")
+        return
+
+    if not getattr(env, 'AEMET_API_KEY', None):
+        log_p("[cron] weather_forecast_aemet: AEMET_API_KEY vacío; no se consulta API")
+        db.set_task_run(task_name)
+        return
+
+    try:
+        days = int(getattr(env, 'AEMET_FORECAST_DAYS', 4) or 4)
+        text = aemet.fetch_city_forecast_multi(days=days)
+        if text:
+            new_id = db.aemet_weather_insert(
+                scope='forecast',
+                content=text,
+                province=aemet.province,
+                province_code=aemet.province_code(),
+                city=aemet.city,
+                city_code=aemet.resolve_city_code(),
+                day='multi',
+                data_raw=text,
+            )
+            log_p(f"[cron] weather_forecast_aemet: previsión guardada id={new_id} len={len(text)}")
+        else:
+            log_p("[cron] weather_forecast_aemet: sin datos de previsión municipal")
+    except Exception as e:
+        log_p(f"[cron] weather_forecast_aemet: excepción general: {e}", level="WARN")
+    finally:
+        db.set_task_run(task_name)
+
+
+def tides_fetch() -> None:
+    """Descarga la predicción de mareas y la guarda en BD (servida por /marea).
+
+    - Cadencia: TIDES_PERIOD_MIN (por defecto 360 min = 6 h).
+    - Fuente: WorldTides (si TIDES_API_KEY) u Open-Meteo Marine (gratis).
+    - Solo guarda datos de fuente real; si únicamente sale la estimación
+      astronómica, no se persiste (el comando ya la calcula on-demand offline).
+    """
+    db = Database()
+    task_name = 'tides_fetch'
+
+    period_min = int(getattr(env, 'TIDES_PERIOD_MIN', 360) or 360)
+    if not _should_run(db, task_name, period_min):
+        log_p(f"[cron] tides_fetch: omitido (cooldown {period_min}min)")
+        return
+
+    try:
+        from Models.Tides import compute_tides
+        days = int(getattr(env, 'TIDES_DAYS', 2) or 2)
+        result = compute_tides(days=days, allow_network=True)
+        if result and result.get('extremes') and not result.get('approximate'):
+            new_id = db.tides_insert(
+                location=result.get('name'),
+                source=result.get('source'),
+                approximate=False,
+                extremes=result.get('extremes'),
+            )
+            log_p(f"[cron] tides_fetch: guardado id={new_id} fuente={result.get('source')} "
+                  f"extremos={len(result.get('extremes'))}")
+        else:
+            log_p("[cron] tides_fetch: sin datos de fuente real (no se persiste estimación)")
+    except Exception as e:
+        log_p(f"[cron] tides_fetch: excepción general: {e}", level="WARN")
+    finally:
+        db.set_task_run(task_name)
+
+
 def run_all():
     """Ejecuta todas las tareas con sus restricciones.
 
@@ -663,7 +769,24 @@ def run_all():
     send_trace()
     check_aemet()
     weather_aemet()
+    weather_forecast_aemet()
+    tides_fetch()
+    encuestas_expire()
     log_p("[cron] run_all: fin")
+
+
+def encuestas_expire() -> None:
+    """Cierra en BD las encuestas vencidas (barrido perezoso movido al cron).
+
+    Las lecturas de /encuesta NO escriben (calculan el estado efectivo en
+    memoria); aquí se materializa el cierre real, como mucho una vez por minuto.
+    """
+    try:
+        n = Database().encuesta_expire_due()
+        if n:
+            log_p(f"[cron] encuestas_expire: cerradas {n} encuesta(s) vencida(s)")
+    except Exception as e:
+        log_p(f"[cron] encuestas_expire: error: {e}", level="WARN")
 
 
 if __name__ == '__main__':

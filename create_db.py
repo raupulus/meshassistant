@@ -148,6 +148,45 @@ def _execute_schema(conn: sqlite3.Connection) -> None:
             created_at TEXT
         );
 
+        -- Predicción de mareas descargada/estimada (servida offline por /marea)
+        CREATE TABLE IF NOT EXISTS tides (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            location TEXT,           -- nombre de la ubicación (LOCATION_NAME)
+            source TEXT,             -- 'worldtides' | 'open-meteo' | 'estimacion'
+            approximate INTEGER NOT NULL DEFAULT 0,
+            extremes TEXT NOT NULL,  -- JSON: [{time ISO, type 'high'|'low', height}]
+            created_at TEXT
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_tides_created ON tides(created_at);
+
+        -- Encuestas comunitarias (una activa por nodo dueño)
+        CREATE TABLE IF NOT EXISTS encuestas (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            owner_node_id TEXT NOT NULL,
+            question TEXT NOT NULL,
+            options TEXT NOT NULL,   -- JSON: ["opción 1", "opción 2", ...]
+            created_at TEXT,
+            ends_at TEXT,            -- ISO 8601; cierre automático al superarse
+            status TEXT NOT NULL DEFAULT 'active',  -- 'active' | 'closed'
+            closed_at TEXT NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_encuestas_owner_status ON encuestas(owner_node_id, status);
+        CREATE INDEX IF NOT EXISTS idx_encuestas_status ON encuestas(status);
+
+        -- Votos de las encuestas (un voto por nodo y encuesta; se puede cambiar)
+        CREATE TABLE IF NOT EXISTS encuesta_votos (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            encuesta_id INTEGER NOT NULL,
+            node_id TEXT NOT NULL,
+            option_index INTEGER NOT NULL,
+            created_at TEXT,
+            updated_at TEXT
+        );
+
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_voto_unico ON encuesta_votos(encuesta_id, node_id);
+
         -- Tablas antiguas de control de traces eliminadas del esquema
         """
     )
