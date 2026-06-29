@@ -16,6 +16,7 @@ CHISTES_API_ENABLED = False
 CHISTES_API_KEY = ''
 CHISTES_URL_UPLOAD = 'https://tuweb/chiste/add'
 CHISTES_URL_DOWNLOAD = 'https://tuweb/chiste/get'
+CHISTES_EXCLUDE_GROUPS = [3]
 
 ## Aemet, habilitado solo si tiene API key
 AEMET_API_KEY = ''

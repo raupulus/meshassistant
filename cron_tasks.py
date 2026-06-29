@@ -112,8 +112,9 @@ def chiste_download() -> None:
         'limit': 25,
         'after_id': last_id if last_id is not None else 0
     }
+    exclude_groups = getattr(env, 'CHISTES_EXCLUDE_GROUPS', [3])
     data_payload = {
-        'exclude_groups': [3]
+        'exclude_groups': exclude_groups
     }
     log_p(f"[cron] chiste_download: solicitando desde after_id={params['after_id']} → {url}")
 
