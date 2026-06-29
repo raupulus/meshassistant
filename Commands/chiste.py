@@ -52,6 +52,18 @@ def chiste_callback(interface, args, msg, metadata):
     except Exception as e:
         response = f'Error al obtener chistes: {e}'
 
-    interface.reply_to_message(response, metadata)
+    # Trocear en hasta 3 mensajes de ~200 caracteres (límite de Meshtastic).
+    # Los chistes los añaden los usuarios con "!chiste add" y pueden superar el
+    # límite; sin trocear, la malla los rechaza o trunca silenciosamente.
+    from functions import split_messages, MESH_MAX_LEN, MESH_MAX_PARTS
+    from time import sleep
+    parts = split_messages(response, max_len=MESH_MAX_LEN, max_parts=MESH_MAX_PARTS)
+    if not parts:
+        parts = [response]
+    for idx, part in enumerate(parts):
+        interface.reply_to_message(part, metadata)
+        # Pequeña espera entre partes para no saturar la malla
+        if idx < len(parts) - 1:
+            sleep(5)
     # El registro en commands_sent se hace de forma centralizada en
     # SerialInterface.on_receive_text tras ejecutar el callback.

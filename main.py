@@ -122,64 +122,61 @@ def loop():
                                 base_text = sanitize_text(raw_msg)
 
                                 def build_aemet_messages(text: str) -> list[str]:
-                                    # Mensajería Meshtastic: máx 200 caracteres por mensaje
-                                    MAX_LEN = 200
+                                    # Mensajería Meshtastic: máx 200 caracteres por
+                                    # mensaje. Hasta 3 partes (regla común con los
+                                    # comandos básicos) con cabecera 'AEMET i/n:'.
+                                    from functions import split_messages, MESH_MAX_LEN, MESH_MAX_PARTS
+
                                     hdr_single = 'AEMET:'
-                                    hdr_part1 = 'AEMET 1/2:'
-                                    hdr_part2 = 'AEMET 2/2:'
-                                    tail_link = ' Ver: https://www.aemet.es'
+                                    # Cabecera más larga posible: 'AEMET 3/3:' (10) + espacio
+                                    hdr_reserve = len('AEMET 3/3: ')
 
                                     # Caso 1: cabe en un único mensaje
-                                    body_cap_single = MAX_LEN - (len(hdr_single) + 1)  # espacio tras cabecera
+                                    body_cap_single = MESH_MAX_LEN - (len(hdr_single) + 1)
                                     if len(text) <= body_cap_single:
                                         return [f"{hdr_single} {text}"]
 
-                                    # Caso 2: dividir en 2 partes (máximo) y truncar si excede
-                                    body_cap_p1 = MAX_LEN - (len(hdr_part1) + 1)
-                                    body_cap_p2 = MAX_LEN - (len(hdr_part2) + 1 + len(tail_link))
-                                    if body_cap_p2 < 0:
-                                        # Seguridad: si por alguna razón el tail excede, no añadimos enlace
-                                        body_cap_p2 = MAX_LEN - (len(hdr_part2) + 1)
-                                        _tail = ''
-                                    else:
-                                        _tail = tail_link
-
-                                    # Particionar texto
-                                    part1 = text[:body_cap_p1]
-                                    remaining = text[len(part1):]
-                                    part2 = remaining[:body_cap_p2]
-
-                                    msg1 = f"{hdr_part1} {part1}"
-                                    msg2 = f"{hdr_part2} {part2}{_tail}"
-
-                                    # Garantizar límites por si acaso
-                                    msg1 = msg1[:MAX_LEN]
-                                    msg2 = msg2[:MAX_LEN]
-                                    return [msg1, msg2]
+                                    # Caso 2: trocear el cuerpo reservando sitio para la cabecera
+                                    chunks = split_messages(
+                                        text,
+                                        max_len=MESH_MAX_LEN - hdr_reserve,
+                                        max_parts=MESH_MAX_PARTS,
+                                    )
+                                    n = len(chunks)
+                                    return [f"AEMET {i}/{n}: {c}"[:MESH_MAX_LEN]
+                                            for i, c in enumerate(chunks, start=1)]
 
                                 messages = build_aemet_messages(base_text)
 
                                 sent_any = False
-                                for ch in publish_channels:
-                                    # Enviar uno o dos mensajes (si hay 2, con 5s entre ellos) ignorando cooldown intra-alerta
+                                for ch_idx, ch in enumerate(publish_channels):
+                                    # Enviar hasta 3 mensajes con 5s entre cada parte,
+                                    # ignorando cooldown intra-alerta.
                                     part_ok = False
                                     for idx, msg in enumerate(messages):
                                         ok = interface.send(msg, dest='^all', channel=ch)
                                         if ok:
                                             part_ok = True
-                                        # Esperar 5s entre partes si hay más de una
-                                        if len(messages) > 1 and idx == 0:
+                                        # Esperar 5s entre partes (no tras la última)
+                                        if idx < len(messages) - 1:
                                             sleep(5)
                                     if part_ok:
                                         sent_any = True
                                         # Marcar periodo por canal tras completar el envío (1 o 2 partes)
                                         db.set_task_run(f'aemet_publish_ch_{ch}')
+                                    # Esperar también entre canales: si no, la 1ª parte
+                                    # del siguiente canal saldría pegada a la última del
+                                    # anterior, lanzando 2 mensajes masivos seguidos y
+                                    # pudiendo saturar la radio. No esperar tras el último.
+                                    if ch_idx < len(publish_channels) - 1:
+                                        sleep(5)
 
                                 if sent_any:
                                     db.aemet_mark_published(alert['id'])
-            except Exception:
-                # No romper el loop por AEMET
-                pass
+            except Exception as e:
+                # No romper el loop por AEMET, pero dejar rastro para poder
+                # diagnosticar fallos en la publicación de alertas de emergencia.
+                log_p(f"Error publicando alerta AEMET: {e}", level="WARN")
 
             sleep(5)
 

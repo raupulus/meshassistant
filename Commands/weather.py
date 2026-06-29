@@ -1,44 +1,3 @@
-def _split_messages(text, max_len=200, max_parts=2):
-    """Trocea un texto en como mucho `max_parts` mensajes de `max_len` caracteres.
-
-    Intenta cortar en un límite de palabra para no partir términos. Si el texto
-    excede la capacidad total, el último mensaje termina en '…'.
-    """
-    text = (text or '').strip()
-    if not text:
-        return []
-
-    messages = []
-    remaining = text
-    for i in range(max_parts):
-        if not remaining:
-            break
-        last = (i == max_parts - 1)
-
-        if len(remaining) <= max_len:
-            messages.append(remaining)
-            remaining = ''
-            break
-
-        # Reservar un carácter para el indicador de truncado en el último tramo
-        cap = max_len - 1 if last else max_len
-        cut = remaining[:cap]
-        # Cortar en el último espacio para no partir palabras
-        sp = cut.rfind(' ')
-        if sp > int(cap * 0.6):
-            cut = cut[:sp]
-        cut = cut.rstrip()
-
-        if last:
-            messages.append((cut + '…').strip())
-            remaining = ''
-        else:
-            messages.append(cut)
-            remaining = remaining[len(cut):].lstrip()
-
-    return messages
-
-
 def weather_callback(interface, args, msg, metadata):
     print('weather')
 
@@ -66,8 +25,9 @@ def weather_callback(interface, args, msg, metadata):
     body = record.get('content') or ''
     full = f"Tiempo {label}: {body}"
 
-    # Trocear en 1-2 mensajes de ~200 caracteres (límite de Meshtastic)
-    parts = _split_messages(full, max_len=200, max_parts=2)
+    # Trocear en hasta 3 mensajes de ~200 caracteres (límite de Meshtastic)
+    from functions import split_messages, MESH_MAX_LEN, MESH_MAX_PARTS
+    parts = split_messages(full, max_len=MESH_MAX_LEN, max_parts=MESH_MAX_PARTS)
     if not parts:
         interface.reply_to_message('Sin datos de clima disponibles.', metadata)
         return

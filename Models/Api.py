@@ -58,17 +58,24 @@ class Api:
     def upload(self, url: str, data: Optional[Dict[str, Any]] = None) -> Any:
         return self._request("POST", url, data)
 
-    def download(self, url: str, params: Optional[Dict[str, Any]] = None) -> Any:
+    def download(self, url: str, params: Optional[Dict[str, Any]] = None, data: Optional[Dict[str, Any]] = None) -> Any:
         """Realiza una petición GET para descargar datos."""
         last_err: Optional[Exception] = None
+        payload = json.dumps(data) if data is not None else None
         for _ in range(self.retries):
             try:
                 resp = requests.get(
                     url=url,
                     params=params,
+                    data=payload,
                     headers=self._headers(),
                     timeout=self.timeout,
                 )
+                if resp.status_code in (401, 422):
+                    if resp.content:
+                        return resp.json()
+                    return {"success": False, "message": f"Error HTTP {resp.status_code}"}
+                
                 resp.raise_for_status()
                 if resp.content:
                     return resp.json()
