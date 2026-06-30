@@ -3,11 +3,18 @@
 
 Ejecútalo donde haya salida a Internet (tu equipo o la Raspberry):
 
-    python3 test_aemet_weather.py
+    python3 tests/test_aemet_weather.py
 
 Usa la configuración de env.py. No escribe en la base de datos. Imprime el
 detalle de cada paso (status HTTP, cuerpo, errores SSL) para depurar.
 """
+import os
+import sys
+
+# Permite ejecutar el test desde tests/ resolviendo imports (env, Models) contra
+# la raíz del proyecto.
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 import env
 # Forzar logs aunque DEBUG esté a False en env.py
 env.DEBUG = True

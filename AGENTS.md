@@ -44,7 +44,7 @@ data.py            commands_dict (registro de comandos) y channels (mapa de cana
 functions.py       Utilidades: log_p, search_command, sanitize_text.
 env.example.py     Plantilla de configuración. Se copia a env.py (NO versionado).
 requirements.txt   Dependencias.
-test.py            Script de ejemplo de recepción por UART (no forma parte del bot).
+tests/             Tests y scripts de prueba (test.py, test_aemet_*.py). No forman parte del bot.
 
 Commands/          Un fichero por comando. Cada uno expone <cmd>_callback(...).
   help.py about.py ping.py chiste.py ia.py uptime.py weather.py maremoto.py
@@ -188,7 +188,7 @@ python3 main.py                   # proceso principal (necesita serie real)
 python3 cron_tasks.py             # una pasada de tareas periódicas
 ```
 
-- No hay suite de tests automatizada. `test.py` es solo un ejemplo de recepción.
+- No hay suite de tests automatizada. `tests/test.py` es solo un ejemplo de recepción.
 - Para validar cambios sin hardware: `create_db.py` y la lógica de `Database` se
   pueden ejercitar sin nodo. La parte de serie requiere un nodo Meshtastic conectado
   (o un puerto serie simulado).

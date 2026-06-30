@@ -113,3 +113,66 @@ Para volver al estado anterior tienes dos vías:
   hasta `TRACES_INTERVAL` minutos. Es el comportamiento esperado.
 - Ningún comando del bot muestra el histórico filtrando por `status='done'`;
   solo el planificador usa el `status`. Archivar no oculta nada al usuario.
+
+---
+
+## reset_chistes.sh
+
+Vacía **por completo** la tabla `chistes` de la base de datos, **sin tocar
+ninguna otra tabla** (traces, pings, commands_sent, aemet, etc.).
+
+### ¿Cuándo usarlo?
+
+Se colaron algunos chistes para adultos difíciles de identificar uno a uno. La
+API ya está corregida para no volver a enviarlos, así que la forma más limpia de
+partir de cero es vaciar la tabla `chistes` y dejar que se vuelva a poblar solo
+con contenido válido.
+
+### ¿Cómo funciona?
+
+Ejecuta `DELETE FROM chistes` dentro de una transacción, reinicia el contador
+`AUTOINCREMENT` de la tabla (`sqlite_sequence`) y compacta la BD con `VACUUM`.
+A diferencia de `reset_traces.sh`, **aquí sí se borran las filas**: es un vaciado
+real, no un archivado. Crea un backup de la BD antes de modificar nada.
+
+### Uso
+
+```bash
+# Vaciado normal (crea un backup de la BD antes de tocar nada)
+./scripts/reset_chistes.sh
+
+# Ver qué haría sin modificar nada
+./scripts/reset_chistes.sh --dry-run
+
+# Sin crear backup
+./scripts/reset_chistes.sh --no-backup
+
+# Apuntar a otra ruta de BD
+./scripts/reset_chistes.sh --db /ruta/a/database.sql
+
+# Ayuda
+./scripts/reset_chistes.sh --help
+```
+
+La primera vez, dale permisos de ejecución:
+
+```bash
+chmod +x scripts/reset_chistes.sh
+```
+
+### Salida de ejemplo
+
+```
+BD:                 /.../meshassistant/database.sql
+Chistes a borrar:   142
+Backup creado:      /.../meshassistant/database.sql.bak_20260630_101500
+Hecho. Chistes restantes: 0.
+```
+
+### Reversión
+
+Restaura el backup generado por el script:
+
+```bash
+cp database.sql.bak_AAAAMMDD_HHMMSS database.sql
+```

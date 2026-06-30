@@ -492,7 +492,7 @@ meshassistant/
 ├── functions.py            # Utilidades (log_p, search_command, sanitize_text)
 ├── env.example.py          # Plantilla de configuración (copiar a env.py)
 ├── requirements.txt        # Dependencias Python
-├── test.py                 # Script de ejemplo/prueba de recepción por UART
+├── tests/                  # Tests y scripts de prueba (test.py, test_aemet_*.py)
 ├── Commands/               # Un módulo por comando (callbacks)
 │   ├── help.py  about.py  ping.py  chiste.py
 │   ├── ia.py    uptime.py weather.py  maremoto.py
