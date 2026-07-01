@@ -12,60 +12,93 @@ class SerialInterface:
     lock = False
     node_dict = {}
 
+    # Eventos pubsub gestionados por esta clase: (handler, topic). Se usa para
+    # suscribir y desuscribir de forma simétrica y evitar suscripciones duplicadas
+    # al reconectar.
+    def _subscriptions(self):
+        return [
+            (self.on_connection, "meshtastic.connection.established"),
+            (self.on_receive_text, "meshtastic.receive.text"),
+            (self.on_receive_nodeinfo, "meshtastic.receive.nodeinfo"),
+            (self.on_node_update, "meshtastic.node.updated"),
+            (self.on_receive_user, "meshtastic.receive.user"),
+            (self.on_receive_data, "meshtastic.receive.data"),
+            (self.on_connection_lost, "meshtastic.connection.lost"),
+            (self.on_connection_closed, "meshtastic.connection.closed"),
+        ]
+
     def __init__(self, serial_port):
 
         self.serial_port = serial_port
         self.interface = None
         self.command_dict = commands_dict
+        # Bandera atómica (bool en CPython) que marca on_connection_lost. La
+        # reconexión real la realiza el hilo principal en main.loop(), nunca el
+        # hilo 'publishing' de Meshtastic (que reparte los mensajes recibidos).
+        self._needs_reconnect = False
+
+    def _subscribe(self):
+        for handler, topic in self._subscriptions():
+            pub.subscribe(handler, topic)
+
+    def _unsubscribe(self):
+        for handler, topic in self._subscriptions():
+            try:
+                pub.unsubscribe(handler, topic)
+            except Exception:
+                pass
 
     def connect(self):
+        # Evitar suscripciones acumuladas si se reconecta.
+        self._unsubscribe()
         self.interface = serial_interface.SerialInterface(devPath=self.serial_port)
+        self._needs_reconnect = False
         log_p( f"Conectado al dispositivo Meshtastic en puerto {self.serial_port}")
         log_p(f"Suscribiendo a eventos\n")
 
-        pub.subscribe(self.on_connection, "meshtastic.connection.established")
-        #pub.subscribe(self.on_receive, "meshtastic.receive")
-        pub.subscribe(self.on_receive_text, "meshtastic.receive.text")
-        pub.subscribe(self.on_receive_nodeinfo, "meshtastic.receive.nodeinfo")
-        pub.subscribe(self.on_node_update, "meshtastic.node.updated")
-        #pub.subscribe(self.on_receive_position, "meshtastic.receive.position")
-        pub.subscribe(self.on_receive_user, "meshtastic.receive.user")
-        pub.subscribe(self.on_receive_data, "meshtastic.receive.data")
-
-        pub.subscribe(self.on_connection_lost, "meshtastic.connection.lost")
-        pub.subscribe(self.on_connection_closed, "meshtastic.connection.closed")
+        self._subscribe()
 
         log_p(f"Esperando mensajes...\n")
 
 
     def on_connection_closed(self, interface):
-        print('on_connection_closed')
+        log_p("on_connection_closed", level="WARN")
+        self._needs_reconnect = True
 
     def on_connection_lost(self, interface):
-        print('on_connection_lost')
-        sleep(15)
+        # CRÍTICO: este callback corre en el hilo 'publishing' de Meshtastic, el
+        # mismo que entrega los mensajes recibidos. NO debe bloquear ni reconectar
+        # aquí: solo marca la bandera y retorna. La reconexión la hace main.loop().
+        log_p("on_connection_lost", level="WARN")
+        self._needs_reconnect = True
+
+    def reconnect_if_needed(self):
+        """Reconexión ordenada, pensada para llamarse desde el hilo principal.
+
+        Cierra el interfaz viejo por completo, espera a que exista el dispositivo
+        y reconecta. Si falla, deja la bandera activa para reintentar en la
+        siguiente vuelta del loop. Devuelve True si (re)conectó en esta llamada.
+        """
+        if not self._needs_reconnect:
+            return False
+
+        log_p("Reconexión solicitada: cerrando interfaz previa...", level="WARN")
+        self._unsubscribe()
+        self.disconnect()
+
+        if not os.path.exists(self.serial_port):
+            log_p(f"Dispositivo {self.serial_port} aún no presente; reintentaré.",
+                  level="WARN")
+            return False
 
         try:
-            if self.interface:
-                try:
-                    self.interface.close()
-                except Exception:
-                    pass
-                self.interface = None
-        except Exception:
-            pass
-
-        while not self.interface:
-            print('Intentando reconectar')
-
-            if os.path.exists(self.serial_port):
-                sleep(5)
-                try:
-                    self.connect()
-                except Exception:
-                    pass
-
-            sleep(10)
+            self.connect()
+            log_p("Reconexión completada", level="WARN")
+            return True
+        except Exception as e:
+            log_p(f"Fallo al reconectar: {e}", level="WARN")
+            self._needs_reconnect = True
+            return False
 
     def on_receive_position(self, packet, interface):
        print('on_receive_position', packet, interface)

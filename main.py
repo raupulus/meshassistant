@@ -22,6 +22,12 @@ def loop():
         aemet = Aemet()
 
         while True:
+            # Reconexión ordenada si el nodo se cayó. Se hace aquí (hilo principal),
+            # nunca en el callback on_connection_lost (hilo 'publishing').
+            if interface.reconnect_if_needed():
+                sleep(2)
+                continue
+
             # Procesar (si hay) un trace pendiente encolado por cron (en la misma tabla traces)
             try:
                 pending = db.get_next_pending_trace()
