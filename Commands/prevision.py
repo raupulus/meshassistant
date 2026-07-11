@@ -58,6 +58,7 @@ def prevision_callback(interface, args, msg, metadata):
                     live = aemet.fetch_city_forecast_multi(days=days)
                     if live:
                         text = live
+                        record = None # Limpiamos record porque tenemos dato fresco
                         # Cachear para próximas consultas offline
                         try:
                             db.aemet_weather_insert(
@@ -79,12 +80,24 @@ def prevision_callback(interface, args, msg, metadata):
             alt = Database().aemet_weather_get_latest()
             if alt and alt.get('content'):
                 text = alt.get('content')
+                record = alt # Para validación de antigüedad
         except Exception:
             pass
 
     if not text:
         interface.reply_to_message('Sin previsión disponible todavía. Inténtalo más tarde.', metadata)
         return
+
+    # Añadir advertencia si es viejo
+    try:
+        if record and record.get('created_at'):
+            from datetime import datetime, timedelta
+            created = datetime.fromisoformat(record.get('created_at'))
+            diff = datetime.now() - created
+            if diff > timedelta(hours=24):
+                text += f" [⚠️ Info de hace {diff.days} días por fallo de internet]"
+    except Exception:
+        pass
 
     reply_long(interface, metadata, f'Previsión: {text}')
     # El registro en commands_sent se hace de forma centralizada en

@@ -23,6 +23,19 @@ def weather_callback(interface, args, msg, metadata):
         label = record.get('city') or 'tu zona'
 
     body = record.get('content') or ''
+
+    # Añadir advertencia si el dato es viejo
+    from datetime import datetime, timedelta
+    try:
+        created_str = record.get('created_at')
+        if created_str:
+            created = datetime.fromisoformat(created_str)
+            diff = datetime.now() - created
+            if diff > timedelta(hours=24):
+                body += f" [⚠️ Datos de hace {diff.days} días (fallo internet)]"
+    except Exception:
+        pass
+
     full = f"Tiempo {label}: {body}"
 
     # Trocear en hasta 3 mensajes de ~200 caracteres (límite de Meshtastic)
