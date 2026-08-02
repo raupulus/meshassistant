@@ -5,6 +5,7 @@ def weather_callback(interface, args, msg, metadata):
     from datetime import datetime, timedelta
     from Models.Aemet import PROV_NAME_TO_CODE, _normalize_name, Aemet
 
+    aemet = Aemet()
     requested_province_code = None
     requested_province_name = None
 
@@ -25,6 +26,10 @@ def weather_callback(interface, args, msg, metadata):
             
         requested_province_code = code
         requested_province_name = requested.title()
+    else:
+        # Si no hay argumentos, usar la provincia por defecto configurada en env.py
+        requested_province_code = aemet.province_code()
+        requested_province_name = aemet.province.title() if aemet.province else None
 
     db = Database()
     record = None
