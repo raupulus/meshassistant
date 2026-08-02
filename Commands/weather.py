@@ -97,7 +97,12 @@ def weather_callback(interface, args, msg, metadata):
         except Exception:
             pass
 
-    full = f"Tiempo {label}: {body}"
+    # Añadir dos puntos tras el nombre de la ciudad/provincia si no los tiene
+    first_word = body.split(' ', 1)[0]
+    if ':' not in first_word:
+        body = body.replace(' ', ': ', 1)
+
+    full = body
 
     # Trocear en hasta 3 mensajes de ~200 caracteres (límite de Meshtastic)
     from functions import split_messages, MESH_MAX_BYTES, MESH_MAX_PARTS
