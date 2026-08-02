@@ -123,10 +123,10 @@ Respetar las reglas de longitud de mensaje (ver sección 5.1).
 
 ### 5.1. Longitud de los mensajes (OBLIGATORIO)
 
-Meshtastic limita cada mensaje a ~**200 caracteres**. Un texto más largo se corta
+Meshtastic limita cada mensaje a ~**200 bytes**. Un texto más largo se corta
 y la información se pierde (es lo que pasaba con `/weather`). Reglas:
 
-- **Máximo 200 caracteres por mensaje.** Usa la constante `MESH_MAX_LEN`.
+- **Máximo 200 bytes por mensaje.** Usa la constante `MESH_MAX_BYTES`.
 - **Máximo 3 mensajes por respuesta** de un comando básico. Usa `MESH_MAX_PARTS`.
   Si el contenido no cabe en 3 partes, se trunca con `…` en la última (preferible a
   reventar el límite o a inundar la malla).
@@ -203,7 +203,7 @@ python3 cron_tasks.py             # una pasada de tareas periódicas
   `database.sql*`, `.venv`, `.junie`, `.idea`. **Nunca** los añadas al repo.
 - ❌ No introducir PostgreSQL ni otro motor: el proyecto es SQLite por diseño (RPi
   Zero, sin servicio que mantener).
-- ❌ No superar ~200 caracteres por mensaje a la malla.
+- ❌ No superar ~200 bytes por mensaje a la malla.
 - ❌ No renombrar un fichero de `Commands/` sin actualizar su import en `data.py`.
 - ❌ No bloquear el `loop()` con esperas largas; usa colas/estado en BD.
 
