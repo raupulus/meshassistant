@@ -811,26 +811,33 @@ class Database:
             conn.commit()
             return int(cur.lastrowid)
 
-    def aemet_weather_get_latest(self, scope: Optional[str] = None) -> Optional[Dict[str, Any]]:
+    def aemet_weather_get_latest(self, scope: Optional[str] = None, province_code: Optional[str] = None) -> Optional[Dict[str, Any]]:
         """Devuelve el último registro de clima descargado o None.
 
         Si se indica `scope` ('province' | 'city' | 'forecast'), filtra por él.
+        Si se indica `province_code`, filtra por ese código de provincia.
         Sin scope, devuelve el más reciente independientemente del tipo, pero
         excluye los de previsión multi-día ('forecast') para no mezclarlos con
         el tiempo actual de /weather.
         """
         with closing(self._connect()) as conn:
+            query = "SELECT id, scope, province, province_code, city, city_code, day, content, created_at FROM aemet_weather WHERE "
+            params = []
+            conditions = []
+            
             if scope:
-                cur = conn.execute(
-                    'SELECT id, scope, province, province_code, city, city_code, day, content, created_at '
-                    'FROM aemet_weather WHERE scope = ? ORDER BY created_at DESC, id DESC LIMIT 1',
-                    (scope,),
-                )
+                conditions.append("scope = ?")
+                params.append(scope)
             else:
-                cur = conn.execute(
-                    'SELECT id, scope, province, province_code, city, city_code, day, content, created_at '
-                    "FROM aemet_weather WHERE scope != 'forecast' ORDER BY created_at DESC, id DESC LIMIT 1"
-                )
+                conditions.append("scope != 'forecast'")
+                
+            if province_code:
+                conditions.append("province_code = ?")
+                params.append(province_code)
+                
+            query += " AND ".join(conditions) + " ORDER BY created_at DESC, id DESC LIMIT 1"
+            
+            cur = conn.execute(query, tuple(params))
             row = cur.fetchone()
             return dict(row) if row else None
 
