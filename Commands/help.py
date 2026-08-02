@@ -1,7 +1,7 @@
 
 def help_callback(interface, args, msg, metadata):
     from data import commands_dict
-    from functions import split_messages, MESH_MAX_LEN, MESH_MAX_PARTS
+    from functions import split_messages, MESH_MAX_BYTES, MESH_MAX_PARTS
     from time import sleep
 
     if args and len(args):
@@ -20,7 +20,7 @@ def help_callback(interface, args, msg, metadata):
     cmds = ' '.join(f"/{name}" for name, info in commands_dict.items() if not info.get('hidden'))
     full = f"Comandos: {cmds}. Detalle: !help <comando>"
 
-    parts = split_messages(full, max_len=MESH_MAX_LEN, max_parts=MESH_MAX_PARTS)
+    parts = split_messages(full, max_bytes=MESH_MAX_BYTES, max_parts=MESH_MAX_PARTS)
     for idx, part in enumerate(parts):
         interface.reply_to_message(part, metadata)
         if idx < len(parts) - 1:

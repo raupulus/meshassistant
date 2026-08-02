@@ -100,8 +100,8 @@ def weather_callback(interface, args, msg, metadata):
     full = f"Tiempo {label}: {body}"
 
     # Trocear en hasta 3 mensajes de ~200 caracteres (límite de Meshtastic)
-    from functions import split_messages, MESH_MAX_LEN, MESH_MAX_PARTS
-    parts = split_messages(full, max_len=MESH_MAX_LEN, max_parts=MESH_MAX_PARTS)
+    from functions import split_messages, MESH_MAX_BYTES, MESH_MAX_PARTS
+    parts = split_messages(full, max_bytes=MESH_MAX_BYTES, max_parts=MESH_MAX_PARTS)
     if not parts:
         interface.reply_to_message('Sin datos de clima disponibles.', metadata)
         return

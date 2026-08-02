@@ -55,9 +55,9 @@ def chiste_callback(interface, args, msg, metadata):
     # Trocear en hasta 3 mensajes de ~200 caracteres (límite de Meshtastic).
     # Los chistes los añaden los usuarios con "!chiste add" y pueden superar el
     # límite; sin trocear, la malla los rechaza o trunca silenciosamente.
-    from functions import split_messages, MESH_MAX_LEN, MESH_MAX_PARTS
+    from functions import split_messages, MESH_MAX_BYTES, MESH_MAX_PARTS
     from time import sleep
-    parts = split_messages(response, max_len=MESH_MAX_LEN, max_parts=MESH_MAX_PARTS)
+    parts = split_messages(response, max_bytes=MESH_MAX_BYTES, max_parts=MESH_MAX_PARTS)
     if not parts:
         parts = [response]
     for idx, part in enumerate(parts):

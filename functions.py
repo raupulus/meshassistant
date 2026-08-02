@@ -35,8 +35,8 @@ def format_uptime(since: datetime = None) -> str:
     return ' '.join(parts) if (days or hours or minutes) else 'menos de 1m'
 
 
-def split_messages(text, max_len: int = MESH_MAX_LEN, max_parts: int = MESH_MAX_PARTS):
-    """Trocea un texto en como mucho `max_parts` mensajes de `max_len` caracteres.
+def split_messages(text, max_bytes: int = MESH_MAX_BYTES, max_parts: int = MESH_MAX_PARTS):
+    """Trocea un texto en como mucho `max_parts` mensajes de `max_bytes` bytes UTF-8.
 
     Intenta cortar en un límite de palabra para no partir términos. Si el texto
     excede la capacidad total, el último mensaje termina en '…'.
@@ -52,17 +52,28 @@ def split_messages(text, max_len: int = MESH_MAX_LEN, max_parts: int = MESH_MAX_
             break
         last = (i == max_parts - 1)
 
-        if len(remaining) <= max_len:
+        if len(remaining.encode('utf-8')) <= max_bytes:
             messages.append(remaining)
             remaining = ''
             break
 
-        # Reservar un carácter para el indicador de truncado en el último tramo
-        cap = max_len - 1 if last else max_len
-        cut = remaining[:cap]
+        # Reservar 3 bytes para el indicador de truncado '…' en el último tramo
+        cap_bytes = max_bytes - 3 if last else max_bytes
+        
+        cut_chars = 0
+        current_bytes = 0
+        for char in remaining:
+            char_bytes = len(char.encode('utf-8'))
+            if current_bytes + char_bytes > cap_bytes:
+                break
+            current_bytes += char_bytes
+            cut_chars += 1
+            
+        cut = remaining[:cut_chars]
+        
         # Cortar en el último espacio para no partir palabras
         sp = cut.rfind(' ')
-        if sp > int(cap * 0.6):
+        if sp > int(cut_chars * 0.6):
             cut = cut[:sp]
         cut = cut.rstrip()
 
@@ -79,12 +90,12 @@ def split_messages(text, max_len: int = MESH_MAX_LEN, max_parts: int = MESH_MAX_
 def reply_long(interface, metadata, text, *, max_parts: int = MESH_MAX_PARTS):
     """Responde troceando el texto en hasta `max_parts` mensajes de la malla.
 
-    Reutiliza split_messages y respeta el límite de ~200 caracteres de Meshtastic,
-    esperando 5 s entre partes para no saturar la radio.
+    Reutiliza split_messages y respeta el límite de ~200 bytes de Meshtastic,
+    esperando 1 s entre partes para no saturar la radio.
     """
     from time import sleep
 
-    parts = split_messages(text, max_len=MESH_MAX_LEN, max_parts=max_parts)
+    parts = split_messages(text, max_bytes=MESH_MAX_BYTES, max_parts=max_parts)
     if not parts:
         parts = [text]
     for idx, part in enumerate(parts):

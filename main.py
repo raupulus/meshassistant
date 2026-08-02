@@ -131,25 +131,25 @@ def loop():
                                     # Mensajería Meshtastic: máx 200 caracteres por
                                     # mensaje. Hasta 3 partes (regla común con los
                                     # comandos básicos) con cabecera 'AEMET i/n:'.
-                                    from functions import split_messages, MESH_MAX_LEN, MESH_MAX_PARTS
+                                    from functions import split_messages, MESH_MAX_BYTES, MESH_MAX_PARTS
 
                                     hdr_single = 'AEMET:'
                                     # Cabecera más larga posible: 'AEMET 3/3:' (10) + espacio
                                     hdr_reserve = len('AEMET 3/3: ')
 
                                     # Caso 1: cabe en un único mensaje
-                                    body_cap_single = MESH_MAX_LEN - (len(hdr_single) + 1)
+                                    body_cap_single = MESH_MAX_BYTES - (len(hdr_single) + 1)
                                     if len(text) <= body_cap_single:
                                         return [f"{hdr_single} {text}"]
 
                                     # Caso 2: trocear el cuerpo reservando sitio para la cabecera
                                     chunks = split_messages(
                                         text,
-                                        max_len=MESH_MAX_LEN - hdr_reserve,
+                                        max_bytes=MESH_MAX_BYTES - hdr_reserve,
                                         max_parts=MESH_MAX_PARTS,
                                     )
                                     n = len(chunks)
-                                    return [f"AEMET {i}/{n}: {c}"[:MESH_MAX_LEN]
+                                    return [f"AEMET {i}/{n}: {c}"[:MESH_MAX_BYTES]
                                             for i, c in enumerate(chunks, start=1)]
 
                                 messages = build_aemet_messages(base_text)
