@@ -24,6 +24,6 @@ def help_callback(interface, args, msg, metadata):
     for idx, part in enumerate(parts):
         interface.reply_to_message(part, metadata)
         if idx < len(parts) - 1:
-            sleep(5)
+            sleep(1)
     # El registro en commands_sent se hace de forma centralizada en
     # SerialInterface.on_receive_text tras ejecutar el callback.

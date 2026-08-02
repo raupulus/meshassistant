@@ -90,7 +90,7 @@ def reply_long(interface, metadata, text, *, max_parts: int = MESH_MAX_PARTS):
     for idx, part in enumerate(parts):
         interface.reply_to_message(part, metadata)
         if idx < len(parts) - 1:
-            sleep(5)
+            sleep(1)
 
 
 def log_p(message: str, *, level: str = "INFO"):
