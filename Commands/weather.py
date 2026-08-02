@@ -116,7 +116,7 @@ def weather_callback(interface, args, msg, metadata):
         interface.reply_to_message(part, metadata)
         # Pequeña espera entre partes para no saturar la malla
         if idx < len(parts) - 1:
-            sleep(1)
+            sleep(2.5)
 
     # El registro en commands_sent se hace de forma centralizada en
     # SerialInterface.on_receive_text tras ejecutar el callback.

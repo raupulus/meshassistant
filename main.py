@@ -165,7 +165,7 @@ def loop():
                                             part_ok = True
                                         # Esperar 1s entre partes (no tras la última)
                                         if idx < len(messages) - 1:
-                                            sleep(1)
+                                            sleep(2.5)
                                     if part_ok:
                                         sent_any = True
                                         # Marcar periodo por canal tras completar el envío (1 o 2 partes)
@@ -175,7 +175,7 @@ def loop():
                                     # anterior, lanzando 2 mensajes masivos seguidos y
                                     # pudiendo saturar la radio. No esperar tras el último.
                                     if ch_idx < len(publish_channels) - 1:
-                                        sleep(1)
+                                        sleep(2.5)
 
                                 if sent_any:
                                     db.aemet_mark_published(alert['id'])

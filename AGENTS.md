@@ -133,7 +133,7 @@ y la información se pierde (es lo que pasaba con `/weather`). Reglas:
 - **No trocees a mano.** Usa `split_messages(texto)` de `functions.py`, que corta por
   palabras y añade `…` si hace falta. Las alertas AEMET de `main.py` y `/weather`
   ya lo usan; sigue ese patrón.
-- Entre parte y parte, espera unos segundos (`sleep(1)`) para no saturar la malla,
+- Entre parte y parte, espera unos segundos (`sleep(2.5)`) para no saturar la malla,
   pero **nunca tras la última**.
 
 ---
