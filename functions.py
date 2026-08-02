@@ -5,8 +5,8 @@ from datetime import datetime
 # con independencia de reconexiones del puerto serie.
 STARTED_AT = datetime.now()
 
-# Límite de caracteres por mensaje en la malla Meshtastic.
-MESH_MAX_LEN = 180
+# Límite de bytes por mensaje en la malla Meshtastic.
+MESH_MAX_BYTES = 200
 # Máximo de mensajes que puede emitir la respuesta de un comando básico.
 MESH_MAX_PARTS = 3
 
