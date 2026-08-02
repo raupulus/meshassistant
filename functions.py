@@ -6,7 +6,7 @@ from datetime import datetime
 STARTED_AT = datetime.now()
 
 # Límite de caracteres por mensaje en la malla Meshtastic.
-MESH_MAX_LEN = 200
+MESH_MAX_LEN = 180
 # Máximo de mensajes que puede emitir la respuesta de un comando básico.
 MESH_MAX_PARTS = 3
 
