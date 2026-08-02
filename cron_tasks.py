@@ -210,22 +210,21 @@ def check_aemet() -> None:
         except Exception as e:
             log_p(f"[cron] check_aemet: fixer legacy error: {e}", level="WARN")
 
-        # Nueva vía oficial para provincias: endpoint de archivo por rango temporal (tar.gz con XMLs).
-        # Distinguimos None (error → toca fallback) de [] (día sin alertas → no martillear /provincia).
+        # Priorizar el endpoint provincial, que ya filtra por provincia correctamente.
+        # Solo usar el archivo (que requiere filtrado textual imperfecto) si falla.
         texts: Optional[list[str]] = None
         try:
-            texts = fetch_aemet_alerts_archive(aemet)
+            texts = fetch_aemet_alerts_for_province(aemet)
         except Exception as e:
-            log_p(f"[cron] check_aemet: error en fetch-archivo: {e}", level="WARN")
+            log_p(f"[cron] check_aemet: error en fetch-province: {e}", level="WARN")
             texts = None
 
-        # Fallback SOLO si el archivo falló (texts is None). Si devolvió [] es que
-        # la descarga fue correcta y no hay alertas: no gastamos otra petición.
+        # Fallback al archivo solo si el endpoint provincial falló
         if texts is None:
             try:
-                texts = fetch_aemet_alerts_for_province(aemet)
+                texts = fetch_aemet_alerts_archive(aemet)
             except Exception as e:
-                log_p(f"[cron] check_aemet: error en fetch-province: {e}", level="WARN")
+                log_p(f"[cron] check_aemet: error en fetch-archivo: {e}", level="WARN")
                 texts = []
 
         if texts:
@@ -666,7 +665,9 @@ def fetch_aemet_alerts_archive(aemet: Aemet) -> Optional[list[str]]:
                 continue
 
             # filtro por presencia textual de provincia/área en el XML (normalizado)
-            xml_norm = _normalize(xml_text)
+            # Optimización crucial: str.translate es órdenes de magnitud más rápido que unicodedata en bucle Python
+            accents_map = str.maketrans("ÁÉÍÓÚÀÈÌÒÙÄËÏÖÜÂÊÎÔÛ", "AEIOUAEIOUAEIOUAEIOU")
+            xml_norm = xml_text.upper().translate(accents_map)
             if any(t in xml_norm for t in targets):
                 texts.append(xml_text)
                 matched += 1
