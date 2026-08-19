@@ -646,6 +646,10 @@ class Database:
                 elif 'fenomeno' in vn or 'fenómeno' in vn:
                     fenomeno = v
 
+            # Descartar avisos de nivel verde (sin riesgo meteorológico / baseline de AEMET)
+            if nivel.lower() == 'verde' or 'nivel verde' in event.lower() or 'nivel verde' in headline.lower():
+                return None, None
+
             # Componer textos
             parts_short: list[str] = []
             if headline:

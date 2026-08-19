@@ -22,23 +22,142 @@ except Exception:
 # Base de la API OpenData de AEMET
 AEMET_OPENDATA_BASE = 'https://opendata.aemet.es/opendata/api'
 
-# Mapa nombre de provincia -> código oficial AEMET (dos dígitos INE).
-# Se usa para la predicción provincial (texto general) y como apoyo a avisos.
-PROV_NAME_TO_CODE: Dict[str, str] = {
-    "ALAVA": "01", "ARABA": "01", "ALBACETE": "02", "ALICANTE": "03", "ALACANT": "03",
-    "ALMERIA": "04", "AVILA": "05", "BADAJOZ": "06", "BALEARES": "07", "ISLAS BALEARES": "07",
-    "BARCELONA": "08", "BURGOS": "09", "CACERES": "10", "CADIZ": "11",
-    "CASTELLON": "12", "CASTELLO": "12", "CIUDAD REAL": "13", "CORDOBA": "14", "A CORUNA": "15",
-    "CORUNA": "15", "CUENCA": "16", "GIRONA": "17", "GERONA": "17", "GRANADA": "18",
-    "GUADALAJARA": "19", "GUIPUZCOA": "20", "GIPUZKOA": "20", "HUELVA": "21", "HUESCA": "22",
-    "JAEN": "23", "LEON": "24", "LERIDA": "25", "LLEIDA": "25", "LA RIOJA": "26",
-    "LUGO": "27", "MADRID": "28", "MALAGA": "29", "MURCIA": "30", "NAVARRA": "31",
-    "OURENSE": "32", "PALENCIA": "34", "LAS PALMAS": "35", "PONTEVEDRA": "36",
-    "SALAMANCA": "37", "SANTA CRUZ DE TENERIFE": "38", "SEGOVIA": "40", "SEVILLA": "41",
-    "SORIA": "42", "TARRAGONA": "43", "TERUEL": "44", "TOLEDO": "45", "VALENCIA": "46",
-    "VALLADOLID": "47", "VIZCAYA": "48", "BIZKAIA": "48", "ZAMORA": "49", "ZARAGOZA": "50",
-    "CEUTA": "51", "MELILLA": "52",
+# Mapa de provincias y Comunidades Autónomas de España según códigos oficiales INE (2 dígitos)
+# y áreas EMMA de AEMET (2 dígitos para CCAA y 4 dígitos para prefijo de zona EMMA_ID).
+# Incluye comarcas y términos clave para filtrado preciso en avisos CAP.
+PROV_EMMA_MAP: Dict[str, Dict[str, Any]] = {
+    # --- ANDALUCÍA (Área EMMA 61) ---
+    "ALMERIA": {
+        "prov_code": "04", "ccaa_code": "61", "name": "Almería", "ccaa_name": "Andalucía",
+        "aliases": ["ALMERIA", "ALMERÍA", "ALMANZORA", "LOS VELEZ", "LOS VÉLEZ", "NACIMIENTO", "CAMPO DE TABERNAS", "TABERNAS", "PONIENTE", "LEVANTE ALMERIENSE", "ALMERIENSE"],
+    },
+    "CADIZ": {
+        "prov_code": "11", "ccaa_code": "61", "name": "Cádiz", "ccaa_name": "Andalucía",
+        "aliases": ["CADIZ", "CÁDIZ", "CAMPINA GADITANA", "CAMPIÑA GADITANA", "LITORAL GADITANO", "ESTRECHO", "ESTRECHO - CADIZ", "ESTRECHO - CÁDIZ", "GRAZALEMA", "SIERRA DE GRAZALEMA", "GADITANO", "GADITANA"],
+    },
+    "CORDOBA": {
+        "prov_code": "14", "ccaa_code": "61", "name": "Córdoba", "ccaa_name": "Andalucía",
+        "aliases": ["CORDOBA", "CÓRDOBA", "SIERRA Y PEDROCHES", "PEDROCHES", "CAMPINA CORDOBESA", "CAMPIÑA CORDOBESA", "SUBBETICA", "SUBBÉTICA", "SUBBETICA CORDOBESA", "SUBBÉTICA CORDOBESA", "CORDOBESA", "CORDOBES"],
+    },
+    "GRANADA": {
+        "prov_code": "18", "ccaa_code": "61", "name": "Granada", "ccaa_name": "Andalucía",
+        "aliases": ["GRANADA", "CUENCA DEL GENIL", "GENIL", "GUADIX Y BAZA", "GUADIX", "BAZA", "NEVADA Y ALPUJARRAS", "NEVADA", "ALPUJARRAS", "COSTA GRANADINA", "GRANADINA"],
+    },
+    "HUELVA": {
+        "prov_code": "21", "ccaa_code": "61", "name": "Huelva", "ccaa_name": "Andalucía",
+        "aliases": ["HUELVA", "ARACENA", "SIERRA DE ARACENA", "ANDEVALO Y CONDADO", "ANDÉVALO Y CONDADO", "ANDEVALO", "ANDÉVALO", "CONDADO", "LITORAL ONUBENSE", "ONUBENSE"],
+    },
+    "JAEN": {
+        "prov_code": "23", "ccaa_code": "61", "name": "Jaén", "ccaa_name": "Andalucía",
+        "aliases": ["JAEN", "JAÉN", "MORENA Y CONDADO", "SIERRA MORENA", "CAZORLA Y SEGURA", "CAZORLA", "SEGURA", "VALLE DEL GUADALQUIVIR", "CAPITAL Y MONTES DE JAEN", "CAPITAL Y MONTES DE JAÉN", "MONTES DE JAEN", "MONTES DE JAÉN", "JIENNENSE"],
+    },
+    "MALAGA": {
+        "prov_code": "29", "ccaa_code": "61", "name": "Málaga", "ccaa_name": "Andalucía",
+        "aliases": ["MALAGA", "MÁLAGA", "RONDA", "SERRANIA DE RONDA", "SERRANÍA DE RONDA", "ANTEQUERA", "SOL Y GUADALHORCE", "GUADALHORCE", "COSTA DEL SOL", "AXARQUIA", "AXARQUÍA", "MALAGUENA", "MALAGUEÑA"],
+    },
+    "SEVILLA": {
+        "prov_code": "41", "ccaa_code": "61", "name": "Sevilla", "ccaa_name": "Andalucía",
+        "aliases": ["SEVILLA", "SIERRA NORTE DE SEVILLA", "SIERRA NORTE", "SIERRA SUR DE SEVILLA", "SIERRA SUR", "CAMPINA SEVILLANA", "CAMPIÑA SEVILLANA", "SEVILLANA", "SEVILLANO"],
+    },
+
+    # --- ARAGÓN (Área EMMA 62) ---
+    "HUESCA": {"prov_code": "22", "ccaa_code": "62", "name": "Huesca", "ccaa_name": "Aragón", "aliases": ["HUESCA", "OSCA", "PIRINEO"]},
+    "TERUEL": {"prov_code": "44", "ccaa_code": "62", "name": "Teruel", "ccaa_name": "Aragón", "aliases": ["TERUEL", "ALBARRACIN", "GUDAR", "MAESTRAZGO"]},
+    "ZARAGOZA": {"prov_code": "50", "ccaa_code": "62", "name": "Zaragoza", "ccaa_name": "Aragón", "aliases": ["ZARAGOZA", "CINCO VILLAS", "IBERICA"]},
+
+    # --- ASTURIAS (Área EMMA 63) ---
+    "ASTURIAS": {"prov_code": "33", "ccaa_code": "63", "name": "Asturias", "ccaa_name": "Asturias", "aliases": ["ASTURIAS", "OVIEDO", "GIJON", "GIJÓN"]},
+
+    # --- BALEARES (Área EMMA 64) ---
+    "BALEARES": {"prov_code": "07", "ccaa_code": "64", "name": "Baleares", "ccaa_name": "Islas Baleares", "aliases": ["BALEARES", "ISLAS BALEARES", "MALLORCA", "MENORCA", "IBIZA", "FORMENTERA"]},
+
+    # --- CANARIAS (Área EMMA 65) ---
+    "LAS PALMAS": {"prov_code": "35", "ccaa_code": "65", "name": "Las Palmas", "ccaa_name": "Canarias", "aliases": ["LAS PALMAS", "GRAN CANARIA", "LANZAROTE", "FUERTEVENTURA"]},
+    "SANTA CRUZ DE TENERIFE": {"prov_code": "38", "ccaa_code": "65", "name": "Santa Cruz de Tenerife", "ccaa_name": "Canarias", "aliases": ["TENERIFE", "SANTA CRUZ DE TENERIFE", "LA PALMA", "LA GOMERA", "EL HIERRO"]},
+
+    # --- CANTABRIA (Área EMMA 66) ---
+    "CANTABRIA": {"prov_code": "39", "ccaa_code": "66", "name": "Cantabria", "ccaa_name": "Cantabria", "aliases": ["CANTABRIA", "SANTANDER", "LIEBANA", "LIÉBANA"]},
+
+    # --- CASTILLA Y LEÓN (Área EMMA 67) ---
+    "AVILA": {"prov_code": "05", "ccaa_code": "67", "name": "Ávila", "ccaa_name": "Castilla y León", "aliases": ["AVILA", "ÁVILA", "GREDOS"]},
+    "BURGOS": {"prov_code": "09", "ccaa_code": "67", "name": "Burgos", "ccaa_name": "Castilla y León", "aliases": ["BURGOS", "DEMANDA", "EBRO"]},
+    "LEON": {"prov_code": "24", "ccaa_code": "67", "name": "León", "ccaa_name": "Castilla y León", "aliases": ["LEON", "LEÓN", "BIERZO"]},
+    "PALENCIA": {"prov_code": "34", "ccaa_code": "67", "name": "Palencia", "ccaa_name": "Castilla y León", "aliases": ["PALENCIA"]},
+    "SALAMANCA": {"prov_code": "37", "ccaa_code": "67", "name": "Salamanca", "ccaa_name": "Castilla y León", "aliases": ["SALAMANCA"]},
+    "SEGOVIA": {"prov_code": "40", "ccaa_code": "67", "name": "Segovia", "ccaa_name": "Castilla y León", "aliases": ["SEGOVIA"]},
+    "SORIA": {"prov_code": "42", "ccaa_code": "67", "name": "Soria", "ccaa_name": "Castilla y León", "aliases": ["SORIA"]},
+    "VALLADOLID": {"prov_code": "47", "ccaa_code": "67", "name": "Valladolid", "ccaa_name": "Castilla y León", "aliases": ["VALLADOLID"]},
+    "ZAMORA": {"prov_code": "49", "ccaa_code": "67", "name": "Zamora", "ccaa_name": "Castilla y León", "aliases": ["ZAMORA", "SANABRIA"]},
+
+    # --- CASTILLA-LA MANCHA (Área EMMA 68) ---
+    "ALBACETE": {"prov_code": "02", "ccaa_code": "68", "name": "Albacete", "ccaa_name": "Castilla-La Mancha", "aliases": ["ALBACETE", "HELLIN", "HELLÍN", "ALMANSA", "ALCARAZ", "SEGURA"]},
+    "CIUDAD REAL": {"prov_code": "13", "ccaa_code": "68", "name": "Ciudad Real", "ccaa_name": "Castilla-La Mancha", "aliases": ["CIUDAD REAL", "MANCHA", "MORENA", "MONTES"]},
+    "CUENCA": {"prov_code": "16", "ccaa_code": "68", "name": "Cuenca", "ccaa_name": "Castilla-La Mancha", "aliases": ["CUENCA", "ALCARRIA", "SERRANIA"]},
+    "GUADALAJARA": {"prov_code": "19", "ccaa_code": "68", "name": "Guadalajara", "ccaa_name": "Castilla-La Mancha", "aliases": ["GUADALAJARA", "PARAMERAS", "MOLINA"]},
+    "TOLEDO": {"prov_code": "45", "ccaa_code": "68", "name": "Toledo", "ccaa_name": "Castilla-La Mancha", "aliases": ["TOLEDO", "VALLE DEL TAJO"]},
+
+    # --- CATALUÑA (Área EMMA 69) ---
+    "BARCELONA": {"prov_code": "08", "ccaa_code": "69", "name": "Barcelona", "ccaa_name": "Cataluña", "aliases": ["BARCELONA", "LITORAL", "PRELITORAL", "DEPRESSIO"]},
+    "GIRONA": {"prov_code": "17", "ccaa_code": "69", "name": "Girona", "ccaa_name": "Cataluña", "aliases": ["GIRONA", "GERONA", "EMPORDÀ", "EMPORDA", "PIRINEU"]},
+    "LLEIDA": {"prov_code": "25", "ccaa_code": "69", "name": "Lleida", "ccaa_name": "Cataluña", "aliases": ["LLEIDA", "LERIDA", "LÉRIDA", "ARAN", "PIRINEU"]},
+    "TARRAGONA": {"prov_code": "43", "ccaa_code": "69", "name": "Tarragona", "ccaa_name": "Cataluña", "aliases": ["TARRAGONA", "EBRO", "DELTA"]},
+
+    # --- EXTREMADURA (Área EMMA 70) ---
+    "BADAJOZ": {"prov_code": "06", "ccaa_code": "70", "name": "Badajoz", "ccaa_name": "Extremadura", "aliases": ["BADAJOZ", "VEGAS DEL GUADIANA", "BARROS", "SERENA", "SUR"]},
+    "CACERES": {"prov_code": "10", "ccaa_code": "70", "name": "Cáceres", "ccaa_name": "Extremadura", "aliases": ["CACERES", "CÁCERES", "TAJO", "ALAGON", "ALAGÓN", "NORTE", "VILLUERCAS", "IBORES"]},
+
+    # --- GALICIA (Área EMMA 71) ---
+    "A CORUNA": {"prov_code": "15", "ccaa_code": "71", "name": "A Coruña", "ccaa_name": "Galicia", "aliases": ["A CORUNA", "A CORUÑA", "CORUNA", "CORUÑA", "SANTIAGO"]},
+    "LUGO": {"prov_code": "27", "ccaa_code": "71", "name": "Lugo", "ccaa_name": "Galicia", "aliases": ["LUGO", "MARIÑA", "MARINA", "MINO", "MIÑO", "SURESTE"]},
+    "OURENSE": {"prov_code": "32", "ccaa_code": "71", "name": "Ourense", "ccaa_name": "Galicia", "aliases": ["OURENSE", "ORENSE", "VALDEORRAS", "MINO", "MIÑO"]},
+    "PONTEVEDRA": {"prov_code": "36", "ccaa_code": "71", "name": "Pontevedra", "ccaa_name": "Galicia", "aliases": ["PONTEVEDRA", "RIAS BAIXAS", "RÍAS BAIXAS", "VIGO", "MINO", "MIÑO"]},
+
+    # --- MADRID (Área EMMA 72) ---
+    "MADRID": {"prov_code": "28", "ccaa_code": "72", "name": "Madrid", "ccaa_name": "Madrid", "aliases": ["MADRID", "SIERRA DE MADRID", "METROPOLITANA", "SUR", "VEGAS", "HENARES"]},
+
+    # --- MURCIA (Área EMMA 73) ---
+    "MURCIA": {"prov_code": "30", "ccaa_code": "73", "name": "Murcia", "ccaa_name": "Región de Murcia", "aliases": ["MURCIA", "VEGA DEL SEGURA", "ALTIPLANO", "NOROESTE", "VALLE DEL GUADALENTIN", "VALLE DEL GUADALENTÍN", "AGUILAS", "ÁGUILAS", "CAMPO DE CARTAGENA", "CARTAGENA", "MAZARRON", "MAZARRÓN"]},
+
+    # --- NAVARRA (Área EMMA 74) ---
+    "NAVARRA": {"prov_code": "31", "ccaa_code": "74", "name": "Navarra", "ccaa_name": "Navarra", "aliases": ["NAVARRA", "PAMPLONA", "PIRINEO", "RIBERA", "CENTRO"]},
+
+    # --- PAÍS VASCO (Área EMMA 75) ---
+    "ALAVA": {"prov_code": "01", "ccaa_code": "75", "name": "Álava", "ccaa_name": "País Vasco", "aliases": ["ALAVA", "ÁLAVA", "ARABA", "VITORIA", "LLANADA", "RIBERA"]},
+    "GUIPUZCOA": {"prov_code": "20", "ccaa_code": "75", "name": "Guipúzcoa", "ccaa_name": "País Vasco", "aliases": ["GUIPUZCOA", "GUIPÚZCOA", "GIPUZKOA", "SAN SEBASTIAN", "SAN SEBASTIÁN", "DONOSTIA"]},
+    "VIZCAYA": {"prov_code": "48", "ccaa_code": "75", "name": "Vizcaya", "ccaa_name": "País Vasco", "aliases": ["VIZCAYA", "BIZKAIA", "BILBAO"]},
+
+    # --- LA RIOJA (Área EMMA 76) ---
+    "LA RIOJA": {"prov_code": "26", "ccaa_code": "76", "name": "La Rioja", "ccaa_name": "La Rioja", "aliases": ["LA RIOJA", "RIOJA", "LOGRONO", "LOGROÑO", "RIBERA DEL EBRO", "IBERICA"]},
+
+    # --- COMUNITAT VALENCIANA (Área EMMA 77) ---
+    "ALICANTE": {"prov_code": "03", "ccaa_code": "77", "name": "Alicante", "ccaa_name": "Comunitat Valenciana", "aliases": ["ALICANTE", "ALACANT", "LITORAL", "INTERIOR"]},
+    "CASTELLON": {"prov_code": "12", "ccaa_code": "77", "name": "Castellón", "ccaa_name": "Comunitat Valenciana", "aliases": ["CASTELLON", "CASTELLÓN", "CASTELLO", "CASTELLÓ", "MAESTRAZGO"]},
+    "VALENCIA": {"prov_code": "46", "ccaa_code": "77", "name": "Valencia", "ccaa_name": "Comunitat Valenciana", "aliases": ["VALENCIA", "VALÈNCIA"]},
+
+    # --- CIUDADES AUTÓNOMAS (Áreas EMMA 78 y 79) ---
+    "CEUTA": {"prov_code": "51", "ccaa_code": "78", "name": "Ceuta", "ccaa_name": "Ceuta", "aliases": ["CEUTA"]},
+    "MELILLA": {"prov_code": "52", "ccaa_code": "79", "name": "Melilla", "ccaa_name": "Melilla", "aliases": ["MELILLA"]},
 }
+
+# Mapa invertido CCAA -> Área EMMA (para cuando se especifica CCAA completa como Galicia o Andalucía)
+CCAA_NAME_TO_CODE: Dict[str, str] = {
+    "ANDALUCIA": "61", "ARAGON": "62", "ASTURIAS": "63", "BALEARES": "64", "ISLAS BALEARES": "64",
+    "CANARIAS": "65", "CANTABRIA": "66", "CASTILLA Y LEON": "67", "CASTILLA-LA MANCHA": "68",
+    "CATALUNA": "69", "EXTREMADURA": "70", "GALICIA": "71", "MADRID": "72", "MURCIA": "73",
+    "NAVARRA": "74", "PAIS VASCO": "75", "EUSKADI": "75", "LA RIOJA": "76",
+    "COMUNITAT VALENCIANA": "77", "VALENCIA": "77", "CEUTA": "78", "MELILLA": "79",
+}
+
+# Compatibilidad hacia atrás: mapa nombre provincia -> código INE (dos dígitos)
+PROV_NAME_TO_CODE: Dict[str, str] = {
+    k: v["prov_code"] for k, v in PROV_EMMA_MAP.items()
+}
+# Alias adicionales
+PROV_NAME_TO_CODE.update({
+    "ARABA": "01", "ALACANT": "03", "ISLAS BALEARES": "07", "CASTELLO": "12",
+    "CORUNA": "15", "A CORUNA": "15", "GERONA": "17", "GIPUZKOA": "20",
+    "LERIDA": "25", "LLEIDA": "25", "BIZKAIA": "48",
+})
 
 
 def _normalize_name(s: str) -> str:
@@ -48,6 +167,67 @@ def _normalize_name(s: str) -> str:
     nfkd = unicodedata.normalize('NFKD', s)
     s2 = ''.join(c for c in nfkd if not unicodedata.combining(c))
     return ' '.join(s2.split()).upper()
+
+
+def get_province_emma_info(name_or_code: str) -> Optional[Dict[str, Any]]:
+    """Obtiene la información EMMA (código INE, código C.A., prefijo EMMA y alias)
+    a partir del nombre de provincia o de su código INE de dos dígitos.
+    """
+    raw = (name_or_code or '').strip()
+    if not raw:
+        return None
+
+    # Búsqueda por código INE directo (2 dígitos)
+    if raw.isdigit() and len(raw) == 2:
+        for prov_key, info in PROV_EMMA_MAP.items():
+            if info["prov_code"] == raw:
+                res = dict(info)
+                res["key"] = prov_key
+                res["emma_prefix"] = f"{info['ccaa_code']}{info['prov_code']}"
+                return res
+
+    norm = _normalize_name(raw)
+
+    # 1. Coincidencia directa por clave
+    if norm in PROV_EMMA_MAP:
+        info = dict(PROV_EMMA_MAP[norm])
+        info["key"] = norm
+        info["emma_prefix"] = f"{info['ccaa_code']}{info['prov_code']}"
+        return info
+
+    # 2. Coincidencia en PROV_NAME_TO_CODE
+    code = PROV_NAME_TO_CODE.get(norm)
+    if code:
+        for prov_key, info in PROV_EMMA_MAP.items():
+            if info["prov_code"] == code:
+                res = dict(info)
+                res["key"] = prov_key
+                res["emma_prefix"] = f"{info['ccaa_code']}{info['prov_code']}"
+                return res
+
+    # 3. Coincidencia por alias
+    for prov_key, info in PROV_EMMA_MAP.items():
+        if any(norm == _normalize_name(a) for a in info.get("aliases", [])):
+            res = dict(info)
+            res["key"] = prov_key
+            res["emma_prefix"] = f"{info['ccaa_code']}{info['prov_code']}"
+            return res
+
+    # 4. Coincidencia por CCAA completa (p. ej. "Andalucía" o "Galicia")
+    ccaa_code = CCAA_NAME_TO_CODE.get(norm)
+    if ccaa_code:
+        return {
+            "prov_code": None,
+            "ccaa_code": ccaa_code,
+            "name": raw.title(),
+            "ccaa_name": raw.title(),
+            "emma_prefix": ccaa_code,
+            "aliases": [norm],
+            "key": norm,
+            "is_ccaa": True,
+        }
+
+    return None
 
 
 class Aemet:
@@ -153,6 +333,18 @@ class Aemet:
             return hmin <= now_hour <= hmax
         # Ventana que cruza medianoche, p.ej. 22 -> 6
         return now_hour >= hmin or now_hour <= hmax
+
+    # ----------- Metadatos EMMA y provincia -----------
+    def get_emma_info(self) -> Optional[Dict[str, Any]]:
+        """Devuelve la información EMMA (código CCAA, código provincia, prefijo y alias)
+        de la provincia configurada en AEMET_PROVINCE.
+        """
+        return get_province_emma_info(self.province)
+
+    def ccaa_code(self) -> Optional[str]:
+        """Devuelve el código EMMA (2 dígitos) de la Comunidad Autónoma correspondiente."""
+        info = self.get_emma_info()
+        return info.get("ccaa_code") if info else None
 
     # ----------- Predicción meteorológica (clima) -----------
     def province_code(self) -> Optional[str]:

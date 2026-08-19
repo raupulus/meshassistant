@@ -329,352 +329,280 @@ def _aemet_fix_legacy_once() -> None:
     db.set_task_run(mark)
 
 
-def fetch_aemet_alerts_for_province(aemet: Aemet) -> list[str]:
-    """Obtiene alertas desde OpenData de AEMET siguiendo la especificación oficial.
+def extract_xmls_from_bytes(data: bytes, depth: int = 0) -> list[str]:
+    """Extrae recursivamente textos XML CAP desde datos en memoria.
 
-    Flujo correcto (dos pasos):
-    1) GET al endpoint `.../opendata/api/avisos_cap/ultimoelaborado[/provincia/{X}|/area/{Y}]?api_key=...`
-       Devuelve JSON con campos `estado`, `datos`, `metadatos`.
-    2) GET a la URL de `datos` (sin api_key) y devolver el contenido (normalmente XML/Texto).
+    Soporta:
+    - XML plano (UTF-8 o ISO-8859-15 / Latin-1)
+    - Archivos GZIP (.gz)
+    - Archivos TAR (.tar, .tar.gz, .tgz) y TARs anidados dentro de GZ
+    """
+    if not data or depth > 5:
+        return []
 
-    Devuelve una lista con el/los textos descargados. Vacía si no hay datos.
+    stripped = data.lstrip()
+    if stripped.startswith(b'<?xml') or stripped.startswith(b'<alert'):
+        for enc in ('utf-8', 'iso-8859-15', 'latin-1'):
+            try:
+                return [data.decode(enc).strip()]
+            except Exception:
+                continue
+        return [data.decode('utf-8', errors='replace').strip()]
+
+    # Si es gzip (magic 0x1f 0x8b)
+    if len(data) >= 2 and data[0] == 0x1F and data[1] == 0x8B:
+        try:
+            import gzip as _gzip
+            decompressed = _gzip.decompress(data)
+            return extract_xmls_from_bytes(decompressed, depth=depth + 1)
+        except Exception:
+            pass
+
+    # Si es tar (comprimido o sin comprimir)
+    try:
+        import io as _io
+        import tarfile as _tarfile
+        bio = _io.BytesIO(data)
+        results: list[str] = []
+        with _tarfile.open(fileobj=bio, mode='r:*') as tar:
+            for m in tar.getmembers():
+                if not m.isfile():
+                    continue
+                f = tar.extractfile(m)
+                if not f:
+                    continue
+                try:
+                    m_bytes = f.read()
+                    results.extend(extract_xmls_from_bytes(m_bytes, depth=depth + 1))
+                except Exception:
+                    continue
+                finally:
+                    try:
+                        f.close()
+                    except Exception:
+                        pass
+        return results
+    except Exception:
+        pass
+
+    return []
+
+
+def _filter_alert_xml_for_province(xml_text: str, emma_info: Optional[dict], prov_raw: str) -> bool:
+    """Comprueba si un documento XML CAP corresponde a la provincia configurada."""
+    if not xml_text:
+        return False
+    if not emma_info and not prov_raw:
+        return True
+
+    # 1. Búsqueda por geocodes EMMA_ID y área en la estructura XML
+    try:
+        import xml.etree.ElementTree as ET
+        ns = {'cap': 'urn:oasis:names:tc:emergency:cap:1.2'}
+        root = ET.fromstring(xml_text)
+        for info in root.findall('cap:info', ns):
+            area_el = info.find('cap:area', ns)
+            if area_el is not None:
+                # Comprobar código de zona EMMA (ej. '6111' para Cádiz o '61' para CCAA completa)
+                if emma_info and emma_info.get('emma_prefix'):
+                    prefix = str(emma_info['emma_prefix'])
+                    for gc in area_el.findall('cap:geocode', ns):
+                        v = (gc.findtext('cap:value', default='', namespaces=ns) or '').strip()
+                        if v.startswith(prefix):
+                            return True
+
+                # Comprobar descripción de área
+                area_desc = (area_el.findtext('cap:areaDesc', default='', namespaces=ns) or '').upper()
+                accents_map = str.maketrans("ÁÉÍÓÚÀÈÌÒÙÄËÏÖÜÂÊÎÔÛ", "AEIOUAEIOUAEIOUAEIOU")
+                area_desc_norm = area_desc.translate(accents_map)
+
+                targets = []
+                if emma_info:
+                    targets.extend(emma_info.get('aliases', []))
+                    if emma_info.get('name'):
+                        targets.append(emma_info['name'])
+                if prov_raw:
+                    targets.append(prov_raw)
+
+                for t in targets:
+                    t_norm = (t or '').upper().translate(accents_map)
+                    if t_norm and t_norm in area_desc_norm:
+                        return True
+    except Exception:
+        pass
+
+    # 2. Fallback textual rápido sobre el XML completo normalizado
+    accents_map = str.maketrans("ÁÉÍÓÚÀÈÌÒÙÄËÏÖÜÂÊÎÔÛ", "AEIOUAEIOUAEIOUAEIOU")
+    xml_norm = xml_text.upper().translate(accents_map)
+
+    if emma_info:
+        if emma_info.get('emma_prefix') and emma_info['emma_prefix'] in xml_norm:
+            return True
+        for a in emma_info.get('aliases', []):
+            a_norm = a.upper().translate(accents_map)
+            if a_norm and a_norm in xml_norm:
+                return True
+
+    if prov_raw:
+        p_norm = prov_raw.upper().translate(accents_map)
+        if p_norm and p_norm in xml_norm:
+            return True
+
+    return False
+
+
+def fetch_aemet_alerts_for_province(aemet: Aemet) -> Optional[list[str]]:
+    """Obtiene las alertas meteorológicas activas desde el endpoint de área C.A. de AEMET.
+
+    Endpoints:
+    1) GET https://opendata.aemet.es/opendata/api/avisos_cap/ultimoelaborado/area/{ccaa_code}
+       (p. ej. 61 para Andalucía / Cádiz).
+    2) Fallback: .../avisos_cap/ultimoelaborado/area/esp (nacional).
+
+    Devuelve:
+      - list[str] con los XMLs filtrados para la provincia (vacía [] si no hay alertas activas).
+      - None si hubo un error HTTP/red y se debe intentar el archivo histórico.
     """
     import requests
-    import unicodedata
     from urllib.parse import quote
 
-    log_p("[cron] fetch_aemet: iniciando descarga")
-
-    # Solo cabeceras básicas; la api_key va en query (paso 1)
-    headers = {
-        'Accept': 'application/json',
-        'Content-Type': 'application/json',
-    }
-
     api_key = getattr(aemet, 'api_key', None)
+    if not api_key:
+        return []
+
+    emma_info = aemet.get_emma_info()
+    ccaa_code = (emma_info.get('ccaa_code') if emma_info else None) or aemet.ccaa_code()
     prov_raw = (aemet.province or '').strip()
 
-    def _normalize_name(s: str) -> str:
-        # Quitar acentos, colapsar espacios, mayúsculas
-        nfkd = unicodedata.normalize('NFKD', s)
-        s2 = ''.join([c for c in nfkd if not unicodedata.combining(c)])
-        return ' '.join(s2.split()).upper()
+    log_p(f"[cron] fetch_aemet: buscando alertas para provincia='{prov_raw}' (CCAA={ccaa_code})")
 
-    prov_norm = _normalize_name(prov_raw) if prov_raw else ''
-    prov_title = prov_raw.title() if prov_raw else ''
-    # Variante capitalizada SIN tilde (formato que AEMET exige en /area/{NOMBRE}),
-    # p.ej. "Cadiz" o "Andalucia". Derivada del nombre ya normalizado.
-    prov_unaccented_title = prov_norm.title() if prov_norm else ''
+    base_filter = 'https://opendata.aemet.es/opendata/api/avisos_cap/ultimoelaborado/area'
+    urls_to_try: list[str] = []
+    if ccaa_code:
+        urls_to_try.append(f"{base_filter}/{quote(str(ccaa_code))}")
+    urls_to_try.append(f"{base_filter}/esp")
 
-    # Determinar orden de prueba: para Galicia probamos AREA primero; para Cádiz, PROVINCIA
-    AREA_NAMES = {
-        "GALICIA", "ANDALUCIA", "ARAGON", "ASTURIAS", "BALEARES", "CANARIAS", "CANTABRIA",
-        "CASTILLA Y LEON", "CASTILLA-LA MANCHA", "CATALUNA", "CEUTA", "EXTREMADURA",
-        "LA RIOJA", "MADRID", "MELILLA", "MURCIA", "NAVARRA", "PAIS VASCO", "COMUNITAT VALENCIANA"
-    }
+    req_headers = {'Accept': 'application/json', 'api_key': api_key}
+    params = {'api_key': api_key}
 
-    # Endpoints oficiales según documentación:
-    # - Filtrado por provincia/área (singular):  .../avisos_cap/ultimoelaborado
-    #   Subrutas: /provincia/{codigoINEdosDigitos} | /area/{NOMBRE_AREA}
-    # - Sin filtro (plural):                      .../avisos_cap/ultimoselaborados
-    base_filter = 'https://opendata.aemet.es/opendata/api/avisos_cap/ultimoelaborado'
-    base_list = 'https://opendata.aemet.es/opendata/api/avisos_cap/ultimoselaborados'
-
-    endpoints: list[str] = []
-    if prov_norm:
-        # Mapa nombre provincia -> código oficial AEMET (dos dígitos INE)
-        PROV_NAME_TO_CODE = {
-            "ALAVA": "01", "ARABA": "01", "ALBACETE": "02", "ALICANTE": "03", "ALACANT": "03",
-            "ALMERIA": "04", "AVILA": "05", "BADAJOZ": "06", "BALEARES": "07", "ISLAS BALEARES": "07",
-            "BARCELONA": "08", "BURGOS": "09", "CACERES": "10", "CADIZ": "11",
-            "CASTELLON": "12", "CASTELLO": "12", "CIUDAD REAL": "13", "CORDOBA": "14", "A CORUNA": "15",
-            "CORUNA": "15", "A CORUÑA": "15", "CUENCA": "16", "GIRONA": "17", "GERONA": "17", "GRANADA": "18",
-            "GUADALAJARA": "19", "GUIPUZCOA": "20", "GIPUZKOA": "20", "HUELVA": "21", "HUESCA": "22",
-            "JAEN": "23", "LEON": "24", "LERIDA": "25", "LLEIDA": "25", "LA RIOJA": "26",
-            "LUGO": "27", "MADRID": "28", "MALAGA": "29", "MURCIA": "30", "NAVARRA": "31",
-            "OURENSE": "32", "PALENCIA": "34", "LAS PALMAS": "35", "PONTEVEDRA": "36",
-            "SALAMANCA": "37", "SANTA CRUZ DE TENERIFE": "38", "SEGOVIA": "40", "SEVILLA": "41",
-            "SORIA": "42", "TARRAGONA": "43", "TERUEL": "44", "TOLEDO": "45", "VALENCIA": "46",
-            "VALLADOLID": "47", "VIZCAYA": "48", "BIZKAIA": "48", "ZAMORA": "49", "ZARAGOZA": "50",
-            "CEUTA": "51", "MELILLA": "52"
-        }
-
-        # Mapa CCAA (área) -> lista de códigos INE de provincias (para fallback)
-        AREA_TO_PROV_CODES = {
-            "GALICIA": ["15", "27", "32", "36"],  # A Coruña, Lugo, Ourense, Pontevedra
-            # Se pueden añadir más CCAA si es necesario
-        }
-
-        # Si es una CCAA conocida, usar /area únicamente
-        if prov_norm in AREA_NAMES:
-            # Probar varias variantes de nombre de área (incluida la capitalizada
-            # sin tilde, que es el formato real que acepta AEMET en /area/)
-            for area_name in [prov_unaccented_title, prov_norm, prov_title, prov_raw]:
-                if area_name:
-                    endpoints.append(f"{base_filter}/area/{quote(area_name)}")
-            # Fallback: si área falla, probar por provincias que componen esa CCAA
-            for code in AREA_TO_PROV_CODES.get(prov_norm, []):
-                endpoints.append(f"{base_filter}/provincia/{quote(code)}")
-        else:
-            # Provincias: permitir código directo (dos dígitos) o mapear nombre a código
-            if prov_norm.isdigit() and len(prov_norm) in (2,):
-                endpoints.append(f"{base_filter}/provincia/{quote(prov_norm)}")
-            else:
-                code = PROV_NAME_TO_CODE.get(prov_norm)
-                if code:
-                    endpoints.append(f"{base_filter}/provincia/{quote(code)}")
-                else:
-                    # Último recurso: intentar área con distintas variantes de
-                    # nombre, priorizando la capitalizada sin tilde ("Cadiz").
-                    for area_name in [prov_unaccented_title, prov_norm, prov_title, prov_raw]:
-                        if area_name:
-                            endpoints.append(f"{base_filter}/area/{quote(area_name)}")
-    # Fallback sin filtro (plural) siempre al final
-    endpoints.append(base_filter)  # singular sin filtro
-    endpoints.append(base_list)    # plural sin filtro
-
-    for url in endpoints:
+    success_attempt = False
+    for url in urls_to_try:
         try:
-            params = {'api_key': api_key} if api_key else None
-            # Algunos despliegues aceptan api_key en cabecera; incluimos ambas formas
-            req_headers = {'Accept': 'application/json'}
-            if api_key:
-                req_headers['api_key'] = api_key
-            log_p(f"[cron] fetch_aemet: GET {url} params={bool(params)}")
-            r1 = requests.get(url, headers=req_headers, params=params, timeout=5)
-            ct1 = (r1.headers.get('Content-Type') or '').lower()
-            log_p(f"[cron] fetch_aemet: resp1 status={r1.status_code} ct={ct1}")
-            r1.raise_for_status()
+            log_p(f"[cron] fetch_aemet: GET {url}")
+            r1 = requests.get(url, headers=req_headers, params=params, timeout=10)
+            if r1.status_code != 200:
+                log_p(f"[cron] fetch_aemet: status={r1.status_code} en {url}", level="WARN")
+                continue
 
-            # Intentar JSON de control (estado/datos)
-            j = None
-            if 'json' in ct1:
-                try:
-                    j = r1.json()
-                except Exception:
-                    j = None
+            j = r1.json()
+            if not isinstance(j, dict):
+                continue
+            estado = j.get('estado')
+            if estado is not None and int(str(estado)) != 200:
+                log_p(f"[cron] fetch_aemet: estado={estado} desc={j.get('descripcion')}", level="WARN")
+                continue
 
-            if isinstance(j, dict):
-                estado = j.get('estado')
-                if estado is not None and int(str(estado)) != 200:
-                    # Error reportado por AEMET en JSON de control
-                    log_p(f"[cron] fetch_aemet: paso1 estado={estado} desc={j.get('descripcion')} (descartado)", level="WARN")
-                    continue
-                datos_url = j.get('datos')
-                if not datos_url:
-                    log_p("[cron] fetch_aemet: paso1 JSON sin 'datos' (descartado)", level="WARN")
-                    continue
-                # Segunda petición a 'datos' (documento real)
-                log_p(f"[cron] fetch_aemet: GET datos {datos_url}")
-                r2 = requests.get(datos_url, timeout=5)
-                ct2 = (r2.headers.get('Content-Type') or '').lower()
-                log_p(f"[cron] fetch_aemet: resp2 status={r2.status_code} ct={ct2}")
-                r2.raise_for_status()
-                # Si curiosamente devuelve JSON, validar que no sea error
-                txt2 = r2.text.strip()
-                if 'json' in ct2:
-                    try:
-                        j2 = r2.json()
-                        est2 = j2.get('estado')
-                        if est2 is not None and int(str(est2)) != 200:
-                            log_p(f"[cron] fetch_aemet: paso2 estado={est2} desc={j2.get('descripcion')} (descartado)", level="WARN")
-                            continue
-                    except Exception:
-                        # JSON inválido; lo tratamos como texto
-                        pass
-                log_p(f"[cron] fetch_aemet: datos len={len(txt2)}")
-                if txt2:
-                    return [txt2]
-                else:
-                    continue
+            datos_url = j.get('datos')
+            if not datos_url:
+                continue
 
-            # Si no es JSON en paso 1 y no hay 'datos', aceptar solo si no es JSON y hay texto (poco probable)
-            if 'json' not in ct1:
-                txt_direct = r1.text.strip()
-                log_p(f"[cron] fetch_aemet: respuesta directa len={len(txt_direct)} (ct={ct1})")
-                if txt_direct:
-                    return [txt_direct]
-                else:
-                    continue
+            log_p(f"[cron] fetch_aemet: GET datos {datos_url}")
+            r2 = requests.get(datos_url, timeout=20)
+            if r2.status_code != 200:
+                log_p(f"[cron] fetch_aemet: datos status={r2.status_code}", level="WARN")
+                continue
 
-            # Si llega aquí con JSON pero sin campo 'datos', descartar
-            log_p("[cron] fetch_aemet: JSON recibido sin 'datos' (descartado)", level="WARN")
-            continue
+            success_attempt = True
+            all_xmls = extract_xmls_from_bytes(r2.content)
+            log_p(f"[cron] fetch_aemet: extraídos {len(all_xmls)} XMLs desde {url}")
+
+            filtered_xmls = [
+                xml_str for xml_str in all_xmls
+                if _filter_alert_xml_for_province(xml_str, emma_info, prov_raw)
+            ]
+            log_p(f"[cron] fetch_aemet: filtrados {len(filtered_xmls)}/{len(all_xmls)} XMLs para '{prov_raw}'")
+            return filtered_xmls
 
         except Exception as e:
-            log_p(f"[cron] fetch_aemet: error con url {url}: {e}", level="WARN")
+            log_p(f"[cron] fetch_aemet: excepción con {url}: {e}", level="WARN")
             continue
-    return []
+
+    return None if not success_attempt else []
 
 
 def fetch_aemet_alerts_archive(aemet: Aemet) -> Optional[list[str]]:
     """Obtiene alertas CAP desde el endpoint de ARCHIVO por rango temporal (tar.gz) y filtra por provincia.
 
-    Flujo:
-      1) GET https://opendata.aemet.es/opendata/api/avisos_cap/archivo/fechaini/{UTC}/fechafin/{UTC}?api_key=...
-         → JSON { estado, datos, metadatos }
-      2) GET a 'datos' (tar.gz) → contiene múltiples .gz (cada uno con un XML CAP)
-      3) Descomprimir y filtrar por provincia (`AEMET_PROVINCE`).
-
-    Filtro por provincia:
-      - Si AEMET_PROVINCE es una CCAA conocida (ej. Galicia), se filtra por nombres de sus provincias.
-      - Si es una provincia, se filtra por su nombre normalizado dentro del XML (búsqueda textual).
-
-    Valor de retorno (distingue error de día-sin-alertas):
-      - `None`  → hubo un error HTTP/JSON/parsing (la descarga no es fiable). El
-                   llamador debe recurrir al fallback de la API provincial.
-      - `[]`    → la descarga fue correcta pero no hay ninguna alerta para la
-                   provincia (caso normal la mayoría de días). NO hay que hacer
-                   fallback: simplemente no hay nada que publicar.
-      - `[...]` → lista de textos XML CAP que afectan a la provincia.
+    Devuelve:
+      - None si hubo un error HTTP/red/parsing (la descarga falló).
+      - [] si la descarga fue correcta pero no hay avisos para la provincia.
+      - [...] lista de XMLs que afectan a la provincia.
     """
     import requests
-    import io
-    import tarfile
-    import gzip as _gzip
-    import unicodedata
     from urllib.parse import quote
     from datetime import datetime, timedelta, timezone
 
     api_key = getattr(aemet, 'api_key', None)
+    if not api_key:
+        return []
+
+    emma_info = aemet.get_emma_info()
     prov_raw = (aemet.province or '').strip()
 
-    def _normalize(s: str) -> str:
-        nfkd = unicodedata.normalize('NFKD', s)
-        s2 = ''.join([c for c in nfkd if not unicodedata.combining(c)])
-        return ' '.join(s2.split()).upper()
-
-    prov_norm = _normalize(prov_raw) if prov_raw else ''
-
-    # Mapas auxiliares para Galicia (puedes ampliar si necesitas otras CCAA)
-    AREA_TO_PROVINCE_NAMES = {
-        'GALICIA': ['A CORUÑA', 'LUGO', 'OURENSE', 'PONTEVEDRA', 'GALICIA'],
-    }
-
-    # Rango temporal: desde hoy 00:00 UTC hasta mañana 00:00 UTC
+    # Rango temporal: desde hoy 00:00 UTC hasta mañana 00:00 UTC (máx 2 días permitido por AEMET)
     now_utc = datetime.now(timezone.utc)
     start = now_utc.replace(hour=0, minute=0, second=0, microsecond=0)
-    end = start + timedelta(days=2)  # cubre hoy y mañana (similar a ejemplo)
+    end = start + timedelta(days=2)
 
     def fmt(dt: datetime) -> str:
-        # Formato requerido: YYYY-MM-DDTHH:MM:SSUTC (URL-encoded)
         return quote(dt.strftime('%Y-%m-%dT%H:%M:%S') + 'UTC', safe='')
 
     base = 'https://opendata.aemet.es/opendata/api/avisos_cap/archivo'
     url = f"{base}/fechaini/{fmt(start)}/fechafin/{fmt(end)}"
 
-    params = {'api_key': api_key} if api_key else None
-    log_p(f"[cron] fetch_aemet-archivo: GET {url} params={bool(params)}")
-    r1 = requests.get(url, headers={'Accept': 'application/json'}, params=params, timeout=10)
-    ct1 = (r1.headers.get('Content-Type') or '').lower()
-    log_p(f"[cron] fetch_aemet-archivo: resp1 status={r1.status_code} ct={ct1}")
-    r1.raise_for_status()
+    params = {'api_key': api_key}
+    req_headers = {'Accept': 'application/json', 'api_key': api_key}
 
-    j = r1.json()
-    estado = j.get('estado') if isinstance(j, dict) else None
-    if estado is None or int(str(estado)) != 200:
-        desc = j.get('descripcion') if isinstance(j, dict) else None
-        # estado 404 de AEMET = "no hay datos para el rango" (día sin alertas),
-        # no es un fallo de red: devolvemos [] para no disparar el fallback.
-        # Cualquier otro estado (429, 5xx, etc.) sí es error → None.
-        try:
-            estado_int = int(str(estado))
-        except Exception:
-            estado_int = None
-        if estado_int == 404:
-            log_p(f"[cron] fetch_aemet-archivo: estado=404 (sin avisos para el rango)", level='INFO')
-            return []
-        log_p(f"[cron] fetch_aemet-archivo: estado={estado} desc={desc} (error)", level='WARN')
+    try:
+        log_p(f"[cron] fetch_aemet-archivo: GET {url}")
+        r1 = requests.get(url, headers=req_headers, params=params, timeout=10)
+        if r1.status_code != 200:
+            log_p(f"[cron] fetch_aemet-archivo: status={r1.status_code}", level="WARN")
+            return None
+
+        j = r1.json()
+        if not isinstance(j, dict):
+            return None
+        estado = j.get('estado')
+        if estado is None or int(str(estado)) != 200:
+            if int(str(estado or 0)) == 404:
+                log_p("[cron] fetch_aemet-archivo: estado=404 (sin avisos para el rango)")
+                return []
+            log_p(f"[cron] fetch_aemet-archivo: estado={estado} desc={j.get('descripcion')}", level="WARN")
+            return None
+
+        datos_url = j.get('datos')
+        if not datos_url:
+            return None
+
+        log_p(f"[cron] fetch_aemet-archivo: GET datos {datos_url}")
+        r2 = requests.get(datos_url, timeout=30)
+        if r2.status_code != 200:
+            return None
+
+        all_xmls = extract_xmls_from_bytes(r2.content)
+        log_p(f"[cron] fetch_aemet-archivo: extraídos {len(all_xmls)} XMLs totales")
+
+        filtered_xmls = [
+            xml_str for xml_str in all_xmls
+            if _filter_alert_xml_for_province(xml_str, emma_info, prov_raw)
+        ]
+        log_p(f"[cron] fetch_aemet-archivo: filtrados {len(filtered_xmls)}/{len(all_xmls)} XMLs para '{prov_raw}'")
+        return filtered_xmls
+
+    except Exception as e:
+        log_p(f"[cron] fetch_aemet-archivo: error: {e}", level="WARN")
         return None
-    datos_url = j.get('datos')
-    if not datos_url:
-        log_p("[cron] fetch_aemet-archivo: paso1 JSON sin 'datos' (error)", level='WARN')
-        return None
-
-    # Descargar tar.gz con los avisos
-    log_p(f"[cron] fetch_aemet-archivo: GET datos {datos_url}")
-    r2 = requests.get(datos_url, timeout=20)
-    ct2 = (r2.headers.get('Content-Type') or '').lower()
-    log_p(f"[cron] fetch_aemet-archivo: resp2 status={r2.status_code} ct={ct2}")
-    r2.raise_for_status()
-
-    # Abrir tar (comprimido o no). Algunos despliegues devuelven TAR sin gzip.
-    bio = io.BytesIO(r2.content)
-    texts: list[str] = []
-
-    with tarfile.open(fileobj=bio, mode='r:*') as tar:
-        members = tar.getmembers()
-        log_p(f"[cron] fetch_aemet-archivo: tar members={len(members)}")
-
-        # Preparar lista de patrones de filtro
-        targets: list[str] = []
-        if prov_norm in AREA_TO_PROVINCE_NAMES:
-            targets = [ _normalize(x) for x in AREA_TO_PROVINCE_NAMES[prov_norm] ]
-        elif prov_norm:
-            targets = [prov_norm]
-
-        matched = 0
-        scanned = 0
-        for m in members:
-            if not m.isfile():
-                continue
-            # cada entrada es a su vez .gz (contiene XML)
-            f = tar.extractfile(m)
-            if not f:
-                continue
-            try:
-                file_bytes = f.read()
-                xml_text = ''
-                # Detectar por extensión o por cabecera gzip (0x1f, 0x8b)
-                is_gz = m.name.lower().endswith('.gz') or (len(file_bytes) >= 2 and file_bytes[0] == 0x1F and file_bytes[1] == 0x8B)
-                if is_gz:
-                    try:
-                        xml_bytes = _gzip.decompress(file_bytes)
-                        try:
-                            xml_text = xml_bytes.decode('utf-8', errors='replace').strip()
-                        except Exception:
-                            xml_text = xml_bytes.decode('latin-1', errors='replace').strip()
-                    except Exception:
-                        # Si falla la descompresión, tratar como texto directo
-                        try:
-                            xml_text = file_bytes.decode('utf-8', errors='replace').strip()
-                        except Exception:
-                            xml_text = file_bytes.decode('latin-1', errors='replace').strip()
-                else:
-                    # No es gz: leer como texto directo
-                    try:
-                        xml_text = file_bytes.decode('utf-8', errors='replace').strip()
-                    except Exception:
-                        xml_text = file_bytes.decode('latin-1', errors='replace').strip()
-            except Exception:
-                continue
-            finally:
-                try:
-                    f.close()
-                except Exception:
-                    pass
-
-            scanned += 1
-            if not xml_text:
-                continue
-
-            if not targets:
-                # sin filtro, aceptar todos
-                texts.append(xml_text)
-                matched += 1
-                continue
-
-            # filtro por presencia textual de provincia/área en el XML (normalizado)
-            # Optimización crucial: str.translate es órdenes de magnitud más rápido que unicodedata en bucle Python
-            accents_map = str.maketrans("ÁÉÍÓÚÀÈÌÒÙÄËÏÖÜÂÊÎÔÛ", "AEIOUAEIOUAEIOUAEIOU")
-            xml_norm = xml_text.upper().translate(accents_map)
-            if any(t in xml_norm for t in targets):
-                texts.append(xml_text)
-                matched += 1
-
-        log_p(f"[cron] fetch_aemet-archivo: filtrados {matched}/{scanned} elementos")
-
-    return texts
 
 
 def weather_forecast_aemet() -> None:

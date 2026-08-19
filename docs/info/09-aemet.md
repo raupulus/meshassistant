@@ -16,17 +16,19 @@ si `AEMET_API_KEY` tiene valor.
 
 ## Descarga (cron) — `check_aemet()`
 
-1. Cooldown: máximo **1 vez/hora** (`tasks_control['aemet_fetch']`).
+1. Cooldown: según `AEMET_PERIOD` (`tasks_control['aemet_fetch']`).
 2. Si no hay `AEMET_API_KEY`, no consulta.
 3. One-shot `_aemet_fix_legacy_once()` (migra filas antiguas con XML crudo).
-4. Vía principal: **archivo por rango temporal** `fetch_aemet_alerts_archive` —
-   descarga un `tar.gz` con XMLs CAP de hoy/mañana y **filtra por provincia/CCAA**.
-5. Fallback: `fetch_aemet_alerts_for_province` (endpoints `ultimoelaborado` por
-   `/provincia/{códigoINE}` o `/area/{NOMBRE}`, con mapas nombre→código).
-6. `Database.aemet_bulk_insert(province, texts)` parsea y guarda.
+4. Vía principal: **área C.A. EMMA** `fetch_aemet_alerts_for_province` —
+   descarga el archivo TAR de la Comunidad Autónoma (`.../ultimoelaborado/area/{ccaa_code}`,
+   p. ej. `61` para Andalucía / Cádiz) de forma instantánea (<0.2s), desempaqueta
+   los XMLs en memoria y filtra por geocode EMMA (`6111xx` para Cádiz) y comarcas.
+   Fallback a `area/esp` si falla el área específica.
+5. Fallback secundario: `fetch_aemet_alerts_archive` (rango temporal de 2 días).
+6. `Database.aemet_bulk_insert(province, texts)` parsea y guarda (descartando `nivel verde`).
 
 > El flujo OpenData es de **dos pasos**: el primer GET devuelve un JSON con un campo
-> `datos` (URL); el segundo GET a esa URL trae el documento real (XML o tar.gz).
+> `datos` (URL); el segundo GET a esa URL trae el contenedor real (archivo TAR con los XMLs CAP).
 
 ## Parseo CAP — `Database._parse_cap_es`
 
@@ -38,7 +40,8 @@ Extrae el bloque `<info>` en español de un XML **CAP 1.2** y compone dos textos
 
 Campos leídos: `event`, `headline`, `description`, `instruction`, `onset`,
 `expires`, `senderName`, `web`, `areaDesc` y parámetros (`nivel`, `probabilidad`,
-`fenomeno`). Las respuestas JSON de error de AEMET (`estado != 200`) se descartan.
+`fenomeno`). Las respuestas JSON de error de AEMET (`estado != 200`) y los
+avisos rutinarios de **`nivel verde` (sin riesgo)** se descartan automáticamente.
 
 ## Almacenamiento y dedup
 
