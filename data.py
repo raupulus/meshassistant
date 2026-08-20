@@ -17,6 +17,7 @@ from Commands.stats import stats_callback
 from Commands.encuesta import encuesta_callback
 from Commands.dado import dado_callback
 from Commands.bola8 import bola8_callback
+from Commands.routers import routers_callback
 
 from datetime import date
 
@@ -150,6 +151,20 @@ commands_dict = {
         "hidden": True,
         "usage": "/8ball o /bola8 <pregunta>",
         "info": "Alias de /bola8: la bola 8 mágica responde sí/no"
+    },
+    "routers": {
+        "callback": routers_callback,
+        "in_group": True,
+        "usage": "/routers o !routers",
+        "info": "Estado de los routers/repetidores clave de la malla (actividad, SNR y saltos)"
+    },
+    "repetidores": {
+        # Alias de /routers (oculto en la lista de /help para no duplicar).
+        "callback": routers_callback,
+        "in_group": True,
+        "hidden": True,
+        "usage": "/repetidores o /routers",
+        "info": "Alias de /routers: estado de los routers y repetidores de la malla"
     },
 }
 

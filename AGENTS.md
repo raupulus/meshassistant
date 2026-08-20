@@ -153,6 +153,11 @@ y la información se pierde (es lo que pasaba con `/weather`). Reglas:
 - `tasks_control`: marca la última ejecución de tareas periódicas (`name`,
   `last_run_at`). Úsala para *throttling* (`_should_run`, `get_task_last_run`,
   `set_task_run`).
+- **Política de retención de datos:** Mantener siempre **toda la información histórica posible**
+  (`pings`, `commands_sent`, `traces` exitosos/archivados, `nodes`). Los pings y traces válidos
+  son esenciales para diagnosticar problemas de red, comparar evoluciones de SNR en el tiempo y
+  analizar topologías y saltos hacia los nodos. La base de datos es muy compacta (~8 MB/año) y el
+  espacio en disco es abundante, por lo que **no** se deben borrar registros válidos automáticamente.
 
 Esquema completo: `docs/info/03-base-de-datos.md`.
 

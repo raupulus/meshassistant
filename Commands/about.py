@@ -1,5 +1,8 @@
+from functions import log_p
+
+
 def about_callback(interface, args, msg, metadata):
-    print('Información sobre el proyecto')
+    log_p('Comando /about recibido')
 
     response = ('Proyecto para bot cliente meshtastic creado por '
                 'https://raupulus.dev a modo de asistente offline. Envía '

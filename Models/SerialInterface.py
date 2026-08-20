@@ -101,10 +101,10 @@ class SerialInterface:
             return False
 
     def on_receive_position(self, packet, interface):
-       print('on_receive_position', packet, interface)
+        log_p(f"on_receive_position: {packet}", level="DEBUG")
 
     def on_receive_user(self, packet, interface):
-        #print('on_receive_user', packet, interface)
+        # log_p(f"on_receive_user: {packet}", level="DEBUG")
         nodenumber = packet.get('from', None)
         decoded = packet.get('decoded', None)
 
@@ -136,10 +136,8 @@ class SerialInterface:
                     "hop_start": packet.get('hopStart', None),
                 })
 
-
-
     def on_receive_data(self, packet, interface):
-       print('on_receive_data', packet, interface)
+        log_p(f"on_receive_data: {packet}", level="DEBUG")
 
     def disconnect(self):
         # Cerrar la interfaz solo si está inicializada

@@ -1,5 +1,8 @@
+from functions import log_p
+
+
 def weather_callback(interface, args, msg, metadata):
-    print('weather')
+    log_p('Comando /weather recibido')
     
     from Models.Database import Database
     from datetime import datetime, timedelta
@@ -37,7 +40,7 @@ def weather_callback(interface, args, msg, metadata):
     try:
         record = db.aemet_weather_get_latest(province_code=requested_province_code)
     except Exception as e:
-        print(f"Error leyendo clima: {e}")
+        log_p(f"Error leyendo clima: {e}", level="WARN")
 
     is_old = False
     if record and record.get('created_at'):
@@ -68,7 +71,7 @@ def weather_callback(interface, args, msg, metadata):
                 record = db.aemet_weather_get_latest(province_code=aemet.province_code())
                 is_old = False
         except Exception as e:
-            print(f"Error fetching clima on the fly: {e}")
+            log_p(f"Error fetching clima on the fly: {e}", level="WARN")
 
     if not record or not record.get('content'):
         interface.reply_to_message(

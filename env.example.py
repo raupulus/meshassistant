@@ -45,6 +45,9 @@ LOCATION_TZ = 'Europe/Madrid'  # zona horaria IANA (gestiona el horario de veran
 ## /snr muestra la señal de este nodo (nombre corto) como referencia principal.
 MESH_GATEWAY_SHORT_NAME = 'RAU0'
 
+## Lista de routers/repetidores a vigilar con el comando /routers (nombres cortos o IDs)
+ROUTER_NODES = ['RAU0']
+
 ## Mareas (/marea)
 ## Fuente de descarga vía cron: si TIDES_API_KEY está vacío se usa Open-Meteo
 ## Marine (gratis, sin key). Si no hay Internet, el comando estima con la Luna.

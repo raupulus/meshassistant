@@ -18,7 +18,7 @@ def prevision_callback(interface, args, msg, metadata):
         from Models.Database import Database
         record = Database().aemet_weather_get_latest(scope='forecast')
     except Exception as e:
-        print(f"Error leyendo previsión: {e}")
+        log_p(f"Error leyendo previsión: {e}", level="WARN")
 
     stale = True
     if record and record.get('content'):
@@ -69,7 +69,7 @@ def prevision_callback(interface, args, msg, metadata):
                         except Exception:
                             pass
         except Exception as e:
-            print(f"Error previsión on-demand: {e}")
+            log_p(f"Error previsión on-demand: {e}", level="WARN")
 
     # 3) Último recurso: texto guardado de provincia/municipio (el de /weather)
     if text is None and record and record.get('content'):

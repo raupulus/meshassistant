@@ -72,7 +72,8 @@ Todo callback **registra el comando** con `Database().log_command(...)` (en
 | `/encuesta …` | `Commands/encuesta.py` | Sí | ✅ | Encuestas comunitarias (subcomandos abajo). |
 | `/dado [NdM]` | `Commands/dado.py` | Sí | ✅ | 1d6 por defecto; admite `N` caras o `NdM`. |
 | `/bola8` (`/8ball`) | `Commands/bola8.py` | Sí | ✅ | Bola 8 mágica; `8ball` es alias `hidden`. |
-| `/uptime` | `Commands/uptime.py` | No | 🟡 | Responde `N/D`. |
+| `/routers` (`/repetidores`) | `Commands/routers.py` | Sí | ✅ | Estado de routers/repetidores configurados (actividad, SNR, hops). |
+| `/uptime` | `Commands/uptime.py` | No | ✅ | Tiempo encendido del bot (`format_uptime`). |
 | `/ia` | `Commands/ia.py` | Sí | 🟡 | "funcionalidad en desarrollo". |
 
 ## Referencia de los comandos nuevos
@@ -86,6 +87,10 @@ Todo callback **registra el comando** con `Database().log_command(...)` (en
   (azotea) identificado por su nombre corto en `MESH_GATEWAY_SHORT_NAME`
   (def. `RAU0`) y luego la **media de SNR** del resto de nodos RF (excluye MQTT).
   Ej.: `SNR RAU0: 8.5 dB (1 hops). Media malla RF: 6.2 dB (38 nodos).`
+- **`/routers`** (alias **`/repetidores`**) — Informa del estado de los nodos routers/repetidores
+  configurados en `ROUTER_NODES` de `env.py` (por defecto el nodo pasarela `RAU0`). Muestra
+  cuándo se escuchó por última vez, su SNR y saltos (*hops*). Ej.:
+  `Routers: RAU0: hace 2m, 11.5dB, 0h · R-Norte: hace 1h, 4.0dB, 1h`
 - **`/stats`** — `Comandos: 12 hoy / 540 total. top /ping (210). pings 188.
   nodos 42 (38 RF/4 MQTT). encuestas activas 1. encendido 3d 4h 12m.`
 

@@ -339,6 +339,27 @@ class Database:
             row = cur.fetchone()
             return dict(row) if row else None
 
+    def get_node_by_identifier(self, identifier: str) -> Optional[Dict[str, Any]]:
+        """Busca un nodo por node_id, nombre corto o nombre largo (case-insensitive)."""
+        if not identifier:
+            return None
+        with closing(self._connect()) as conn:
+            cur = conn.execute(
+                """
+                SELECT node_id, name, num, short_name, mac_addr, hw_model, is_favorite,
+                       snr, rssi, public_key, hops, hop_start, uptime, via_mqtt,
+                       last_heard, updated_at
+                FROM nodes
+                WHERE UPPER(node_id) = UPPER(?)
+                   OR UPPER(short_name) = UPPER(?)
+                   OR UPPER(name) = UPPER(?)
+                ORDER BY updated_at DESC LIMIT 1
+                """,
+                (identifier, identifier, identifier),
+            )
+            row = cur.fetchone()
+            return dict(row) if row else None
+
     def create_node_if_not_exists(self, node_id: str, data: Optional[Dict[str, Any]] = None) -> None:
         """Crea un nodo si no existe. Ignora si ya existe."""
         now = datetime.now().isoformat(timespec="seconds")

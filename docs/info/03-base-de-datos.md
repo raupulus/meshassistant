@@ -147,3 +147,16 @@ comillas dobles**: `"from"`, `"to"`. Mantener esta convención al añadir querie
 
 Todo el acceso a datos está centralizado en `Models/Database.py`. Ver
 [06-modelo-database.md](06-modelo-database.md) para la API.
+
+## Política de retención y mantenimiento
+
+La base de datos SQLite ocupa muy poco espacio en disco (~8 MB con miles de registros).
+Con el almacenamiento habitual en las Raspberry Pi (tarjetas SD de 64-128 GB), el bot puede
+mantener años de datos continuos sin problemas de espacio.
+
+- **Datos históricos válidos:** Se conservan **siempre** de forma indefinida (`pings` respondidos,
+  `commands_sent`, `traces` exitosos y archivados, y telemetría de `nodes`). Son fundamentales
+  para diagnóstico de cobertura, comparativas de SNR en el tiempo y trazabilidad de la malla.
+- **Datos fallidos:** Si en el futuro se requiere liberar espacio, la única purga admisible es
+  sobre registros de intentos fallidos sin utilidad técnica (p. ej. `traces` con `status = 'error'`
+  antiguos). No se eliminan datos de interacciones válidas.
