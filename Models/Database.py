@@ -328,7 +328,7 @@ class Database:
         with closing(self._connect()) as conn:
             cur = conn.execute(
                 """
-                SELECT node_id, name, num, short_name, mac_addr, hw_model, is_favorite,
+                SELECT node_id, name, num, short_name, mac_addr, hw_model, role, is_favorite,
                        snr, rssi, public_key, hops, hop_start, uptime, via_mqtt,
                        last_heard, updated_at
                 FROM nodes
@@ -346,7 +346,7 @@ class Database:
         with closing(self._connect()) as conn:
             cur = conn.execute(
                 """
-                SELECT node_id, name, num, short_name, mac_addr, hw_model, is_favorite,
+                SELECT node_id, name, num, short_name, mac_addr, hw_model, role, is_favorite,
                        snr, rssi, public_key, hops, hop_start, uptime, via_mqtt,
                        last_heard, updated_at
                 FROM nodes
@@ -359,6 +359,49 @@ class Database:
             )
             row = cur.fetchone()
             return dict(row) if row else None
+
+    def get_router_nodes(self, configured_identifiers: Optional[List[str]] = None) -> List[Dict[str, Any]]:
+        """Obtiene nodos routers explícitos (configurados) y auto-detectados por role o nombre."""
+        found_nodes: List[Dict[str, Any]] = []
+        seen_ids = set()
+
+        # 1. Buscar los configurados explícitamente
+        if configured_identifiers:
+            for ident in configured_identifiers:
+                node = self.get_node_by_identifier(ident)
+                if node:
+                    nid = node.get('node_id')
+                    if nid and nid not in seen_ids:
+                        seen_ids.add(nid)
+                        found_nodes.append(node)
+                else:
+                    # Nodo configurado pero no registrado aún
+                    found_nodes.append({'identifier': ident, 'offline': True})
+
+        # 2. Auto-detectar nodos con role ROUTER / REPEATER o palabra clave en nombre
+        with closing(self._connect()) as conn:
+            cur = conn.execute(
+                """
+                SELECT node_id, name, num, short_name, mac_addr, hw_model, role, is_favorite,
+                       snr, rssi, public_key, hops, hop_start, uptime, via_mqtt,
+                       last_heard, updated_at
+                FROM nodes
+                WHERE role IN (2, 3, 4)
+                   OR UPPER(COALESCE(role, '')) IN ('ROUTER', 'ROUTER_CLIENT', 'REPEATER')
+                   OR UPPER(COALESCE(name, '')) LIKE '%ROUTER%'
+                   OR UPPER(COALESCE(name, '')) LIKE '%REPETIDOR%'
+                ORDER BY updated_at DESC
+                LIMIT 30
+                """
+            )
+            for row in cur.fetchall():
+                node_dict = dict(row)
+                nid = node_dict.get('node_id')
+                if nid and nid not in seen_ids:
+                    seen_ids.add(nid)
+                    found_nodes.append(node_dict)
+
+        return found_nodes
 
     def create_node_if_not_exists(self, node_id: str, data: Optional[Dict[str, Any]] = None) -> None:
         """Crea un nodo si no existe. Ignora si ya existe."""
@@ -385,6 +428,7 @@ class Database:
             "short_name",
             "mac_addr",
             "hw_model",
+            "role",
             "is_favorite",
             "snr",
             "rssi",

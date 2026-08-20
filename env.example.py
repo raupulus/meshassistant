@@ -45,8 +45,12 @@ LOCATION_TZ = 'Europe/Madrid'  # zona horaria IANA (gestiona el horario de veran
 ## /snr muestra la señal de este nodo (nombre corto) como referencia principal.
 MESH_GATEWAY_SHORT_NAME = 'RAU0'
 
+## Nodo base para descontar salto en /ping (cuando el paquete entra repetido desde azotea)
+BASE_NODE_SHORT_NAME = 'RAU0'
+BASE_NODE_ID = ''  # Opcional: '!xxxxxxxx'
+
 ## Lista de routers/repetidores a vigilar con el comando /routers (nombres cortos o IDs)
-ROUTER_NODES = ['RAU0']
+ROUTER_NODES = ['RAU0', 'CA12', 'CA13', 'CA01', 'CA02', 'CA03', 'CA04', 'CA05', 'CA16', 'CA23']
 
 ## Mareas (/marea)
 ## Fuente de descarga vía cron: si TIDES_API_KEY está vacío se usa Open-Meteo

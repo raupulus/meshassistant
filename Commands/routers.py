@@ -49,10 +49,12 @@ def routers_callback(interface, args, msg, metadata):
         db = Database()
         items: List[str] = []
 
-        for r_id in routers_cfg:
-            node = db.get_node_by_identifier(r_id)
-            if not node:
-                items.append(f"{r_id}: offline")
+        router_nodes = db.get_router_nodes(routers_cfg)
+
+        for node in router_nodes:
+            if node.get('offline'):
+                ident = node.get('identifier', 'N/D')
+                items.append(f"{ident}: offline")
                 continue
 
             name = node.get('short_name') or node.get('name') or node.get('node_id')
@@ -72,7 +74,7 @@ def routers_callback(interface, args, msg, metadata):
             items.append(f"{name}: " + ', '.join(details))
 
         if not items:
-            response = "No hay routers configurados en env.ROUTER_NODES."
+            response = "No hay routers configurados o detectados en la malla."
         else:
             response = "Routers: " + " · ".join(items)
 

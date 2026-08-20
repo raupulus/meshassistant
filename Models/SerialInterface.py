@@ -129,6 +129,7 @@ class SerialInterface:
                     "short_name": user.get('shortName', None),
                     "mac_addr": user.get('macaddr', None),
                     "hw_model": user.get('hwModel', None),
+                    "role": user.get('role', None),
 
                     "snr": packet.get('rxSnr', None),
                     "rssi": packet.get('rxRssi', None),
@@ -510,6 +511,7 @@ class SerialInterface:
                     "short_name": user.get('shortName', None),
                     "mac_addr": user.get('macaddr', None),
                     "hw_model": user.get('hwModel', None),
+                    "role": user.get('role', None),
 
                     "snr": node_info.get('snr', None),
                     #"rssi": packet.get('rxRssi', None),

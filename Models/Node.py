@@ -8,6 +8,7 @@ class Node:
     short_name = 'N/A'
     mac_addr = 'Desconocido'
     hw_model = 'Desconocido'
+    role = None
     is_favorite = False
     snr = None
     rssi = None
@@ -33,6 +34,7 @@ class Node:
                 self.short_name = row.get('short_name', self.short_name)
                 self.mac_addr = row.get('mac_addr', self.mac_addr)
                 self.hw_model = row.get('hw_model', self.hw_model)
+                self.role = row.get('role', self.role)
                 self.is_favorite = bool(row.get('is_favorite')) if row.get('is_favorite') is not None else self.is_favorite
                 self.snr = row.get('snr', self.snr)
                 self.rssi = row.get('rssi', self.rssi)
@@ -54,6 +56,7 @@ class Node:
         self.short_name = node_info.get('short_name', self.short_name)
         self.mac_addr = node_info.get('mac_addr', self.mac_addr)
         self.hw_model = node_info.get('hw_model', self.hw_model)
+        self.role = node_info.get('role', self.role)
         self.is_favorite = node_info.get('is_favorite', self.is_favorite)
         self.uptime = node_info.get('uptime', self.uptime)
         self.via_mqtt = node_info.get('via_mqtt', self.via_mqtt)
@@ -84,6 +87,7 @@ class Node:
                 "short_name": self.short_name,
                 "mac_addr": self.mac_addr,
                 "hw_model": self.hw_model,
+                "role": self.role,
                 "is_favorite": self.is_favorite,
                 "snr": self.snr,
                 "rssi": self.rssi,

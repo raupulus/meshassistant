@@ -88,6 +88,7 @@ def _execute_schema(conn: sqlite3.Connection) -> None:
             short_name TEXT,
             mac_addr TEXT,
             hw_model INTEGER,
+            role INTEGER,
             is_favorite INTEGER,
             snr REAL,
             rssi REAL,
@@ -215,10 +216,16 @@ def _execute_schema(conn: sqlite3.Connection) -> None:
         conn.execute('ALTER TABLE aemet ADD COLUMN message TEXT NULL')
         conn.commit()
 
+    # Ensure new column in nodes: role
+    if not _has_column('nodes', 'role'):
+        conn.execute('ALTER TABLE nodes ADD COLUMN role INTEGER NULL')
+        conn.commit()
+
     # Create indexes if not exist
     cur.execute('CREATE INDEX IF NOT EXISTS idx_chistes_need_upload ON chistes(need_upload)')
     cur.execute('CREATE INDEX IF NOT EXISTS idx_chistes_need_approve ON chistes(need_approve)')
     cur.execute('CREATE UNIQUE INDEX IF NOT EXISTS idx_chistes_chiste_id ON chistes(chiste_id)')
+    cur.execute('CREATE INDEX IF NOT EXISTS idx_nodes_role ON nodes(role)')
     # Índices para optimizar cola y consultas de traces
     cur.execute('CREATE INDEX IF NOT EXISTS idx_traces_status_created ON traces(status, created_at)')
     cur.execute('CREATE INDEX IF NOT EXISTS idx_traces_to_updated ON traces("to", updated_at)')
