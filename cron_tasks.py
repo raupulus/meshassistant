@@ -159,15 +159,22 @@ def send_trace() -> None:
         except Exception:
             pass
 
-    # Seleccionar próximo nodo candidato respetando configuración
+    # Seleccionar próximo nodo candidato respetando configuración y prioridad a routers cada 6h
     hops_limit = int(getattr(env, 'TRACES_HOPS', 2) or 2)
-    reload_hours = int(getattr(env, 'TRACES_RELOAD_INTERVAL', 24 * 7) or (24 * 7))
+    reload_hours = int(getattr(env, 'TRACES_RELOAD_INTERVAL', 72) or 72)
+    router_reload_hours = int(getattr(env, 'ROUTER_TRACE_INTERVAL_HOURS', 6) or 6)
     retry_hours = int(getattr(env, 'TRACES_RETRY_INTERVAL', 24) or 24)
+
+    routers_cfg = getattr(env, 'ROUTER_NODES', None) or getattr(env, 'ROUTERS_LIST', None) or []
+    if isinstance(routers_cfg, str):
+        routers_cfg = [r.strip() for r in routers_cfg.split(',') if r.strip()]
 
     node_id = db.get_next_node_to_trace(
         hops_limit=hops_limit,
         reload_hours=reload_hours,
+        router_reload_hours=router_reload_hours,
         retry_hours=retry_hours,
+        router_identifiers=routers_cfg,
     )
     if node_id:
         # Encolar petición en la propia tabla traces (status='pending')

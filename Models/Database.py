@@ -486,24 +486,135 @@ class Database:
             )
             conn.commit()
 
+    def get_latest_trace_snr(self, identifier: str, base_identifiers: Optional[List[str]] = None) -> Optional[float]:
+        """Obtiene el SNR del enlace exterior con la base desde el último trace exitoso."""
+        if not identifier:
+            return None
+        with closing(self._connect()) as conn:
+            cur = conn.execute(
+                """
+                SELECT * FROM traces
+                WHERE ("to" = ? OR UPPER(COALESCE(to_name_short, '')) = UPPER(?) OR UPPER(COALESCE(to_name, '')) = UPPER(?))
+                  AND status = 'done'
+                ORDER BY updated_at DESC
+                LIMIT 1
+                """,
+                (identifier, identifier, identifier),
+            )
+            row = cur.fetchone()
+            if not row:
+                return None
+
+            row_dict = dict(row)
+            base_set = {str(b).upper() for b in (base_identifiers or ['RAU0'])}
+
+            # 1. Buscar en la ruta de retorno (hop_return: señal recibida en azotea desde el router)
+            for i in range(1, 8):
+                short = (row_dict.get(f'hop_return{i}_name_short') or '').upper()
+                nid = (row_dict.get(f'hop_return{i}_id') or '').upper()
+                snr = row_dict.get(f'hop_return{i}_snr')
+                if snr is not None and (short in base_set or nid in base_set or i == 1):
+                    return snr
+
+            # 2. Buscar en la ruta de ida (hop: señal recibida en el router desde la azotea)
+            for i in range(1, 8):
+                short = (row_dict.get(f'hop{i}_name_short') or '').upper()
+                nid = (row_dict.get(f'hop{i}_id') or '').upper()
+                snr = row_dict.get(f'hop{i}_snr')
+                if snr is not None and (short not in base_set and nid not in base_set):
+                    return snr
+
+            # 3. Fallback a cualquier SNR registrado en el trace
+            for i in (1, 2, 3):
+                snr = row_dict.get(f'hop_return{i}_snr') or row_dict.get(f'hop{i}_snr')
+                if snr is not None:
+                    return snr
+
+            return None
+
     # ---------- NODE TRACE CONTROL ----------
     def get_next_node_to_trace(
         self,
         *,
         hops_limit: int = 2,
-        reload_hours: int = 24 * 7,
+        reload_hours: int = 72,
+        router_reload_hours: int = 6,
         retry_hours: int = 24,
+        router_identifiers: Optional[List[str]] = None,
     ) -> Optional[str]:
-        """Devuelve el próximo node_id candidato cumpliendo:
-        - COALESCE(via_mqtt, 0) = 0
-        - hops <= hops_limit
-        - sin traces pendientes
-        - ventanas:
-            • último status='done'  → ahora - updated_at ≥ reload_hours
-            • último status='error' → ahora - updated_at ≥ retry_hours
-          Si no hay trazas previas → elegible.
+        """Devuelve el próximo node_id candidato para traceroute.
+
+        Prioridad 1: Nodos routers (en router_identifiers o con role ROUTER/ROUTER_LATE/REPEATER)
+                    cuya última traza exitosa tenga ≥ router_reload_hours (6h).
+        Prioridad 2: Nodos normales (hops <= hops_limit, no MQTT)
+                    cuya última traza exitosa tenga ≥ reload_hours (72h).
         """
+        router_idents = [str(r) for r in (router_identifiers or [])]
+
         with closing(self._connect()) as conn:
+            # 1. Comprobar primero si algún ROUTER necesita traceroute (prioridad 1)
+            query_routers = '''
+                WITH last_processed AS (
+                    SELECT "to" AS node_id, MAX(updated_at) AS last_updated
+                    FROM traces
+                    WHERE updated_at IS NOT NULL AND status IN ('done','error')
+                    GROUP BY "to"
+                ), last_status AS (
+                    SELECT t."to" AS node_id, t.status AS last_status, t.updated_at AS last_updated
+                    FROM traces t
+                    WHERE t.updated_at IS NOT NULL AND t.status IN ('done','error')
+                    AND t.updated_at = (
+                        SELECT MAX(t2.updated_at) FROM traces t2
+                        WHERE t2."to" = t."to" AND t2.updated_at IS NOT NULL AND t2.status IN ('done','error')
+                    )
+                ), pend AS (
+                    SELECT "to" AS node_id, COUNT(*) AS pendings
+                    FROM traces
+                    WHERE status = 'pending'
+                    GROUP BY "to"
+                )
+                SELECT n.node_id
+                FROM nodes n
+                LEFT JOIN last_processed lp ON lp.node_id = n.node_id
+                LEFT JOIN last_status ls ON ls.node_id = n.node_id
+                LEFT JOIN pend p ON p.node_id = n.node_id
+                WHERE COALESCE(n.via_mqtt, 0) = 0
+                  AND COALESCE(p.pendings, 0) = 0
+                  AND (
+                      n.role IN (2, 4, 9)
+                   OR UPPER(COALESCE(n.role, '')) IN ('ROUTER', 'ROUTER_LATE', 'REPEATER')
+                   OR UPPER(COALESCE(n.short_name, '')) IN ({ro_placeholders})
+                   OR UPPER(COALESCE(n.node_id, '')) IN ({ro_placeholders})
+                  )
+                  AND (
+                        lp.last_updated IS NULL
+                     OR (
+                          (ls.last_status = 'done'  AND strftime('%s','now') - strftime('%s', lp.last_updated) >= ?)
+                       OR (ls.last_status = 'error' AND strftime('%s','now') - strftime('%s', lp.last_updated) >= ?)
+                        )
+                  )
+                ORDER BY lp.last_updated ASC, n.updated_at DESC
+                LIMIT 1
+            '''.format(
+                ro_placeholders=','.join(['?'] * len(router_idents)) if router_idents else "''"
+            )
+
+            params_routers = tuple(
+                [r.upper() for r in router_idents] * 2 + [
+                    int(router_reload_hours) * 3600,
+                    int(retry_hours) * 3600,
+                ]
+            ) if router_idents else (
+                int(router_reload_hours) * 3600,
+                int(retry_hours) * 3600,
+            )
+
+            cur = conn.execute(query_routers, params_routers)
+            row = cur.fetchone()
+            if row:
+                return row['node_id']
+
+            # 2. Si ningún router necesita trace, seleccionar nodo normal cumpliendo reload_hours (72h)
             cur = conn.execute(
                 '''
                 WITH last_processed AS (
@@ -542,12 +653,12 @@ class Database:
                   )
                 ORDER BY n.updated_at DESC
                 LIMIT 1
-                '''
-                , (
+                ''',
+                (
                     int(hops_limit),
                     int(reload_hours) * 3600,
                     int(retry_hours) * 3600,
-                )
+                ),
             )
             row = cur.fetchone()
             return row['node_id'] if row else None

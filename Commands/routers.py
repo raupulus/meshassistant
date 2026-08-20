@@ -89,10 +89,13 @@ def routers_callback(interface, args, msg, metadata):
             if raw_hops is not None and raw_hops > 0 and (base_short or base_id):
                 effective_hops = max(0, raw_hops - 1)
 
+            base_idents = [b for b in [base_short, base_id] if b]
+            trace_snr = db.get_latest_trace_snr(node_id or short_name or ident, base_idents)
+            snr_val = trace_snr if trace_snr is not None else node.get('snr')
+
             if node.get('via_mqtt'):
                 items.append(f"[{name}: {ago} - MQTT]")
-            elif node.get('snr') is not None:
-                snr_val = node['snr']
+            elif snr_val is not None:
                 if effective_hops is not None:
                     hop_txt = "1 hop" if effective_hops == 1 else f"{effective_hops} hops"
                     items.append(f"[{name}: {ago} - {hop_txt}({snr_val:.1f}dB)]")

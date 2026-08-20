@@ -355,14 +355,30 @@ class SerialInterface:
         called = False
 
         with contextlib.redirect_stdout(buf_out), contextlib.redirect_stderr(buf_err):
-            # 1) Posicional completa con hopLimit e isRepeat y callback
+            # 1) Firma estándar meshtastic (dest, hopLimit, channelIndex)
             try:
-                send_fn(node_id, 3, False, _on_response)
+                send_fn(dest=node_id, hopLimit=3, channelIndex=0)
                 called = True
             except TypeError as e:
                 tried.append(str(e))
 
-            # 2) Posicional con callback como segundo argumento
+            # 2) Posicional estándar (node_id, 3, 0)
+            if not called:
+                try:
+                    send_fn(node_id, 3, 0)
+                    called = True
+                except TypeError as e:
+                    tried.append(str(e))
+
+            # 3) Posicional con callback
+            if not called:
+                try:
+                    send_fn(node_id, 3, 0, _on_response)
+                    called = True
+                except TypeError as e:
+                    tried.append(str(e))
+
+            # 4) Posicional con callback como segundo argumento
             if not called:
                 try:
                     send_fn(node_id, _on_response)
@@ -370,15 +386,7 @@ class SerialInterface:
                 except TypeError as e:
                     tried.append(str(e))
 
-            # 3) Posicional sin callback pero con hopLimit/isRepeat
-            if not called:
-                try:
-                    send_fn(node_id, 3, False)
-                    called = True
-                except TypeError as e:
-                    tried.append(str(e))
-
-            # 4) Posicional mínimo solo id
+            # 5) Posicional solo id
             if not called:
                 try:
                     send_fn(node_id)
@@ -386,7 +394,7 @@ class SerialInterface:
                 except TypeError as e:
                     tried.append(str(e))
 
-            # 5) Keywords modernas (por si la versión sí las soporta)
+            # 6) Keywords alternativas
             if not called:
                 try:
                     send_fn(destinationId=node_id, onResponse=_on_response)
@@ -399,7 +407,7 @@ class SerialInterface:
                     except TypeError as e2:
                         tried.append(str(e2))
 
-            # 6) Último recurso: keyword mínima sin callback
+            # 7) Último recurso: keyword mínima sin callback
             if not called:
                 try:
                     send_fn(destinationId=node_id)
