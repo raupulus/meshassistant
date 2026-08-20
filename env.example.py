@@ -57,6 +57,7 @@ ROUTER_TRACE_INTERVAL_HOURS = 6   # Cadencia normal tras éxito (horas)
 ROUTER_RETRY_SHORT_HOURS = 1      # Reintento rápido ante fallo puntual (horas)
 ROUTER_MAX_RETRIES = 5            # Máximo de reintentos rápidos (1h) antes de penalizar
 ROUTER_RETRY_LONG_HOURS = 24      # Enfriamiento tras 5 fallos consecutivos (horas)
+ROUTERS_MAX_PARTS = 5             # Límite máximo de mensajes para la respuesta de /routers (def. 5)
 
 ## Mareas (/marea)
 ## Fuente de descarga vía cron: si TIDES_API_KEY está vacío se usa Open-Meteo

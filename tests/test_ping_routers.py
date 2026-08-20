@@ -231,6 +231,36 @@ class TestPingRouters(unittest.TestCase):
         self.assertIsNotNone(snr)
         self.assertEqual(snr, 5.2)
 
+        info = db.get_latest_trace_route_info("!cadiz13_test", ["RAU0", "!base"])
+        self.assertIsNotNone(info)
+        self.assertEqual(info["hops"], 0)
+        self.assertEqual(info["snrs"], [5.2])
+        self.assertEqual(info["snr_text"], "5.2dB")
+
+        # Probar trace de 2 tramos (1 salto intermedio)
+        db.create_node_if_not_exists("!co14_test")
+        db.update_node("!co14_test", {
+            "name": "Router Cordoba 14",
+            "short_name": "CO14T",
+            "role": 2,
+            "hops": 1,
+        })
+        trace_id_co = db.enqueue_trace("!co14_test")
+        db.mark_trace_done_with_route(
+            trace_id_co,
+            True,
+            text="Route traced towards destination:\n!63ca1feb --> !875e3787 (12.25dB) --> 2b39ef06 (3.0dB) --> b2b8c605 (8.75dB)\nRoute traced back to us:\nb2b8c605 --> 2b39ef06 (9.25dB) --> !875e3787 (9.0dB) --> !63ca1feb (11.75dB)",
+            to_name="Router Cordoba 14",
+            to_name_short="CO14T",
+            hops=[],
+            return_hops=[],
+        )
+        info_co = db.get_latest_trace_route_info("!co14_test", ["RAU0", "!875e3787"])
+        self.assertIsNotNone(info_co)
+        self.assertEqual(info_co["hops"], 1, "CO14 con 1 repetidor intermedio debe tener hops=1")
+        self.assertEqual(info_co["snrs"], [9.0, 9.25])
+        self.assertEqual(info_co["snr_text"], "9.0dB, 9.2dB")
+
         # 2. Priorización de traces: un router sin traza reciente (≥6h) debe tener prioridad sobre un cliente normal
         import time
         uniq_id = int(time.time())

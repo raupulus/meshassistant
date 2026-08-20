@@ -228,6 +228,7 @@ está excluido del repositorio** porque puede contener claves de API.
 | `MESH_GATEWAY_SHORT_NAME` | str | Nombre corto del nodo pasarela propio en azotea (def. `RAU0`). |
 | `BASE_NODE_SHORT_NAME` | str | Nodo base propio para descontar salto en `/ping` y `/routers`. |
 | `ROUTER_NODES` | list[str] | Lista de repetidores/routers a vigilar con `/routers`. |
+| `ROUTERS_MAX_PARTS` | int | Límite máximo de mensajes para la respuesta de `/routers` (def. 5). |
 | `CHISTES_API_ENABLED` | bool | Activa la sincronización de chistes con API externa. |
 | `CHISTES_API_KEY` | str | *Bearer token* de la API de chistes. |
 | `CHISTES_URL_UPLOAD` | str | Endpoint para subir chistes. |

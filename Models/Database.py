@@ -547,10 +547,23 @@ class Database:
             )
             conn.commit()
 
-    def get_latest_trace_snr(self, identifier: str, base_identifiers: Optional[List[str]] = None) -> Optional[float]:
-        """Obtiene el SNR del enlace exterior con la base (o directo) desde el último trace exitoso."""
+    def get_latest_trace_route_info(
+        self,
+        identifier: str,
+        base_identifiers: Optional[List[str]] = None,
+    ) -> Optional[dict]:
+        """Obtiene información detallada de la ruta del último trace exitoso hacia identifier.
+
+        Retorna un dict con:
+        - 'hops': saltos exteriores entre la base y el destino (0 para directo, 1 para 1 repetidor intermedio, etc.)
+        - 'snrs': lista de floats con el SNR de cada tramo exterior (desde la base hacia el destino)
+        - 'intermediates': lista de identificadores/nombres de repetidores intermedios
+        - 'snr_text': cadena formateada, ej. '5.2dB' o '9.0dB, 9.3dB'
+        """
         if not identifier:
             return None
+        import re
+
         with closing(self._connect()) as conn:
             cur = conn.execute(
                 """
@@ -567,36 +580,109 @@ class Database:
                 return None
 
             row_dict = dict(row)
-            base_set = {str(b).upper() for b in (base_identifiers or ['RAU0'])}
-            bot_set = {'LOCAL', '!BOT', 'BOT', ''}
+            data_raw = row_dict.get("data_raw") or ""
 
-            hops_count = row_dict.get('hops') or 0
-            hops_back_count = row_dict.get('hops_back') or 0
+            base_set = {str(b).upper() for b in (base_identifiers or ["RAU0"])}
+            bot_set = {"LOCAL", "!BOT", "BOT", ""}
 
-            # Caso 1: Trace con ruta de retorno (hop_return)
-            # En un trace BOT -> RAU0 -> Router -> RAU0 -> BOT (2 saltos):
-            # hop_return1 es la señal con que RAU0 escuchó al Router
-            # hop_return2 es la señal con que BOT escuchó a RAU0 (local, descartar)
-            if row_dict.get('hop_return1_snr') is not None:
-                ret1_id = (row_dict.get('hop_return1_id') or '').upper()
-                ret1_short = (row_dict.get('hop_return1_name_short') or '').upper()
+            def parse_part(part: str):
+                m = re.search(r"(!?[0-9a-fA-F]{6,8}|![0-9a-fA-F]+)", part)
+                node = m.group(1) if m else ""
+                if node and not node.startswith("!"):
+                    node = "!" + node
+                m2 = re.search(r"\(([-+]?\d+(?:\.\d+)?)\s*dB\)", part)
+                snr = float(m2.group(1)) if m2 else None
+                return node.upper(), snr
+
+            lines = [l.strip() for l in data_raw.splitlines() if l.strip()]
+
+            # Intento 1: Ruta de vuelta (Route traced back to us)
+            ret_line = None
+            for i, l in enumerate(lines):
+                if l.lower().startswith("route traced back to us"):
+                    if i + 1 < len(lines):
+                        ret_line = lines[i + 1]
+                    break
+
+            if ret_line:
+                parts = [p.strip() for p in ret_line.split("-->")]
+                parsed = [parse_part(p) for p in parts]
+                if len(parsed) >= 2:
+                    # El último elemento es siempre nuestro nodo local receptor (Bot)
+                    clean_path = parsed[:-1]
+                    reversed_path = clean_path[::-1]
+                    # reversed_path[0] es la base/antena, reversed_path[-1] es el destino
+                    snrs = [item[1] for item in reversed_path if item[1] is not None]
+                    intermediate_nodes = [item[0] for item in reversed_path[1:-1]]
+                    hops = len(intermediate_nodes)
+                    snr_text = ", ".join(f"{s:.1f}dB" for s in snrs) if snrs else None
+                    return {
+                        "hops": hops,
+                        "snrs": snrs,
+                        "intermediates": intermediate_nodes,
+                        "snr_text": snr_text,
+                    }
+
+            # Intento 2: Ruta de ida (Route traced towards destination)
+            fwd_line = None
+            for i, l in enumerate(lines):
+                if l.lower().startswith("route traced towards destination"):
+                    if i + 1 < len(lines):
+                        fwd_line = lines[i + 1]
+                    break
+
+            if fwd_line:
+                parts = [p.strip() for p in fwd_line.split("-->")]
+                parsed = [parse_part(p) for p in parts]
+                if len(parsed) >= 2:
+                    # El primer elemento es siempre nuestro nodo local emisor (Bot)
+                    # parsed[1] es la base/antena
+                    clean_path = parsed[1:]
+                    # Tramo exterior: desde la base hasta el destino
+                    snrs = [item[1] for item in clean_path[1:] if item[1] is not None]
+                    intermediate_nodes = [item[0] for item in clean_path[1:-1]]
+                    hops = len(intermediate_nodes)
+                    snr_text = ", ".join(f"{s:.1f}dB" for s in snrs) if snrs else None
+                    return {
+                        "hops": hops,
+                        "snrs": snrs,
+                        "intermediates": intermediate_nodes,
+                        "snr_text": snr_text,
+                    }
+
+            # Fallback: columnas estructuradas de BD
+            hops_count = row_dict.get("hops") or 0
+            hops_back_count = row_dict.get("hops_back") or 0
+
+            if row_dict.get("hop_return1_snr") is not None:
+                ret1_id = (row_dict.get("hop_return1_id") or "").upper()
+                ret1_short = (row_dict.get("hop_return1_name_short") or "").upper()
                 if ret1_id not in bot_set and ret1_short not in bot_set:
-                    return row_dict.get('hop_return1_snr')
+                    val = row_dict.get("hop_return1_snr")
+                    return {"hops": max(0, hops_back_count - 1), "snrs": [val], "intermediates": [], "snr_text": f"{val:.1f}dB"}
                 elif hops_back_count <= 1:
-                    return row_dict.get('hop_return1_snr')
+                    val = row_dict.get("hop_return1_snr")
+                    return {"hops": 0, "snrs": [val], "intermediates": [], "snr_text": f"{val:.1f}dB"}
 
-            # Caso 2: Ruta de ida (hop2 en 2 saltos: señal con que el Router escuchó a RAU0)
-            if row_dict.get('hop2_snr') is not None:
-                return row_dict.get('hop2_snr')
+            if row_dict.get("hop2_snr") is not None:
+                val = row_dict.get("hop2_snr")
+                return {"hops": max(0, hops_count - 1), "snrs": [val], "intermediates": [], "snr_text": f"{val:.1f}dB"}
 
-            # Caso 3: Trace directo de 1 solo salto de ida
-            if hops_count <= 1 and row_dict.get('hop1_snr') is not None:
-                hop1_id = (row_dict.get('hop1_id') or '').upper()
-                hop1_short = (row_dict.get('hop1_name_short') or '').upper()
+            if hops_count <= 1 and row_dict.get("hop1_snr") is not None:
+                hop1_id = (row_dict.get("hop1_id") or "").upper()
+                hop1_short = (row_dict.get("hop1_name_short") or "").upper()
                 if hop1_id not in base_set and hop1_short not in base_set:
-                    return row_dict.get('hop1_snr')
+                    val = row_dict.get("hop1_snr")
+                    return {"hops": 0, "snrs": [val], "intermediates": [], "snr_text": f"{val:.1f}dB"}
 
             return None
+
+    def get_latest_trace_snr(self, identifier: str, base_identifiers: Optional[List[str]] = None) -> Optional[float]:
+        """Obtiene el SNR del enlace exterior con la base (o directo) desde el último trace exitoso."""
+        info = self.get_latest_trace_route_info(identifier, base_identifiers)
+        if info and info.get("snrs"):
+            return info["snrs"][0]
+        return None
 
     # ---------- NODE TRACE CONTROL ----------
     def get_next_node_to_trace(

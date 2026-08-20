@@ -58,9 +58,12 @@ Query en dos fases con CTEs:
    `to_name`, los `hopN_*` y `hop_returnN_*`, y `hops`/`hops_back` (conteos).
 5. Si algo falla, guarda `status='error'` con el texto del error en `data_raw`.
 
-## Uso del SNR de Traceroute en `/routers`
+## Uso del SNR y Saltos de Traceroute en `/routers`
 
-El comando `/routers` utiliza `Database.get_latest_trace_snr(node_id)` para obtener el **SNR medido en el enlace exterior real entre `RAU0` y el router** (en el salto `RAU0 <-> Router`), en lugar de mostrar el SNR del salto local interior `RAU0 -> Bot`. Si el nodo es repetido y aún no dispone de traza previa, se omite el SNR para evitar mostrar la señal distorsionada del enlace local.
+El comando `/routers` utiliza `Database.get_latest_trace_route_info(node_id)` para obtener el desglose completo del enlace exterior:
+* **Saltos reales exteriores:** Determina cuántos repetidores intermedios hay entre la base (`RAU0`) y el nodo destino (0 saltos = enlace directo con `RAU0`, 1 salto = 1 repetidor intermedio, etc.).
+* **SNRs tramo a tramo:** Muestra el SNR medido en cada salto exterior. Por ejemplo, en una ruta `Bot -> RAU0 -> herc -> CO14`, descarta el enlace local `Bot <-> RAU0` y muestra `(9.0dB, 9.2dB)` correspondientes a los tramos `RAU0 <-> herc` y `herc <-> CO14`.
+* Si el nodo es repetido y aún no dispone de traza previa exitosa, se omite el SNR para evitar mostrar la señal distorsionada del enlace local.
 
 ## Parámetros (env.py)
 
@@ -75,6 +78,7 @@ El comando `/routers` utiliza `Database.get_latest_trace_snr(node_id)` para obte
 | `ROUTER_MAX_RETRIES` | Límite de reintentos rápidos (1h) antes de penalizar (def. 5). |
 | `ROUTER_RETRY_LONG_HOURS` (h) | Enfriamiento largo tras 5 fallos consecutivos (def. 24 h). |
 | `ROUTER_MAX_HOPS` | Límite de saltos para routers prioritarios y el informe de `/routers` (def. 2). |
+| `ROUTERS_MAX_PARTS` | Límite máximo de mensajes para la respuesta de `/routers` (def. 5). |
 | `TRACES_RETRY_INTERVAL` (h) | Reintentar nodo cliente general tras error (def. 24 h). |
 
 ## Diseño: por qué la cola es la propia tabla

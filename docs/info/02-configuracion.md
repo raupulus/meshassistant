@@ -39,6 +39,7 @@ que las variables ausentes no rompen la ejecución.
 | `BASE_NODE_SHORT_NAME` | str | `'RAU0'` | Nodo base propio para descontar salto en `/ping` y `/routers`. |
 | `BASE_NODE_ID` | str | `''` | ID Meshtastic (`!xxxxxxxx`) del nodo base propio (opcional). |
 | `ROUTER_NODES` | list[str] | `['RAU0', ...]` | Lista de routers a vigilar con el comando `/routers`. |
+| `ROUTERS_MAX_PARTS` | int | `5` | Límite máximo de mensajes para la respuesta de `/routers`. |
 
 ### Chistes
 

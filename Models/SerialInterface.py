@@ -469,8 +469,13 @@ class SerialInterface:
                         # Cada parte puede ser "!id (X dB)" o solo "!id"
                         # El primer elemento es el origen; hops son los siguientes
                         def parse_part(part: str):
-                            m = re.search(r'(![0-9a-fA-F]+)', part)
-                            node = m.group(1) if m else None
+                            m = re.search(r'(!?[0-9a-fA-F]{6,8}|![0-9a-fA-F]+)', part)
+                            if m:
+                                node = m.group(1)
+                                if not node.startswith('!'):
+                                    node = '!' + node
+                            else:
+                                node = None
                             m2 = re.search(r'\(([-+]?\d+(?:\.\d+)?)\s*dB\)', part)
                             snr = float(m2.group(1)) if m2 else None
                             return node, snr
@@ -493,8 +498,13 @@ class SerialInterface:
                         path_line = lines[i + 1]
                         parts = [p.strip() for p in path_line.split('-->')]
                         def parse_part(part: str):
-                            m = re.search(r'(![0-9a-fA-F]+)', part)
-                            node = m.group(1) if m else None
+                            m = re.search(r'(!?[0-9a-fA-F]{6,8}|![0-9a-fA-F]+)', part)
+                            if m:
+                                node = m.group(1)
+                                if not node.startswith('!'):
+                                    node = '!' + node
+                            else:
+                                node = None
                             m2 = re.search(r'\(([-+]?\d+(?:\.\d+)?)\s*dB\)', part)
                             snr = float(m2.group(1)) if m2 else None
                             return node, snr

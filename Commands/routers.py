@@ -102,26 +102,32 @@ def routers_callback(interface, args, msg, metadata):
                 effective_hops = max(0, raw_hops - 1)
 
             base_idents = [b for b in [base_short, base_id] if b]
-            trace_snr = db.get_latest_trace_snr(node_id or short_name or ident, base_idents)
+            trace_info = db.get_latest_trace_route_info(node_id or short_name or ident, base_idents)
 
-            # Priorizar SNR de trace reciente (enlace exterior base <-> router)
-            if trace_snr is not None:
-                snr_val = trace_snr
+            # Priorizar información del trace reciente (hops y SNRs exteriores tramo a tramo)
+            if trace_info is not None:
+                effective_hops = trace_info.get('hops')
+                snr_str = trace_info.get('snr_text')
             elif is_direct:
                 # Si es directo con nuestro bot o es la base, el SNR registrado es directo y real
                 snr_val = node.get('snr')
+                snr_str = f"{snr_val:.1f}dB" if snr_val is not None else None
             else:
                 # Si es repetido y NO tenemos trace, NO usamos node['snr'] (es el SNR local de la base)
-                snr_val = None
+                snr_str = None
+
+            # Si el trace o nodo indica más saltos que max_hops, descartar si no es configurado
+            if max_hops is not None and effective_hops is not None and effective_hops > max_hops and not is_configured:
+                continue
 
             if node.get('via_mqtt'):
                 items.append(f"[{name}: {ago} - MQTT]")
-            elif snr_val is not None:
+            elif snr_str:
                 if effective_hops is not None:
                     hop_txt = "1 hop" if effective_hops == 1 else f"{effective_hops} hops"
-                    items.append(f"[{name}: {ago} - {hop_txt}({snr_val:.1f}dB)]")
+                    items.append(f"[{name}: {ago} - {hop_txt}({snr_str})]")
                 else:
-                    items.append(f"[{name}: {ago} ({snr_val:.1f}dB)]")
+                    items.append(f"[{name}: {ago} ({snr_str})]")
             elif effective_hops is not None:
                 hop_txt = "1 hop" if effective_hops == 1 else f"{effective_hops} hops"
                 items.append(f"[{name}: {ago} - {hop_txt}]")
@@ -137,4 +143,5 @@ def routers_callback(interface, args, msg, metadata):
         log_p(f"Error consultando routers: {e}", level="WARN")
         response = f"No se pudo consultar el estado de los routers: {e}"
 
-    reply_long(interface, metadata, response)
+    routers_max_parts = int(getattr(env, 'ROUTERS_MAX_PARTS', 5) or 5)
+    reply_long(interface, metadata, response, max_parts=routers_max_parts)
