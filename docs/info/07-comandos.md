@@ -88,9 +88,9 @@ Todo callback **registra el comando** con `Database().log_command(...)` (en
   (def. `RAU0`) y luego la **media de SNR** del resto de nodos RF (excluye MQTT).
   Ej.: `SNR RAU0: 8.5 dB (1 hops). Media malla RF: 6.2 dB (38 nodos).`
 - **`/routers`** (alias **`/repetidores`**) — Informa del estado de los nodos routers/repetidores
-  configurados en `ROUTER_NODES` de `env.py` (por defecto el nodo pasarela `RAU0`). Muestra
-  cuándo se escuchó por última vez, su SNR y saltos (*hops*). Ej.:
-  `Routers: RAU0: hace 2m, 11.5dB, 0h · R-Norte: hace 1h, 4.0dB, 1h`
+  configurados en `ROUTER_NODES` de `env.py` y nodos con rol oficial `ROUTER`/`ROUTER_LATE`/`REPEATER`.
+  Muestra el tiempo transcurrido, saltos descontando la base y SNR en formato compacto. Ej.:
+  `Routers: [RAU0: 2m - 0 hops(12.2dB)], [CA12: 2d - 0 hops(12.0dB)], [CA04 | offline]`
 - **`/stats`** — `Comandos: 12 hoy / 540 total. top /ping (210). pings 188.
   nodos 42 (38 RF/4 MQTT). encuestas activas 1. encendido 3d 4h 12m.`
 

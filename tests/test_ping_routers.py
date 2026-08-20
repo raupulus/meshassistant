@@ -106,6 +106,17 @@ class TestPingRouters(unittest.TestCase):
         self.assertIn("RMON", router_shorts)
         self.assertNotIn("FAKE", router_shorts, "Nodos con 'router' en el nombre pero sin role de router deben ser ignorados")
 
+    def test_routers_callback_formatting(self):
+        mock = MockInterface()
+        meta = {'is_direct': True, 'node_from': {'id': '!test'}, 'node_to': {'id': '!bot'}}
+        env.ROUTER_NODES = ['RCER', 'INEXISTENTE']
+        routers_callback(mock, [], '/routers', meta)
+        self.assertEqual(len(mock.replies), 1)
+        # Verifica corchetes y formato
+        self.assertIn("[RCER:", mock.replies[0])
+        self.assertIn("(9.5dB)]", mock.replies[0])
+        self.assertIn("[INEXISTENTE | offline]", mock.replies[0])
+
 
 if __name__ == '__main__':
     unittest.main()
