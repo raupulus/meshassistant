@@ -1,4 +1,6 @@
+from __future__ import annotations
 from pathlib import Path
+from typing import Optional, Union
 import sqlite3
 
 # Archivo de base de datos SQLite (en el raíz del proyecto)
