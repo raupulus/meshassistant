@@ -278,6 +278,105 @@ class TestPingRouters(unittest.TestCase):
         )
         self.assertIsNotNone(next_node)
 
+    def test_router_staggered_retry(self):
+        from datetime import datetime, timedelta
+        db = Database()
+        router_id = "!retry_router"
+        db.create_node_if_not_exists(router_id)
+        db.update_node(router_id, {
+            "name": "Retry Router Test",
+            "short_name": "RTRY",
+            "role": 2,
+            "hops": 1,
+        })
+
+        # 1. Fallo hace 30 minutos (< 1h) -> NO debe ser elegible todavía
+        t_id = db.enqueue_trace(router_id)
+        db.mark_trace_done_with_route(t_id, False, text="error 1", hops=[])
+        t_30m_ago = (datetime.now() - timedelta(minutes=30)).isoformat(timespec='seconds')
+        with db._connect() as conn:
+            conn.execute("UPDATE traces SET updated_at = ? WHERE id = ?", (t_30m_ago, t_id))
+            conn.commit()
+
+        cand = db.get_next_node_to_trace(
+            hops_limit=2,
+            router_reload_hours=6,
+            router_retry_short_hours=1,
+            router_max_retries=5,
+            router_retry_long_hours=24,
+            router_identifiers=["RTRY"],
+        )
+        self.assertIsNone(cand, "Router con 1 fallo hace 30m no debe reintentarse todavía (<1h)")
+
+        # 2. Fallo hace 70 minutos (> 1h pero < 5 fallos) -> DEBE ser elegible (reintento rápido)
+        t_70m_ago = (datetime.now() - timedelta(minutes=70)).isoformat(timespec='seconds')
+        with db._connect() as conn:
+            conn.execute("UPDATE traces SET updated_at = ? WHERE id = ?", (t_70m_ago, t_id))
+            conn.commit()
+
+        cand = db.get_next_node_to_trace(
+            hops_limit=2,
+            router_reload_hours=6,
+            router_retry_short_hours=1,
+            router_max_retries=5,
+            router_retry_long_hours=24,
+            router_identifiers=["RTRY"],
+        )
+        self.assertEqual(cand, router_id, "Router con 1 fallo hace >1h debe reintentarse (reintento rápido)")
+
+        # 3. 5 fallos consecutivos hace 2 horas (< 24h) -> NO debe ser elegible (bloqueo 24h)
+        for i in range(4): # Total 5 fallos
+            t_extra = db.enqueue_trace(router_id)
+            db.mark_trace_done_with_route(t_extra, False, text=f"error {i+2}", hops=[])
+            t_2h_ago = (datetime.now() - timedelta(hours=2)).isoformat(timespec='seconds')
+            with db._connect() as conn:
+                conn.execute("UPDATE traces SET updated_at = ? WHERE id = ?", (t_2h_ago, t_extra))
+                conn.commit()
+
+        cand = db.get_next_node_to_trace(
+            hops_limit=2,
+            router_reload_hours=6,
+            router_retry_short_hours=1,
+            router_max_retries=5,
+            router_retry_long_hours=24,
+            router_identifiers=["RTRY"],
+        )
+        self.assertIsNone(cand, "Router con 5 fallos consecutivos hace 2h debe esperar 24h")
+
+        # 4. 5 fallos consecutivos hace 25 horas (> 24h) -> DEBE ser elegible
+        t_25h_ago = (datetime.now() - timedelta(hours=25)).isoformat(timespec='seconds')
+        with db._connect() as conn:
+            conn.execute("UPDATE traces SET updated_at = ? WHERE \"to\" = ?", (t_25h_ago, router_id))
+            conn.commit()
+
+        cand = db.get_next_node_to_trace(
+            hops_limit=2,
+            router_reload_hours=6,
+            router_retry_short_hours=1,
+            router_max_retries=5,
+            router_retry_long_hours=24,
+            router_identifiers=["RTRY"],
+        )
+        self.assertEqual(cand, router_id, "Router con 5 fallos hace >24h debe ser elegible")
+
+        # 5. Tras un éxito ('done'), el contador de fallos se resetea a 0 y aplica la ventana de 6h
+        t_success = db.enqueue_trace(router_id)
+        db.mark_trace_done_with_route(t_success, True, text="done success", hops=[])
+        t_2h_ago = (datetime.now() - timedelta(hours=2)).isoformat(timespec='seconds')
+        with db._connect() as conn:
+            conn.execute("UPDATE traces SET updated_at = ? WHERE id = ?", (t_2h_ago, t_success))
+            conn.commit()
+
+        cand = db.get_next_node_to_trace(
+            hops_limit=2,
+            router_reload_hours=6,
+            router_retry_short_hours=1,
+            router_max_retries=5,
+            router_retry_long_hours=24,
+            router_identifiers=["RTRY"],
+        )
+        self.assertIsNone(cand, "Router con éxito hace 2h no debe trazarse (<6h de cadencia normal)")
+
 
 if __name__ == '__main__':
     unittest.main()

@@ -53,6 +53,10 @@ BASE_NODE_ID = ''  # Opcional: '!xxxxxxxx'
 ## Lista de routers/repetidores a vigilar con el comando /routers (nombres cortos o IDs)
 ROUTER_NODES = ['RAU0', 'CA12', 'CA13', 'CA01', 'CA02', 'CA03', 'CA04', 'CA05', 'CA16', 'CA23']
 ROUTER_MAX_HOPS = 2  # Hops máximos respecto a este bot para considerar un router cercano prioritario
+ROUTER_TRACE_INTERVAL_HOURS = 6   # Cadencia normal tras éxito (horas)
+ROUTER_RETRY_SHORT_HOURS = 1      # Reintento rápido ante fallo puntual (horas)
+ROUTER_MAX_RETRIES = 5            # Máximo de reintentos rápidos (1h) antes de penalizar
+ROUTER_RETRY_LONG_HOURS = 24      # Enfriamiento tras 5 fallos consecutivos (horas)
 
 ## Mareas (/marea)
 ## Fuente de descarga vía cron: si TIDES_API_KEY está vacío se usa Open-Meteo

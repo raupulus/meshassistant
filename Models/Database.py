@@ -199,9 +199,9 @@ class Database:
                 UPDATE traces
                 SET status = 'error',
                     data_raw = 'Timeout: cola pendiente expirada',
-                    updated_at = datetime('now')
+                    updated_at = datetime('now', 'localtime')
                 WHERE status = 'pending'
-                  AND strftime('%s', 'now') - strftime('%s', created_at) >= ?
+                  AND strftime('%s', 'now', 'localtime') - strftime('%s', created_at) >= ?
                 """,
                 (int(max_age_minutes) * 60,),
             )
@@ -606,15 +606,21 @@ class Database:
         reload_hours: int = 72,
         router_reload_hours: int = 6,
         router_max_hops: int = 2,
+        router_retry_short_hours: int = 1,
+        router_max_retries: int = 5,
+        router_retry_long_hours: int = 24,
         retry_hours: int = 24,
         router_identifiers: Optional[List[str]] = None,
     ) -> Optional[str]:
         """Devuelve el próximo node_id candidato para traceroute.
 
         Prioridad 1: Nodos routers cercanos (en router_identifiers o con role ROUTER/ROUTER_LATE/REPEATER)
-                    con hops <= router_max_hops (2) cuya última traza exitosa tenga ≥ router_reload_hours (6h).
+                    con hops <= router_max_hops (2).
+                    - Éxito previo ('done'): re-trazar cada router_reload_hours (6h).
+                    - Fallo previo ('error') con < router_max_retries (5): reintentar cada router_retry_short_hours (1h).
+                    - Fallo previo ('error') con >= router_max_retries (5): enfriamiento de router_retry_long_hours (24h).
         Prioridad 2: Nodos normales y routers más lejanos (hops <= hops_limit, no MQTT)
-                    cuya última traza exitosa tenga ≥ reload_hours (72h).
+                    cuya última traza exitosa tenga ≥ reload_hours (72h) o reintento de retry_hours (24h).
         """
         router_idents = [str(r) for r in (router_identifiers or [])]
 
@@ -634,6 +640,15 @@ class Database:
                         SELECT MAX(t2.updated_at) FROM traces t2
                         WHERE t2."to" = t."to" AND t2.updated_at IS NOT NULL AND t2.status IN ('done','error')
                     )
+                ), consecutive_errors AS (
+                    SELECT t1."to" AS node_id, COUNT(*) AS err_count
+                    FROM traces t1
+                    WHERE t1.status = 'error'
+                      AND t1.id > COALESCE(
+                          (SELECT MAX(t2.id) FROM traces t2 WHERE t2."to" = t1."to" AND t2.status = 'done'),
+                          0
+                      )
+                    GROUP BY t1."to"
                 ), pend AS (
                     SELECT "to" AS node_id, COUNT(*) AS pendings
                     FROM traces
@@ -644,6 +659,7 @@ class Database:
                 FROM nodes n
                 LEFT JOIN last_processed lp ON lp.node_id = n.node_id
                 LEFT JOIN last_status ls ON ls.node_id = n.node_id
+                LEFT JOIN consecutive_errors ce ON ce.node_id = n.node_id
                 LEFT JOIN pend p ON p.node_id = n.node_id
                 WHERE COALESCE(n.via_mqtt, 0) = 0
                   AND (n.hops IS NULL OR n.hops <= ?)
@@ -656,10 +672,9 @@ class Database:
                   )
                   AND (
                         lp.last_updated IS NULL
-                     OR (
-                          (ls.last_status = 'done'  AND strftime('%s','now') - strftime('%s', lp.last_updated) >= ?)
-                       OR (ls.last_status = 'error' AND strftime('%s','now') - strftime('%s', lp.last_updated) >= ?)
-                        )
+                     OR (ls.last_status = 'done'  AND strftime('%s','now','localtime') - strftime('%s', lp.last_updated) >= ?)
+                     OR (ls.last_status = 'error' AND COALESCE(ce.err_count, 0) < ?  AND strftime('%s','now','localtime') - strftime('%s', lp.last_updated) >= ?)
+                     OR (ls.last_status = 'error' AND COALESCE(ce.err_count, 0) >= ? AND strftime('%s','now','localtime') - strftime('%s', lp.last_updated) >= ?)
                   )
                 ORDER BY lp.last_updated ASC, n.updated_at DESC
                 LIMIT 1
@@ -670,12 +685,18 @@ class Database:
             params_routers = tuple(
                 [int(router_max_hops)] + [r.upper() for r in router_idents] * 2 + [
                     int(router_reload_hours) * 3600,
-                    int(retry_hours) * 3600,
+                    int(router_max_retries),
+                    int(router_retry_short_hours) * 3600,
+                    int(router_max_retries),
+                    int(router_retry_long_hours) * 3600,
                 ]
             ) if router_idents else (
                 int(router_max_hops),
                 int(router_reload_hours) * 3600,
-                int(retry_hours) * 3600,
+                int(router_max_retries),
+                int(router_retry_short_hours) * 3600,
+                int(router_max_retries),
+                int(router_retry_long_hours) * 3600,
             )
 
             cur = conn.execute(query_routers, params_routers)
@@ -716,8 +737,8 @@ class Database:
                   AND (
                         lp.last_updated IS NULL
                      OR (
-                          (ls.last_status = 'done'  AND strftime('%s','now') - strftime('%s', lp.last_updated) >= ?)
-                       OR (ls.last_status = 'error' AND strftime('%s','now') - strftime('%s', lp.last_updated) >= ?)
+                          (ls.last_status = 'done'  AND strftime('%s','now','localtime') - strftime('%s', lp.last_updated) >= ?)
+                       OR (ls.last_status = 'error' AND strftime('%s','now','localtime') - strftime('%s', lp.last_updated) >= ?)
                         )
                   )
                 ORDER BY n.updated_at DESC

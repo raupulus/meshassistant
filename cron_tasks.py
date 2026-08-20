@@ -175,6 +175,9 @@ def send_trace() -> None:
     reload_hours = int(getattr(env, 'TRACES_RELOAD_INTERVAL', 72) or 72)
     router_reload_hours = int(getattr(env, 'ROUTER_TRACE_INTERVAL_HOURS', 6) or 6)
     router_max_hops = int(getattr(env, 'ROUTER_MAX_HOPS', 2) or 2)
+    router_retry_short_hours = int(getattr(env, 'ROUTER_RETRY_SHORT_HOURS', 1) or 1)
+    router_max_retries = int(getattr(env, 'ROUTER_MAX_RETRIES', 5) or 5)
+    router_retry_long_hours = int(getattr(env, 'ROUTER_RETRY_LONG_HOURS', 24) or 24)
     retry_hours = int(getattr(env, 'TRACES_RETRY_INTERVAL', 24) or 24)
 
     routers_cfg = getattr(env, 'ROUTER_NODES', None) or getattr(env, 'ROUTERS_LIST', None) or []
@@ -186,6 +189,9 @@ def send_trace() -> None:
         reload_hours=reload_hours,
         router_reload_hours=router_reload_hours,
         router_max_hops=router_max_hops,
+        router_retry_short_hours=router_retry_short_hours,
+        router_max_retries=router_max_retries,
+        router_retry_long_hours=router_retry_long_hours,
         retry_hours=retry_hours,
         router_identifiers=routers_cfg,
     )

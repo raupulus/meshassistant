@@ -27,12 +27,13 @@ db = Database(db_path="...")    # ruta explícita (tests)
 |---|---|
 | `save_trace(from_, to, data_raw)` | Inserta un trace ya resuelto (`done`). |
 | `enqueue_trace(node_id)` | Encola (`pending`); si ya hay uno pendiente, devuelve su id. |
-| `get_next_pending_trace()` | Pendiente más antiguo o `None`. |
+| `get_next_pending_trace(router_identifiers=None)` | Obtiene el trace pendiente más prioritario (routers primero, luego cronológico) o `None`. |
+| `cleanup_stale_pending_traces(max_age_minutes=15)` | Expira trazas que lleven más de 15 minutos en estado pending sin procesar. |
 | `mark_trace_done(trace_id, ok, payload, from_='local')` | Marca `done`/`error` con payload. |
 | `mark_trace_done_with_route(trace_id, ok, *, text, to_name, to_name_short, hops, return_hops, from_='local')` | Marca y guarda hasta 7 saltos ida/vuelta con SNR y nombres. |
 | `get_last_trace_updated_at()` | `MAX(updated_at)` (para throttle global). |
 | `get_latest_trace_snr(identifier, base_identifiers=None)` | Obtiene el SNR real del enlace exterior hacia/desde el router y la base (`RAU0`). |
-| `get_next_node_to_trace(*, hops_limit, reload_hours, router_reload_hours, router_max_hops, retry_hours, router_identifiers)` | Selecciona el próximo nodo candidato dando **prioridad 1 a routers cercanos (hops <= 2, cada 6h)** y prioridad 2 a clientes normales/routers lejanos (72h). |
+| `get_next_node_to_trace(*, hops_limit, reload_hours, router_reload_hours, router_max_hops, router_retry_short_hours, router_max_retries, router_retry_long_hours, retry_hours, router_identifiers)` | Selecciona el próximo candidato con **prioridad 1 a routers cercanos (hops <= 2, cada 6h tras éxito, reintentos cada 1h hasta 5 veces y 24h tras 5 fallos)** y prioridad 2 a clientes normales/routers lejanos (72h). |
 
 ### Pings
 | Método | Descripción |
