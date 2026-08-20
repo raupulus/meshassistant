@@ -88,9 +88,12 @@ Todo callback **registra el comando** con `Database().log_command(...)` (en
   (def. `RAU0`) y luego la **media de SNR** del resto de nodos RF (excluye MQTT).
   Ej.: `SNR RAU0: 8.5 dB (1 hops). Media malla RF: 6.2 dB (38 nodos).`
 - **`/routers`** (alias **`/repetidores`**) — Informa del estado de los nodos routers/repetidores
-  configurados en `ROUTER_NODES` de `env.py` y nodos con rol oficial `ROUTER`/`ROUTER_LATE`/`REPEATER`.
-  Muestra el tiempo transcurrido, saltos descontando la base y SNR en formato compacto. Ej.:
-  `Routers: [RAU0: 2m - 0 hops(12.2dB)], [CA12: 2d - 0 hops(12.0dB)], [CA04 | offline]`
+  cercanos (máximo `ROUTER_MAX_HOPS` saltos, por defecto 2) configurados en `ROUTER_NODES` de `env.py`
+  o con rol oficial `ROUTER`/`ROUTER_LATE`/`REPEATER`.
+  * **Tiempo:** Transcurrido desde el último contacto (`last_heard`/`updated_at`), ej. `26m`, `2h`. Si supera 24h, los configurados se marcan `[CA12 | offline]` y los auto-detectados se omiten.
+  * **Saltos:** Descuenta 1 salto si vino a través de la pasarela base `RAU0`.
+  * **SNR:** Si existe un traceroute previo (`status='done'`), muestra el SNR real medido en el enlace exterior (`RAU0 <-> Router`). Si el enlace es directo con el bot/base, muestra la señal directa. Si vino repetido y aún no hay traceroute, omite el SNR para no mostrar la señal local de la base.
+  * Formato: `Routers: [RAU0: 2m - 0 hops(12.5dB)], [CA13: 26m - 0 hops(5.2dB)], [CA03: 21h - 1 hop], [CA04 | offline]`
 - **`/stats`** — `Comandos: 12 hoy / 540 total. top /ping (210). pings 188.
   nodos 42 (38 RF/4 MQTT). encuestas activas 1. encendido 3d 4h 12m.`
 

@@ -1,4 +1,5 @@
 import unittest
+from datetime import datetime
 from Commands.ping import ping_callback
 from Commands.routers import routers_callback
 from Models.Database import Database
@@ -109,7 +110,8 @@ class TestPingRouters(unittest.TestCase):
     def test_routers_callback_formatting(self):
         mock = MockInterface()
         meta = {'is_direct': True, 'node_from': {'id': '!test'}, 'node_to': {'id': '!bot'}}
-        env.ROUTER_NODES = ['RCER', 'INEXISTENTE', 'VIEJO']
+        env.ROUTER_NODES = ['RCER', 'INEXISTENTE', 'VIEJO', 'FAR_ROUTER', 'NOTRACE_ROUTER']
+        env.ROUTER_MAX_HOPS = 2
         db = Database()
         db.create_node_if_not_exists("!viejonode")
         db.update_node("!viejonode", {
@@ -120,14 +122,38 @@ class TestPingRouters(unittest.TestCase):
             "hops": 1,
             "last_heard": 1000000000, # Año 2001 (>24h)
         })
+
+        # Router lejano (>2 hops) -> debe ser ignorado
+        db.create_node_if_not_exists("!farnode")
+        db.update_node("!farnode", {
+            "name": "Router Lejano",
+            "short_name": "FAR_ROUTER",
+            "role": 2,
+            "hops": 4,
+            "last_heard": int(datetime.now().timestamp()),
+        })
+
+        # Router cercano sin trace -> debe mostrarse sin SNR falso de la base
+        db.create_node_if_not_exists("!notracenode")
+        db.update_node("!notracenode", {
+            "name": "Router Sin Trace",
+            "short_name": "NOTRACE_ROUTER",
+            "role": 2,
+            "hops": 1,
+            "snr": 12.2, # SNR local con la base
+            "last_heard": int(datetime.now().timestamp()),
+        })
+
         routers_callback(mock, [], '/routers', meta)
         self.assertGreaterEqual(len(mock.replies), 1)
         full_text = " ".join(mock.replies)
         # Verifica corchetes y formato
         self.assertIn("[RCER:", full_text)
-        self.assertIn("(9.5dB)]", full_text)
         self.assertIn("[INEXISTENTE | offline]", full_text)
         self.assertIn("[VIEJO | offline]", full_text, "Router no escuchado en 24h debe marcarse offline")
+        self.assertNotIn("FAR_ROUTER", full_text, "Routers con más de 2 hops deben excluirse del informe")
+        self.assertIn("[NOTRACE_ROUTER:", full_text)
+        self.assertNotIn("[NOTRACE_ROUTER: 0s - 0 hops(12.2dB)]", full_text, "No debe mostrar el SNR local de la base si no hay trace")
 
     def test_trace_snr_and_router_prioritization(self):
         db = Database()

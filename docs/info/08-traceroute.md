@@ -28,17 +28,17 @@ cron_tasks.send_trace()                      main.py loop()
 1. Si `ENABLE_TRACES` es `False`, no hace nada.
 2. **Throttle global:** si `now - get_last_trace_updated_at() < TRACES_INTERVAL`
    minutos, omite.
-3. Selecciona candidato con `Database.get_next_node_to_trace(hops_limit, reload_hours, router_reload_hours, retry_hours, router_identifiers)`:
-   - **Prioridad 1 (Routers):** Los routers configurados (`ROUTER_NODES`) y aquellos con rol oficial (`ROUTER`/`ROUTER_LATE`/`REPEATER`) se trazan cada **6 horas** (`ROUTER_TRACE_INTERVAL_HOURS=6`).
-   - **Prioridad 2 (Clientes normales):** Si los routers están al día, se trazan nodos ordinarios que cumplan `hops <= hops_limit` y ventana de `reload_hours` (72 h).
+3. Selecciona candidato con `Database.get_next_node_to_trace(hops_limit, reload_hours, router_reload_hours, router_max_hops, retry_hours, router_identifiers)`:
+   - **Prioridad 1 (Routers cercanos):** Los routers configurados (`ROUTER_NODES`) y aquellos con rol oficial (`ROUTER`/`ROUTER_LATE`/`REPEATER`) que estén a `hops <= ROUTER_MAX_HOPS` (def. 2) se trazan cada **6 horas** (`ROUTER_TRACE_INTERVAL_HOURS=6`).
+   - **Prioridad 2 (Clientes normales y routers lejanos):** Si los routers cercanos están al día, se trazan nodos ordinarios y routers lejanos que cumplan `hops <= hops_limit` y ventana de `reload_hours` (72 h).
 4. `enqueue_trace(node_id)` inserta `status='pending'` (o reutiliza el pendiente
    existente). **No abre el serie.**
 
 ### Selección de candidato — `get_next_node_to_trace`
 
 Query en dos fases con CTEs:
-1. Comprueba si algún **router** cumple `lp.last_updated IS NULL` o `done ≥ router_reload_hours` (6h) o `error ≥ retry_hours` (24h).
-2. Si no hay routers pendientes, comprueba los **clientes ordinarios** cumpliendo `done ≥ reload_hours` (72h) y `hops <= hops_limit`.
+1. Comprueba si algún **router cercano (`hops <= router_max_hops`)** cumple `lp.last_updated IS NULL` o `done ≥ router_reload_hours` (6h) o `error ≥ retry_hours` (24h).
+2. Si no hay routers cercanos pendientes, comprueba los **clientes ordinarios y routers más lejanos** cumpliendo `done ≥ reload_hours` (72h) y `hops <= hops_limit`.
 3. Excluye siempre nodos MQTT (`via_mqtt=1`) y nodos con traces `pending`.
 
 ## Lado principal — `main.loop()`
@@ -53,7 +53,7 @@ Query en dos fases con CTEs:
 
 ## Uso del SNR de Traceroute en `/routers`
 
-El comando `/routers` utiliza `Database.get_latest_trace_snr(node_id)` para obtener el **SNR medido en el enlace exterior real entre `RAU0` y el router** (en el salto `RAU0 <-> Router`), en lugar de mostrar el SNR del salto local interior `RAU0 -> Bot`.
+El comando `/routers` utiliza `Database.get_latest_trace_snr(node_id)` para obtener el **SNR medido en el enlace exterior real entre `RAU0` y el router** (en el salto `RAU0 <-> Router`), en lugar de mostrar el SNR del salto local interior `RAU0 -> Bot`. Si el nodo es repetido y aún no dispone de traza previa, se omite el SNR para evitar mostrar la señal distorsionada del enlace local.
 
 ## Parámetros (env.py)
 
@@ -64,6 +64,7 @@ El comando `/routers` utiliza `Database.get_latest_trace_snr(node_id)` para obte
 | `TRACES_INTERVAL` (min) | Throttle global entre traces (def. 5 min). |
 | `TRACES_RELOAD_INTERVAL` (h) | Re-trazar nodo cliente tras éxito (def. 72 h). |
 | `ROUTER_TRACE_INTERVAL_HOURS` (h) | Re-trazar router prioritario tras éxito (def. 6 h). |
+| `ROUTER_MAX_HOPS` | Límite de saltos para routers prioritarios y el informe de `/routers` (def. 2). |
 | `TRACES_RETRY_INTERVAL` (h) | Reintentar nodo tras error (def. 24 h). |
 
 ## Diseño: por qué la cola es la propia tabla

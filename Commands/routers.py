@@ -51,13 +51,14 @@ def routers_callback(interface, args, msg, metadata):
 
     base_short = getattr(env, 'BASE_NODE_SHORT_NAME', None) or getattr(env, 'MESH_GATEWAY_SHORT_NAME', 'RAU0') or 'RAU0'
     base_id = getattr(env, 'BASE_NODE_ID', None)
+    max_hops = int(getattr(env, 'ROUTER_MAX_HOPS', 2) or 2)
 
     try:
         from Models.Database import Database
         db = Database()
         items: List[str] = []
 
-        router_nodes = db.get_router_nodes(routers_cfg)
+        router_nodes = db.get_router_nodes(routers_cfg, max_hops=max_hops)
 
         for node in router_nodes:
             ident = node.get('identifier')
@@ -70,6 +71,12 @@ def routers_callback(interface, args, msg, metadata):
                 or (short_name and str(short_name).upper() in configured_set)
                 or (node_id and str(node_id).upper() in configured_set)
             )
+
+            raw_hops = node.get('hops')
+
+            # Si el nodo supera los saltos máximos configurados (ROUTER_MAX_HOPS), se ignora
+            if raw_hops is not None and raw_hops > max_hops:
+                continue
 
             ts = node.get('last_heard') or node.get('updated_at')
             diff_sec = _get_time_diff_seconds(ts)
@@ -84,14 +91,28 @@ def routers_callback(interface, args, msg, metadata):
             ago = _format_time_ago(ts)
 
             # Descontar 1 salto si vino repetido a través del nodo base
-            raw_hops = node.get('hops')
             effective_hops = raw_hops
+            is_base = (
+                (base_short and short_name and short_name.upper() == str(base_short).upper())
+                or (base_id and node_id and node_id.upper() == str(base_id).upper())
+            )
+            is_direct = (raw_hops == 0) or is_base
+
             if raw_hops is not None and raw_hops > 0 and (base_short or base_id):
                 effective_hops = max(0, raw_hops - 1)
 
             base_idents = [b for b in [base_short, base_id] if b]
             trace_snr = db.get_latest_trace_snr(node_id or short_name or ident, base_idents)
-            snr_val = trace_snr if trace_snr is not None else node.get('snr')
+
+            # Priorizar SNR de trace reciente (enlace exterior base <-> router)
+            if trace_snr is not None:
+                snr_val = trace_snr
+            elif is_direct:
+                # Si es directo con nuestro bot o es la base, el SNR registrado es directo y real
+                snr_val = node.get('snr')
+            else:
+                # Si es repetido y NO tenemos trace, NO usamos node['snr'] (es el SNR local de la base)
+                snr_val = None
 
             if node.get('via_mqtt'):
                 items.append(f"[{name}: {ago} - MQTT]")
@@ -108,7 +129,7 @@ def routers_callback(interface, args, msg, metadata):
                 items.append(f"[{name}: {ago}]")
 
         if not items:
-            response = "No hay routers activos detectados en las últimas 24h."
+            response = f"No hay routers activos a <= {max_hops} hops detectados en las últimas 24h."
         else:
             response = "Routers: " + ", ".join(items)
 

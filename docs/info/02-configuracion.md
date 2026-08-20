@@ -31,6 +31,7 @@ que las variables ausentes no rompen la ejecución.
 | `TRACES_RETRY_INTERVAL` | int (h) | `24` | Espera para reintentar un trace tras `error`. |
 | `TRACES_RELOAD_INTERVAL` | int (h) | `72` | Espera para volver a trazar un nodo cliente general tras `done`. |
 | `ROUTER_TRACE_INTERVAL_HOURS` | int (h) | `6` | Cadencia prioritaria para trazar repetidores/routers (cada 6 horas). |
+| `ROUTER_MAX_HOPS` | int | `2` | Máximo de saltos (respecto al bot) para considerar un router cercano prioritario. |
 | `MESH_GATEWAY_SHORT_NAME` | str | `'RAU0'` | Nombre corto del nodo pasarela propio en azotea. |
 | `BASE_NODE_SHORT_NAME` | str | `'RAU0'` | Nodo base propio para descontar salto en `/ping` y `/routers`. |
 | `BASE_NODE_ID` | str | `''` | ID Meshtastic (`!xxxxxxxx`) del nodo base propio (opcional). |

@@ -360,8 +360,15 @@ class Database:
             row = cur.fetchone()
             return dict(row) if row else None
 
-    def get_router_nodes(self, configured_identifiers: Optional[List[str]] = None) -> List[Dict[str, Any]]:
-        """Obtiene nodos routers explícitos (configurados) y auto-detectados por role o nombre."""
+    def get_router_nodes(
+        self,
+        configured_identifiers: Optional[List[str]] = None,
+        max_hops: Optional[int] = 2,
+    ) -> List[Dict[str, Any]]:
+        """Obtiene nodos routers explícitos (configurados) y auto-detectados por role.
+
+        Filtra aquellos cuya distancia supere max_hops (respecto a este nodo/bot).
+        """
         found_nodes: List[Dict[str, Any]] = []
         seen_ids = set()
 
@@ -371,6 +378,10 @@ class Database:
                 node = self.get_node_by_identifier(ident)
                 if node:
                     nid = node.get('node_id')
+                    raw_hops = node.get('hops')
+                    if max_hops is not None and raw_hops is not None and raw_hops > max_hops:
+                        # Supera los saltos máximos configurados para routers cercanos
+                        continue
                     if nid and nid not in seen_ids:
                         seen_ids.add(nid)
                         found_nodes.append(node)
@@ -380,18 +391,24 @@ class Database:
 
         # 2. Auto-detectar nodos con role ROUTER, ROUTER_LATE o REPEATER (según protocolo Meshtastic)
         with closing(self._connect()) as conn:
-            cur = conn.execute(
-                """
+            query = """
                 SELECT node_id, name, num, short_name, mac_addr, hw_model, role, is_favorite,
                        snr, rssi, public_key, hops, hop_start, uptime, via_mqtt,
                        last_heard, updated_at
                 FROM nodes
-                WHERE role IN (2, 4, 9)
-                   OR UPPER(COALESCE(role, '')) IN ('ROUTER', 'ROUTER_LATE', 'REPEATER')
-                ORDER BY updated_at DESC
-                LIMIT 30
-                """
-            )
+                WHERE (
+                    role IN (2, 4, 9)
+                 OR UPPER(COALESCE(role, '')) IN ('ROUTER', 'ROUTER_LATE', 'REPEATER')
+                )
+            """
+            params: List[Any] = []
+            if max_hops is not None:
+                query += " AND (hops IS NULL OR hops <= ?) AND COALESCE(via_mqtt, 0) = 0"
+                params.append(int(max_hops))
+
+            query += " ORDER BY updated_at DESC LIMIT 30"
+
+            cur = conn.execute(query, tuple(params))
             for row in cur.fetchall():
                 node_dict = dict(row)
                 nid = node_dict.get('node_id')
@@ -478,16 +495,19 @@ class Database:
             conn.execute(
                 (
                     """
-                    INSERT INTO tasks_control (name, last_run_at, extra) VALUES (?, ?, ?)
-                    ON CONFLICT(name) DO UPDATE SET last_run_at = excluded.last_run_at, extra = excluded.extra
-                    """
+                INSERT INTO tasks_control (name, last_run_at, extra)
+                VALUES (?, ?, ?)
+                ON CONFLICT(name) DO UPDATE SET
+                    last_run_at = excluded.last_run_at,
+                    extra = excluded.extra
+                """
                 ),
                 (name, when_str, extra),
             )
             conn.commit()
 
     def get_latest_trace_snr(self, identifier: str, base_identifiers: Optional[List[str]] = None) -> Optional[float]:
-        """Obtiene el SNR del enlace exterior con la base desde el último trace exitoso."""
+        """Obtiene el SNR del enlace exterior con la base (o directo) desde el último trace exitoso."""
         if not identifier:
             return None
         with closing(self._connect()) as conn:
@@ -507,28 +527,33 @@ class Database:
 
             row_dict = dict(row)
             base_set = {str(b).upper() for b in (base_identifiers or ['RAU0'])}
+            bot_set = {'LOCAL', '!BOT', 'BOT', ''}
 
-            # 1. Buscar en la ruta de retorno (hop_return: señal recibida en azotea desde el router)
-            for i in range(1, 8):
-                short = (row_dict.get(f'hop_return{i}_name_short') or '').upper()
-                nid = (row_dict.get(f'hop_return{i}_id') or '').upper()
-                snr = row_dict.get(f'hop_return{i}_snr')
-                if snr is not None and (short in base_set or nid in base_set or i == 1):
-                    return snr
+            hops_count = row_dict.get('hops') or 0
+            hops_back_count = row_dict.get('hops_back') or 0
 
-            # 2. Buscar en la ruta de ida (hop: señal recibida en el router desde la azotea)
-            for i in range(1, 8):
-                short = (row_dict.get(f'hop{i}_name_short') or '').upper()
-                nid = (row_dict.get(f'hop{i}_id') or '').upper()
-                snr = row_dict.get(f'hop{i}_snr')
-                if snr is not None and (short not in base_set and nid not in base_set):
-                    return snr
+            # Caso 1: Trace con ruta de retorno (hop_return)
+            # En un trace BOT -> RAU0 -> Router -> RAU0 -> BOT (2 saltos):
+            # hop_return1 es la señal con que RAU0 escuchó al Router
+            # hop_return2 es la señal con que BOT escuchó a RAU0 (local, descartar)
+            if row_dict.get('hop_return1_snr') is not None:
+                ret1_id = (row_dict.get('hop_return1_id') or '').upper()
+                ret1_short = (row_dict.get('hop_return1_name_short') or '').upper()
+                if ret1_id not in bot_set and ret1_short not in bot_set:
+                    return row_dict.get('hop_return1_snr')
+                elif hops_back_count <= 1:
+                    return row_dict.get('hop_return1_snr')
 
-            # 3. Fallback a cualquier SNR registrado en el trace
-            for i in (1, 2, 3):
-                snr = row_dict.get(f'hop_return{i}_snr') or row_dict.get(f'hop{i}_snr')
-                if snr is not None:
-                    return snr
+            # Caso 2: Ruta de ida (hop2 en 2 saltos: señal con que el Router escuchó a RAU0)
+            if row_dict.get('hop2_snr') is not None:
+                return row_dict.get('hop2_snr')
+
+            # Caso 3: Trace directo de 1 solo salto de ida
+            if hops_count <= 1 and row_dict.get('hop1_snr') is not None:
+                hop1_id = (row_dict.get('hop1_id') or '').upper()
+                hop1_short = (row_dict.get('hop1_name_short') or '').upper()
+                if hop1_id not in base_set and hop1_short not in base_set:
+                    return row_dict.get('hop1_snr')
 
             return None
 
@@ -539,20 +564,21 @@ class Database:
         hops_limit: int = 2,
         reload_hours: int = 72,
         router_reload_hours: int = 6,
+        router_max_hops: int = 2,
         retry_hours: int = 24,
         router_identifiers: Optional[List[str]] = None,
     ) -> Optional[str]:
         """Devuelve el próximo node_id candidato para traceroute.
 
-        Prioridad 1: Nodos routers (en router_identifiers o con role ROUTER/ROUTER_LATE/REPEATER)
-                    cuya última traza exitosa tenga ≥ router_reload_hours (6h).
-        Prioridad 2: Nodos normales (hops <= hops_limit, no MQTT)
+        Prioridad 1: Nodos routers cercanos (en router_identifiers o con role ROUTER/ROUTER_LATE/REPEATER)
+                    con hops <= router_max_hops (2) cuya última traza exitosa tenga ≥ router_reload_hours (6h).
+        Prioridad 2: Nodos normales y routers más lejanos (hops <= hops_limit, no MQTT)
                     cuya última traza exitosa tenga ≥ reload_hours (72h).
         """
         router_idents = [str(r) for r in (router_identifiers or [])]
 
         with closing(self._connect()) as conn:
-            # 1. Comprobar primero si algún ROUTER necesita traceroute (prioridad 1)
+            # 1. Comprobar primero si algún ROUTER CERCANO (<= router_max_hops) necesita traceroute (prioridad 1)
             query_routers = '''
                 WITH last_processed AS (
                     SELECT "to" AS node_id, MAX(updated_at) AS last_updated
@@ -579,6 +605,7 @@ class Database:
                 LEFT JOIN last_status ls ON ls.node_id = n.node_id
                 LEFT JOIN pend p ON p.node_id = n.node_id
                 WHERE COALESCE(n.via_mqtt, 0) = 0
+                  AND (n.hops IS NULL OR n.hops <= ?)
                   AND COALESCE(p.pendings, 0) = 0
                   AND (
                       n.role IN (2, 4, 9)
@@ -600,11 +627,12 @@ class Database:
             )
 
             params_routers = tuple(
-                [r.upper() for r in router_idents] * 2 + [
+                [int(router_max_hops)] + [r.upper() for r in router_idents] * 2 + [
                     int(router_reload_hours) * 3600,
                     int(retry_hours) * 3600,
                 ]
             ) if router_idents else (
+                int(router_max_hops),
                 int(router_reload_hours) * 3600,
                 int(retry_hours) * 3600,
             )
@@ -614,7 +642,7 @@ class Database:
             if row:
                 return row['node_id']
 
-            # 2. Si ningún router necesita trace, seleccionar nodo normal cumpliendo reload_hours (72h)
+            # 2. Si ningún router cercano necesita trace, seleccionar nodo normal o router lejano cumpliendo reload_hours (72h)
             cur = conn.execute(
                 '''
                 WITH last_processed AS (
@@ -662,8 +690,6 @@ class Database:
             )
             row = cur.fetchone()
             return row['node_id'] if row else None
-
-    # Trace requests: eliminadas en favor de usar la propia tabla `traces` como cola
 
     # ---------- AEMET ALERTS ----------
     def _hash_text(self, text: str) -> str:

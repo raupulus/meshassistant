@@ -222,6 +222,7 @@ está excluido del repositorio** porque puede contener claves de API.
 | `TRACES_RETRY_INTERVAL` | int (h) | Espera para reintentar un trace tras error. |
 | `TRACES_RELOAD_INTERVAL` | int (h) | Espera para volver a trazar un nodo cliente general tras éxito (def. 72h). |
 | `ROUTER_TRACE_INTERVAL_HOURS` | int (h) | Cadencia prioritaria para trazar routers (def. 6h). |
+| `ROUTER_MAX_HOPS` | int | Máximo de saltos (respecto al bot) para considerar un router prioritario (def. 2). |
 | `MESH_GATEWAY_SHORT_NAME` | str | Nombre corto del nodo pasarela propio en azotea (def. `RAU0`). |
 | `BASE_NODE_SHORT_NAME` | str | Nodo base propio para descontar salto en `/ping` y `/routers`. |
 | `ROUTER_NODES` | list[str] | Lista de repetidores/routers a vigilar con `/routers`. |

@@ -32,7 +32,7 @@ db = Database(db_path="...")    # ruta explícita (tests)
 | `mark_trace_done_with_route(trace_id, ok, *, text, to_name, to_name_short, hops, return_hops, from_='local')` | Marca y guarda hasta 7 saltos ida/vuelta con SNR y nombres. |
 | `get_last_trace_updated_at()` | `MAX(updated_at)` (para throttle global). |
 | `get_latest_trace_snr(identifier, base_identifiers=None)` | Obtiene el SNR real del enlace exterior hacia/desde el router y la base (`RAU0`). |
-| `get_next_node_to_trace(*, hops_limit, reload_hours, router_reload_hours, retry_hours, router_identifiers)` | Selecciona el próximo nodo candidato dando **prioridad 1 a routers (cada 6h)** y prioridad 2 a clientes normales (72h). |
+| `get_next_node_to_trace(*, hops_limit, reload_hours, router_reload_hours, router_max_hops, retry_hours, router_identifiers)` | Selecciona el próximo nodo candidato dando **prioridad 1 a routers cercanos (hops <= 2, cada 6h)** y prioridad 2 a clientes normales/routers lejanos (72h). |
 
 ### Pings
 | Método | Descripción |
@@ -50,7 +50,7 @@ db = Database(db_path="...")    # ruta explícita (tests)
 |---|---|
 | `get_node(node_id)` | Devuelve la fila como dict o `None`. |
 | `get_node_by_identifier(identifier)` | Busca un nodo por `node_id`, `short_name` o `name`. |
-| `get_router_nodes(configured_identifiers=None)` | Devuelve routers configurados y auto-detectados por rol (`ROUTER`/`ROUTER_LATE`/`REPEATER`). |
+| `get_router_nodes(configured_identifiers=None, max_hops=2)` | Devuelve routers configurados y auto-detectados por rol (`ROUTER`/`ROUTER_LATE`/`REPEATER`) filtrados por `max_hops`. |
 | `create_node_if_not_exists(node_id, data=None)` | `INSERT OR IGNORE` + update opcional. |
 | `update_node(node_id, data)` | Update con lista blanca de columnas (`role`, `hops`, `snr`, etc.); castea `is_favorite`/`via_mqtt` a 0/1; actualiza `updated_at`. |
 
