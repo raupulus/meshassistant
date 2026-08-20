@@ -378,7 +378,7 @@ class Database:
                     # Nodo configurado pero no registrado aún
                     found_nodes.append({'identifier': ident, 'offline': True})
 
-        # 2. Auto-detectar nodos con role ROUTER / REPEATER o palabra clave en nombre
+        # 2. Auto-detectar nodos con role ROUTER, ROUTER_LATE o REPEATER (según protocolo Meshtastic)
         with closing(self._connect()) as conn:
             cur = conn.execute(
                 """
@@ -386,10 +386,8 @@ class Database:
                        snr, rssi, public_key, hops, hop_start, uptime, via_mqtt,
                        last_heard, updated_at
                 FROM nodes
-                WHERE role IN (2, 3, 4)
-                   OR UPPER(COALESCE(role, '')) IN ('ROUTER', 'ROUTER_CLIENT', 'REPEATER')
-                   OR UPPER(COALESCE(name, '')) LIKE '%ROUTER%'
-                   OR UPPER(COALESCE(name, '')) LIKE '%REPETIDOR%'
+                WHERE role IN (2, 4, 9)
+                   OR UPPER(COALESCE(role, '')) IN ('ROUTER', 'ROUTER_LATE', 'REPEATER')
                 ORDER BY updated_at DESC
                 LIMIT 30
                 """

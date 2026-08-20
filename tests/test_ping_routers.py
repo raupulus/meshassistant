@@ -69,16 +69,42 @@ class TestPingRouters(unittest.TestCase):
 
     def test_database_get_router_nodes(self):
         db = Database()
+        # 1. Nodo con rol ROUTER real
         db.create_node_if_not_exists("!testrouter1")
         db.update_node("!testrouter1", {
-            "name": "Router Cerro",
+            "name": "Nodo Cerro",
             "short_name": "RCER",
-            "role": 2, # ROUTER
+            "role": 2,  # ROUTER
             "snr": 9.5,
             "hops": 1,
         })
+
+        # 2. Nodo con rol REPEATER real
+        db.create_node_if_not_exists("!testrouter2")
+        db.update_node("!testrouter2", {
+            "name": "Repetidor Monte",
+            "short_name": "RMON",
+            "role": "REPEATER",
+            "snr": 11.0,
+            "hops": 0,
+        })
+
+        # 3. Nodo cliente falso que pone "Router" en su nombre pero role es CLIENT (0)
+        db.create_node_if_not_exists("!fakeclient")
+        db.update_node("!fakeclient", {
+            "name": "Router Falso de Tercero",
+            "short_name": "FAKE",
+            "role": 0,  # CLIENT
+            "snr": 5.0,
+            "hops": 2,
+        })
+
         routers = db.get_router_nodes(["RCER"])
-        self.assertTrue(any(r.get("short_name") == "RCER" for r in routers))
+        router_shorts = [r.get("short_name") for r in routers]
+
+        self.assertIn("RCER", router_shorts)
+        self.assertIn("RMON", router_shorts)
+        self.assertNotIn("FAKE", router_shorts, "Nodos con 'router' en el nombre pero sin role de router deben ser ignorados")
 
 
 if __name__ == '__main__':
