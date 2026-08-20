@@ -272,10 +272,11 @@ class SerialInterface:
 
         if is_direct:
             # Responder en privado al remitente
-            #from_num = metadata['node_from']['num']
-            #log_p(f"↩️ Respondiendo en privado al nodo {from_num}")
-            #return self.send(msg, dest=from_num)
-            from_id = metadata['node_from']['id']
+            node_from = metadata.get('node_from')
+            if isinstance(node_from, dict):
+                from_id = node_from.get('id')
+            else:
+                from_id = str(node_from or '')
             log_p(f"Respondiendo en privado al nodo {from_id}")
             return self.send(msg, dest=from_id)
         else:

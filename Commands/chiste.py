@@ -27,8 +27,9 @@ def chiste_callback(interface, args, msg, metadata):
             return
 
         # Determinar origen del chiste
-        node_from = (metadata or {}).get('node_from') or {}
-        from_name = node_from.get('short_name') or node_from.get('name') or 'desconocido'
+        metadata = metadata or {}
+        node_from = metadata.get('node_from') if isinstance(metadata.get('node_from'), dict) else {}
+        from_name = node_from.get('short_name') or node_from.get('name') or (metadata.get('node_from') if isinstance(metadata.get('node_from'), str) else None) or 'desconocido'
 
         # Guardar en BD con need_upload=true y need_approve=true
         try:

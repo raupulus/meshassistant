@@ -49,8 +49,9 @@ def encuesta_callback(interface, args, msg, metadata):
     """
     from functions import reply_long
 
-    node_from = (metadata or {}).get('node_from') or {}
-    owner_id = node_from.get('id')
+    metadata = metadata or {}
+    node_from = metadata.get('node_from') if isinstance(metadata.get('node_from'), dict) else {}
+    owner_id = node_from.get('id') or (metadata.get('node_from') if isinstance(metadata.get('node_from'), str) else None)
 
     try:
         from Models.Database import Database
