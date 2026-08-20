@@ -109,13 +109,24 @@ class TestPingRouters(unittest.TestCase):
     def test_routers_callback_formatting(self):
         mock = MockInterface()
         meta = {'is_direct': True, 'node_from': {'id': '!test'}, 'node_to': {'id': '!bot'}}
-        env.ROUTER_NODES = ['RCER', 'INEXISTENTE']
+        env.ROUTER_NODES = ['RCER', 'INEXISTENTE', 'VIEJO']
+        db = Database()
+        db.create_node_if_not_exists("!viejonode")
+        db.update_node("!viejonode", {
+            "name": "Router Antiguo",
+            "short_name": "VIEJO",
+            "role": 2,
+            "snr": 10.0,
+            "hops": 1,
+            "last_heard": 1000000000, # Año 2001 (>24h)
+        })
         routers_callback(mock, [], '/routers', meta)
         self.assertEqual(len(mock.replies), 1)
         # Verifica corchetes y formato
         self.assertIn("[RCER:", mock.replies[0])
         self.assertIn("(9.5dB)]", mock.replies[0])
         self.assertIn("[INEXISTENTE | offline]", mock.replies[0])
+        self.assertIn("[VIEJO | offline]", mock.replies[0], "Router no escuchado en 24h debe marcarse offline")
 
 
 if __name__ == '__main__':
