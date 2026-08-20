@@ -220,7 +220,11 @@ está excluido del repositorio** porque puede contener claves de API.
 | `TRACES_HOPS` | int | Máximo de saltos para elegir nodos a trazar (`hops <=`). |
 | `TRACES_INTERVAL` | int (min) | Intervalo global mínimo entre traces. |
 | `TRACES_RETRY_INTERVAL` | int (h) | Espera para reintentar un trace tras error. |
-| `TRACES_RELOAD_INTERVAL` | int (h) | Espera para volver a trazar un nodo tras éxito. |
+| `TRACES_RELOAD_INTERVAL` | int (h) | Espera para volver a trazar un nodo cliente general tras éxito (def. 72h). |
+| `ROUTER_TRACE_INTERVAL_HOURS` | int (h) | Cadencia prioritaria para trazar routers (def. 6h). |
+| `MESH_GATEWAY_SHORT_NAME` | str | Nombre corto del nodo pasarela propio en azotea (def. `RAU0`). |
+| `BASE_NODE_SHORT_NAME` | str | Nodo base propio para descontar salto en `/ping` y `/routers`. |
+| `ROUTER_NODES` | list[str] | Lista de repetidores/routers a vigilar con `/routers`. |
 | `CHISTES_API_ENABLED` | bool | Activa la sincronización de chistes con API externa. |
 | `CHISTES_API_KEY` | str | *Bearer token* de la API de chistes. |
 | `CHISTES_URL_UPLOAD` | str | Endpoint para subir chistes. |
@@ -247,6 +251,7 @@ comando declara en `data.py` si responde también **en grupo/canal** (`in_group`
 | `/help [cmd]` | No | Ayuda general o detalle de un comando | ✅ |
 | `/about` | No | Información del proyecto | ✅ |
 | `/ping` | Sí | Devuelve saltos/SNR/MQTT y guarda el ping | ✅ |
+| `/routers` (`/repetidores`) | Sí | Estado de routers (SNR exterior de trace, saltos, tiempo y offline 24h) | ✅ |
 | `/chiste [add …]` | Sí | Chiste aleatorio o alta de uno nuevo | ✅ |
 | `/maremoto` | Sí | Tiempo desde el último maremoto en Chipiona | ✅ |
 | `/weather` | No | Tiempo actual de la zona (datos AEMET, desde BD) | ✅ |

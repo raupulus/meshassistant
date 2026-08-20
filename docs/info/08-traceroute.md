@@ -28,39 +28,43 @@ cron_tasks.send_trace()                      main.py loop()
 1. Si `ENABLE_TRACES` es `False`, no hace nada.
 2. **Throttle global:** si `now - get_last_trace_updated_at() < TRACES_INTERVAL`
    minutos, omite.
-3. Selecciona candidato con `Database.get_next_node_to_trace(hops_limit, reload_hours, retry_hours)`.
+3. Selecciona candidato con `Database.get_next_node_to_trace(hops_limit, reload_hours, router_reload_hours, retry_hours, router_identifiers)`:
+   - **Prioridad 1 (Routers):** Los routers configurados (`ROUTER_NODES`) y aquellos con rol oficial (`ROUTER`/`ROUTER_LATE`/`REPEATER`) se trazan cada **6 horas** (`ROUTER_TRACE_INTERVAL_HOURS=6`).
+   - **Prioridad 2 (Clientes normales):** Si los routers están al día, se trazan nodos ordinarios que cumplan `hops <= hops_limit` y ventana de `reload_hours` (72 h).
 4. `enqueue_trace(node_id)` inserta `status='pending'` (o reutiliza el pendiente
    existente). **No abre el serie.**
 
 ### Selección de candidato — `get_next_node_to_trace`
 
-Query con CTEs que elige un `node_id` que cumpla **todo**:
-- `COALESCE(via_mqtt,0)=0` (no MQTT).
-- `hops IS NULL` o `hops <= hops_limit`.
-- Sin traces `pending`.
-- Ventana cumplida: último `done` hace ≥ `reload_hours`, o último `error` hace ≥
-  `retry_hours`, o sin traces previos.
-Ordena por `nodes.updated_at DESC` y toma 1.
+Query en dos fases con CTEs:
+1. Comprueba si algún **router** cumple `lp.last_updated IS NULL` o `done ≥ router_reload_hours` (6h) o `error ≥ retry_hours` (24h).
+2. Si no hay routers pendientes, comprueba los **clientes ordinarios** cumpliendo `done ≥ reload_hours` (72h) y `hops <= hops_limit`.
+3. Excluye siempre nodos MQTT (`via_mqtt=1`) y nodos con traces `pending`.
 
 ## Lado principal — `main.loop()`
 
 1. `get_next_pending_trace()` → toma el pendiente más antiguo.
-2. `SerialInterface.traceroute(node_id)` → `{text, forward[], backward[]}`.
+2. `SerialInterface.traceroute(node_id)` → `{text, forward[], backward[]}` invocando `sendTraceRoute(dest=node_id, hopLimit=3, channelIndex=0)`.
 3. Resuelve hasta 7 saltos de ida y 7 de vuelta, enriqueciendo cada uno con
-   `name`/`name_short`/`rssi` desde `Database.get_node`.
+   `name`/`name_short`/`snr`/`rssi` desde `Database.get_node`.
 4. `mark_trace_done_with_route(...)` guarda `status='done'`, `data_raw=text`,
    `to_name`, los `hopN_*` y `hop_returnN_*`, y `hops`/`hops_back` (conteos).
 5. Si algo falla, guarda `status='error'` con el texto del error en `data_raw`.
+
+## Uso del SNR de Traceroute en `/routers`
+
+El comando `/routers` utiliza `Database.get_latest_trace_snr(node_id)` para obtener el **SNR medido en el enlace exterior real entre `RAU0` y el router** (en el salto `RAU0 <-> Router`), en lugar de mostrar el SNR del salto local interior `RAU0 -> Bot`.
 
 ## Parámetros (env.py)
 
 | Variable | Efecto |
 |---|---|
 | `ENABLE_TRACES` | Interruptor maestro. |
-| `TRACES_HOPS` | Máximo de saltos del candidato. |
-| `TRACES_INTERVAL` (min) | Throttle global entre traces. |
-| `TRACES_RELOAD_INTERVAL` (h) | Re-trazar nodo tras éxito. |
-| `TRACES_RETRY_INTERVAL` (h) | Reintentar nodo tras error. |
+| `TRACES_HOPS` | Máximo de saltos del candidato general. |
+| `TRACES_INTERVAL` (min) | Throttle global entre traces (def. 5 min). |
+| `TRACES_RELOAD_INTERVAL` (h) | Re-trazar nodo cliente tras éxito (def. 72 h). |
+| `ROUTER_TRACE_INTERVAL_HOURS` (h) | Re-trazar router prioritario tras éxito (def. 6 h). |
+| `TRACES_RETRY_INTERVAL` (h) | Reintentar nodo tras error (def. 24 h). |
 
 ## Diseño: por qué la cola es la propia tabla
 

@@ -35,16 +35,17 @@ con `CREATE TABLE IF NOT EXISTS`. Además realiza **migraciones idempotentes**:
 | `num` | INTEGER | Número de nodo. |
 | `mac_addr` | TEXT | MAC. |
 | `hw_model` | INTEGER | Modelo de hardware. |
+| `role` | INTEGER | Rol oficial Meshtastic (`2=ROUTER`, `4=REPEATER`, `9=ROUTER_LATE`). |
 | `is_favorite` | INTEGER | 0/1. |
 | `snr`, `rssi` | REAL | Calidad de señal. |
 | `public_key` | TEXT | Clave pública. |
 | `hops`, `hop_start` | INTEGER | Saltos. |
 | `uptime` | INTEGER | Uptime reportado. |
 | `via_mqtt` | INTEGER | 0/1 (si llega por MQTT). |
-| `last_heard` | INTEGER | Último contacto. |
+| `last_heard` | INTEGER | Último contacto (epoch). |
 | `updated_at` | TEXT | ISO 8601. |
 
-Índices: `idx_nodes_short_name`, `idx_nodes_num`.
+Índices: `idx_nodes_short_name`, `idx_nodes_num`, `idx_nodes_role`.
 
 ### `pings` — histórico de pings
 | Columna | Tipo | Notas |

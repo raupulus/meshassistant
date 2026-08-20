@@ -34,8 +34,8 @@ Marcas usadas: `chiste_upload`, `chiste_download`, `aemet_fetch`,
 |---|---|---|---|
 | `chiste_upload` | 5 min | Sube chistes `need_upload=1`. | [10-chistes.md](10-chistes.md) |
 | `chiste_download` | 10 min | Descarga chistes nuevos. | [10-chistes.md](10-chistes.md) |
-| `send_trace` | `TRACES_INTERVAL` | Encola un traceroute. | [08-traceroute.md](08-traceroute.md) |
-| `check_aemet` | 60 min | Descarga y guarda alertas AEMET. | [09-aemet.md](09-aemet.md) |
+| `send_trace` | `TRACES_INTERVAL` (5m) | Encola un traceroute (**prioridad routers cada 6h**, clientes cada 72h). | [08-traceroute.md](08-traceroute.md) |
+| `check_aemet` | `AEMET_PERIOD` | Descarga y guarda alertas AEMET. | [09-aemet.md](09-aemet.md) |
 
 ## Instalación en crontab
 
