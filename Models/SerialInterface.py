@@ -350,17 +350,27 @@ class SerialInterface:
         buf_out = io.StringIO()
         buf_err = io.StringIO()
 
-        # Intentar variantes en orden de máxima compatibilidad (posicionales primero)
-        tried: list[str] = []
-        called = False
-
-        with contextlib.redirect_stdout(buf_out), contextlib.redirect_stderr(buf_err):
-            # 1) Firma estándar meshtastic (dest, hopLimit, channelIndex)
+        # Configurar un timeout ágil en la librería (por defecto 15s) para no bloquear
+        # 20 minutos (300s x waitFactor) si el nodo está inalcanzable u offline.
+        orig_expire = getattr(getattr(self.interface, '_timeout', None), 'expireTimeout', 300)
+        if hasattr(self.interface, '_timeout'):
             try:
-                send_fn(dest=node_id, hopLimit=3, channelIndex=0)
-                called = True
-            except TypeError as e:
-                tried.append(str(e))
+                self.interface._timeout.expireTimeout = int(timeout)
+            except Exception:
+                pass
+
+        try:
+            # Intentar variantes en orden de máxima compatibilidad (posicionales primero)
+            tried: list[str] = []
+            called = False
+
+            with contextlib.redirect_stdout(buf_out), contextlib.redirect_stderr(buf_err):
+                # 1) Firma estándar meshtastic (dest, hopLimit, channelIndex)
+                try:
+                    send_fn(dest=node_id, hopLimit=3, channelIndex=0)
+                    called = True
+                except TypeError as e:
+                    tried.append(str(e))
 
             # 2) Posicional estándar (node_id, 3, 0)
             if not called:
@@ -432,6 +442,12 @@ class SerialInterface:
                     start = time.time()
                     time.sleep(0.3)
                 time.sleep(0.2)
+        finally:
+            if hasattr(self.interface, '_timeout'):
+                try:
+                    self.interface._timeout.expireTimeout = orig_expire
+                except Exception:
+                    pass
 
         text = (buf_out.getvalue() or '')
         err_text = (buf_err.getvalue() or '')
