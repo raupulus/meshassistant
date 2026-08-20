@@ -30,9 +30,15 @@ def loop():
 
             # Procesar (si hay) un trace pendiente encolado por cron (en la misma tabla traces)
             try:
-                pending = db.get_next_pending_trace()
+                import env as _env
+                _rcfg = getattr(_env, 'ROUTER_NODES', None) or getattr(_env, 'ROUTERS_LIST', None) or []
+                if isinstance(_rcfg, str):
+                    _rcfg = [r.strip() for r in _rcfg.split(',') if r.strip()]
+
+                pending = db.get_next_pending_trace(router_identifiers=_rcfg)
                 if pending:
                     node_id = pending.get('to')
+                    log_p(f"[traceroute] Iniciando trace #{pending['id']} hacia {node_id}")
                     try:
                         # Ejecutar traceroute y capturar texto + hops hacia destino
                         result = interface.traceroute(node_id)
@@ -82,9 +88,11 @@ def loop():
                             hops=hops,
                             return_hops=return_hops,
                         )
+                        log_p(f"[traceroute] Trace #{pending['id']} completado con éxito: {text[:60]}")
                     except Exception as e:
                         # En caso de fallo, guardar el error como texto plano en data_raw
                         error_txt = f"{e.__class__.__name__}: {e}"
+                        log_p(f"[traceroute] Trace #{pending['id']} falló: {error_txt}", level="WARN")
                         db.mark_trace_done_with_route(
                             pending['id'], False,
                             text=error_txt,
@@ -92,7 +100,8 @@ def loop():
                             to_name_short=None,
                             hops=None,
                         )
-            except Exception:
+            except Exception as e:
+                log_p(f"[traceroute] Error en bucle de traces: {e}", level="WARN")
                 # No interrumpir el loop por errores de BD
                 pass
 

@@ -14,7 +14,7 @@ class Database:
     """Modelo simple para interactuar con la base de datos SQLite."""
 
     def __init__(self, db_path: Optional[str] = None) -> None:
-        self.db_path = str(db_path) if db_path else str(ensure_database())
+        self.db_path = str(ensure_database(db_path))
 
     def _connect(self) -> sqlite3.Connection:
         # timeout: tiempo que el driver espera por un lock antes de lanzar
@@ -38,12 +38,10 @@ class Database:
                 )
             else:
                 cur = conn.execute(
-                    'SELECT id, "from", content, need_upload, need_approve FROM chistes ORDER BY RANDOM() LIMIT 1'
+                    'SELECT id, "from", content, need_upload FROM chistes ORDER BY RANDOM() LIMIT 1'
                 )
             row = cur.fetchone()
-            if not row:
-                return None
-            return dict(row)
+            return dict(row) if row else None
 
     def save_chiste(
         self,
@@ -53,99 +51,107 @@ class Database:
         need_approve: bool = False,
         chiste_id: Optional[int] = None,
     ) -> int:
-        """Guarda un chiste y devuelve el id insertado.
-
-        Parámetros:
-        - from_: origen del chiste (opcional)
-        - content: contenido del chiste
-        - need_upload: si necesita subirse a un origen externo (por defecto False)
-        - need_approve: si requiere aprobación antes de mostrarse (por defecto False)
-        """
+        """Inserta un nuevo chiste en la base de datos y devuelve su id."""
         with closing(self._connect()) as conn:
             cur = conn.execute(
-                'INSERT INTO chistes ("from", content, need_upload, need_approve, chiste_id) VALUES (?, ?, ?, ?, ?)',
-                (from_, content, 1 if need_upload else 0, 1 if need_approve else 0, chiste_id),
+                (
+                    """
+                INSERT INTO chistes ("from", content, need_upload, need_approve, chiste_id)
+                VALUES (?, ?, ?, ?, ?)
+                """
+                ),
+                (
+                    from_,
+                    content,
+                    1 if need_upload else 0,
+                    1 if need_approve else 0,
+                    chiste_id,
+                ),
             )
             conn.commit()
             return int(cur.lastrowid)
 
     def get_chistes_to_upload(self, limit: int = 100) -> List[Dict[str, Any]]:
+        """Devuelve chistes pendientes de subir a la API externa."""
         with closing(self._connect()) as conn:
             cur = conn.execute(
-                'SELECT id, "from", content FROM chistes WHERE need_upload = 1 LIMIT ?',
+                'SELECT id, "from", content, chiste_id FROM chistes WHERE need_upload = 1 LIMIT ?',
                 (limit,),
             )
-            return [dict(r) for r in cur.fetchall()]
+            return [dict(row) for row in cur.fetchall()]
 
     def mark_chistes_uploaded(self, ids: Iterable[int]) -> None:
-        ids = list(ids)
-        if not ids:
+        """Marca una lista de chistes como ya subidos (need_upload = 0)."""
+        ids_list = list(ids)
+        if not ids_list:
             return
-        placeholders = ",".join(["?"] * len(ids))
+        placeholders = ','.join(['?'] * len(ids_list))
         with closing(self._connect()) as conn:
-            conn.execute(f'UPDATE chistes SET need_upload = 0 WHERE id IN ({placeholders})', tuple(ids))
+            conn.execute(
+                f'UPDATE chistes SET need_upload = 0 WHERE id IN ({placeholders})',
+                tuple(ids_list),
+            )
             conn.commit()
 
-    def get_last_downloaded_chiste_id(self) -> Optional[int]:
+    def get_last_downloaded_chiste_id(self) -> int:
+        """Devuelve el máximo chiste_id descargado de la API externa o 0 si no hay ninguno."""
         with closing(self._connect()) as conn:
-            cur = conn.execute('SELECT MAX(chiste_id) as last_id FROM chistes WHERE chiste_id IS NOT NULL')
+            cur = conn.execute('SELECT MAX(chiste_id) AS max_id FROM chistes WHERE chiste_id IS NOT NULL')
             row = cur.fetchone()
-            return int(row[0]) if row and row[0] is not None else None
+            return int(row['max_id']) if row and row['max_id'] is not None else 0
 
     def bulk_insert_api_chistes(self, items: Iterable[Dict[str, Any]]) -> Tuple[int, int]:
-        """Inserta chistes descargados de la API.
+        """Inserta un lote de chistes descargados de la API externa ignorando los que ya existan por chiste_id.
 
-        Cada item debe tener: id (-> chiste_id), content y uploaded_by (-> from).
-        Flags need_approve y need_upload se guardan en 0.
-        Devuelve (insertados, ignorados).
+        Devuelve una tupla (insertados, ignorados).
         """
         inserted = 0
         ignored = 0
         with closing(self._connect()) as conn:
-            for it in items:
-                api_id = it.get('id')
-                content = it.get('content')
-                uploaded_by = it.get('uploaded_by')
-                if content is None:
-                    continue
+            for item in items:
                 try:
-                    conn.execute(
-                        'INSERT OR IGNORE INTO chistes ("from", content, need_upload, need_approve, chiste_id) VALUES (?, ?, 0, 0, ?)',
-                        (uploaded_by, content, api_id),
-                    )
-                    if conn.total_changes > 0:
-                        inserted += 1
-                    else:
+                    chiste_id = item.get('id')
+                    content = item.get('content') or item.get('text') or ''
+                    from_ = item.get('from') or item.get('author') or 'API'
+                    if not content or chiste_id is None:
                         ignored += 1
+                        continue
+                    conn.execute(
+                        (
+                            """
+                        INSERT INTO chistes ("from", content, need_upload, need_approve, chiste_id)
+                        VALUES (?, ?, 0, 0, ?)
+                        ON CONFLICT(chiste_id) DO NOTHING
+                        """
+                        ),
+                        (from_, content, chiste_id),
+                    )
+                    inserted += 1
                 except sqlite3.IntegrityError:
+                    ignored += 1
+                except Exception:
                     ignored += 1
             conn.commit()
         return inserted, ignored
 
-    # ---------- TRACES ----------
-    def save_trace(self, from_: str, to: str, data_raw: str) -> int:
-        """Guarda un trace clásico (registro completo) y devuelve el id insertado."""
+    # ---------- TRACES (COLA Y RESULTADOS) ----------
+    def save_trace(self, from_: Optional[str], to: str, data_raw: Optional[str]) -> int:
+        """Inserta un trace directamente como completado ('done')."""
+        now = datetime.now().isoformat(timespec='seconds')
         with closing(self._connect()) as conn:
-            now = datetime.now().isoformat(timespec='seconds')
             cur = conn.execute(
-                'INSERT INTO traces ("from", "to", data_raw, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)',
-                (from_, to, data_raw, 'done', now, now),
+                'INSERT INTO traces ("from", "to", data_raw, status, created_at, updated_at) VALUES (?, ?, ?, "done", ?, ?)',
+                (from_, to, data_raw, now, now),
             )
             conn.commit()
             return int(cur.lastrowid)
 
     def enqueue_trace(self, node_id: str) -> int:
-        """Encola un trace para un node_id en la propia tabla `traces`.
-
-        Inserta un registro con "to"=node_id, status='pending', created_at=ahora,
-        y deja NULL los campos "from", data_raw, updated_at.
-
-        Si ya existe un pendiente para ese nodo, devuelve su id sin crear otro.
-        """
+        """Encola una petición de traceroute para el nodo indicado."""
         now = datetime.now().isoformat(timespec='seconds')
         with closing(self._connect()) as conn:
             cur = conn.execute(
-                'SELECT id FROM traces WHERE "to" = ? AND status = "pending" ORDER BY created_at ASC LIMIT 1',
+                'SELECT id FROM traces WHERE "to" = ? AND status = "pending" ORDER BY id ASC LIMIT 1',
                 (node_id,),
             )
             row = cur.fetchone()
@@ -158,14 +164,49 @@ class Database:
             conn.commit()
             return int(cur2.lastrowid)
 
-    def get_next_pending_trace(self) -> Optional[Dict[str, Any]]:
-        """Obtiene el trace pendiente más antiguo (status='pending') o None."""
+    def get_next_pending_trace(self, router_identifiers: Optional[List[str]] = None) -> Optional[Dict[str, Any]]:
+        """Obtiene el trace pendiente más prioritario (routers primero, luego por created_at ASC)."""
+        router_idents = [str(r).upper() for r in (router_identifiers or [])]
         with closing(self._connect()) as conn:
-            cur = conn.execute(
-                'SELECT id, "to", created_at FROM traces WHERE status = "pending" ORDER BY created_at ASC LIMIT 1'
+            query = """
+                SELECT t.id, t."to", t.created_at
+                FROM traces t
+                LEFT JOIN nodes n ON n.node_id = t."to"
+                WHERE t.status = "pending"
+                ORDER BY
+                    CASE
+                        WHEN n.role IN (2, 4, 9)
+                          OR UPPER(COALESCE(n.role, '')) IN ('ROUTER', 'ROUTER_LATE', 'REPEATER')
+                          OR UPPER(COALESCE(n.short_name, '')) IN ({ro_placeholders})
+                          OR UPPER(COALESCE(t."to", '')) IN ({ro_placeholders})
+                        THEN 0 ELSE 1
+                    END,
+                    t.created_at ASC
+                LIMIT 1
+            """.format(
+                ro_placeholders=','.join(['?'] * len(router_idents)) if router_idents else "''"
             )
+            params = tuple(router_idents * 2) if router_idents else ()
+            cur = conn.execute(query, params)
             row = cur.fetchone()
             return dict(row) if row else None
+
+    def cleanup_stale_pending_traces(self, max_age_minutes: int = 15) -> int:
+        """Marca como error trazas que lleven más de max_age_minutes en estado pending sin procesar."""
+        with closing(self._connect()) as conn:
+            cur = conn.execute(
+                """
+                UPDATE traces
+                SET status = 'error',
+                    data_raw = 'Timeout: cola pendiente expirada',
+                    updated_at = datetime('now')
+                WHERE status = 'pending'
+                  AND strftime('%s', 'now') - strftime('%s', created_at) >= ?
+                """,
+                (int(max_age_minutes) * 60,),
+            )
+            conn.commit()
+            return cur.rowcount
 
     def mark_trace_done(self, trace_id: int, ok: bool, payload: str, from_: str = 'local') -> None:
         """Marca un trace pendiente como procesado, guardando resultado y sellando updated_at.

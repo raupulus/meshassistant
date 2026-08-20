@@ -1,8 +1,12 @@
 import unittest
 from datetime import datetime
+from pathlib import Path
+import tempfile
+import os
 from Commands.ping import ping_callback
 from Commands.routers import routers_callback
 from Models.Database import Database
+import create_db
 import env
 
 
@@ -18,6 +22,16 @@ class TestPingRouters(unittest.TestCase):
     def setUp(self):
         env.BASE_NODE_SHORT_NAME = 'RAU0'
         env.BASE_NODE_ID = '!875e3787'
+        self.temp_file = tempfile.NamedTemporaryFile(suffix='.sql', delete=False)
+        self.temp_file.close()
+        self.orig_db_file = create_db.DATABASE_FILE
+        create_db.DATABASE_FILE = Path(self.temp_file.name)
+        create_db.ensure_database(self.temp_file.name)
+
+    def tearDown(self):
+        create_db.DATABASE_FILE = self.orig_db_file
+        if os.path.exists(self.temp_file.name):
+            os.remove(self.temp_file.name)
 
     def test_ping_direct_rf_shows_snr(self):
         mock = MockInterface()
@@ -144,11 +158,39 @@ class TestPingRouters(unittest.TestCase):
             "last_heard": int(datetime.now().timestamp()),
         })
 
+        # Router activo con traza
+        db.create_node_if_not_exists("!rcernode")
+        db.update_node("!rcernode", {
+            "name": "Router Cercano",
+            "short_name": "RCER",
+            "role": 2,
+            "hops": 1,
+            "snr": 12.2,
+            "last_heard": int(datetime.now().timestamp()),
+        })
+        trace_id = db.enqueue_trace("!rcernode")
+        db.mark_trace_done_with_route(
+            trace_id,
+            True,
+            text="Route traced towards destination: !bot --> !base (12.0 dB) --> !rcernode (9.5 dB)",
+            to_name="Router Cercano",
+            to_name_short="RCER",
+            hops=[
+                {'id': '!base', 'name_short': 'RAU0', 'snr': 12.0},
+                {'id': '!rcernode', 'name_short': 'RCER', 'snr': 9.5},
+            ],
+            return_hops=[
+                {'id': '!base', 'name_short': 'RAU0', 'snr': 9.5},
+                {'id': '!bot', 'name_short': 'BOT', 'snr': 12.0},
+            ],
+        )
+
         routers_callback(mock, [], '/routers', meta)
         self.assertGreaterEqual(len(mock.replies), 1)
         full_text = " ".join(mock.replies)
         # Verifica corchetes y formato
         self.assertIn("[RCER:", full_text)
+        self.assertIn("(9.5dB)]", full_text)
         self.assertIn("[INEXISTENTE | offline]", full_text)
         self.assertIn("[VIEJO | offline]", full_text, "Router no escuchado en 24h debe marcarse offline")
         self.assertNotIn("FAR_ROUTER", full_text, "Routers con más de 2 hops deben excluirse del informe")

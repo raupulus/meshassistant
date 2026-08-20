@@ -323,19 +323,20 @@ def _execute_schema(conn: sqlite3.Connection) -> None:
     conn.commit()
 
 
-def ensure_database() -> Path:
+def ensure_database(db_path: Optional[str | Path] = None) -> Path:
     """Asegura que la BD existe y aplica el esquema (idempotente)."""
-    if not DATABASE_FILE.exists():
-        DATABASE_FILE.parent.mkdir(parents=True, exist_ok=True)
+    target = Path(db_path) if db_path else DATABASE_FILE
+    if not target.exists():
+        target.parent.mkdir(parents=True, exist_ok=True)
         # Crear archivo vacío primero
-        with sqlite3.connect(DATABASE_FILE):
+        with sqlite3.connect(target):
             pass
 
     # Siempre aplicar esquema para asegurar tablas nuevas
-    with sqlite3.connect(DATABASE_FILE) as conn:
+    with sqlite3.connect(target) as conn:
         _execute_schema(conn)
 
-    return DATABASE_FILE
+    return target
 
 
 if __name__ == "__main__":

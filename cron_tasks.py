@@ -146,6 +146,17 @@ def send_trace() -> None:
 
     db = Database()
 
+    # Limpiar trazas pendientes obsoletas que se hayan quedado colgadas (>15 min)
+    cleaned = db.cleanup_stale_pending_traces(max_age_minutes=15)
+    if cleaned > 0:
+        log_p(f"[cron] send_trace: expiradas {cleaned} trazas pendientes obsoletas")
+
+    # Si ya hay una traza pendiente en cola siendo procesada por main.py, no encolar otra
+    pending = db.get_next_pending_trace()
+    if pending:
+        log_p(f"[cron] send_trace: omitido (ya hay un trace pendiente en proceso: id={pending['id']})")
+        return
+
     # Throttle global 5 minutos basado en el último trace realizado (updated_at)
     last_done_iso = db.get_last_trace_updated_at()
     log_p(f"[cron] send_trace: last_done={last_done_iso}")
