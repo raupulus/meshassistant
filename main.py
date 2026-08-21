@@ -105,7 +105,7 @@ def loop():
                             })
                         except Exception:
                             pass
-                    except Exception as e:
+                    except (Exception, SystemExit) as e:
                         # En caso de fallo, guardar el error como texto plano en data_raw
                         error_txt = f"{e.__class__.__name__}: {e}"
                         log_p(f"[traceroute] Trace #{pending['id']} falló: {error_txt}", level="WARN")
@@ -126,7 +126,7 @@ def loop():
                             })
                         except Exception:
                             pass
-            except Exception as e:
+            except (Exception, SystemExit) as e:
                 log_p(f"[traceroute] Error en bucle de traces: {e}", level="WARN")
                 # No interrumpir el loop por errores de BD
                 pass

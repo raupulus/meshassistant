@@ -445,6 +445,17 @@ class SerialInterface:
             except Exception:
                 pass
 
+        # Normalizar node_id si es un nombre corto o alias
+        target_id = node_id
+        if not target_id.startswith('!') and not target_id.isdigit():
+            try:
+                from Models.Database import Database
+                found = Database().get_node_by_identifier(target_id) or Database().get_node_by_short_name(target_id)
+                if found and found.get('node_id'):
+                    target_id = found['node_id']
+            except Exception:
+                pass
+
         try:
             # Intentar variantes en orden de máxima compatibilidad (posicionales primero)
             tried: list[str] = []
@@ -453,62 +464,62 @@ class SerialInterface:
             with contextlib.redirect_stdout(buf_out), contextlib.redirect_stderr(buf_err):
                 # 1) Firma estándar meshtastic (dest, hopLimit, channelIndex)
                 try:
-                    send_fn(dest=node_id, hopLimit=3, channelIndex=0)
+                    send_fn(dest=target_id, hopLimit=3, channelIndex=0)
                     called = True
-                except TypeError as e:
+                except (TypeError, SystemExit, Exception) as e:
                     tried.append(str(e))
 
-            # 2) Posicional estándar (node_id, 3, 0)
+            # 2) Posicional estándar (target_id, 3, 0)
             if not called:
                 try:
-                    send_fn(node_id, 3, 0)
+                    send_fn(target_id, 3, 0)
                     called = True
-                except TypeError as e:
+                except (TypeError, SystemExit, Exception) as e:
                     tried.append(str(e))
 
             # 3) Posicional con callback
             if not called:
                 try:
-                    send_fn(node_id, 3, 0, _on_response)
+                    send_fn(target_id, 3, 0, _on_response)
                     called = True
-                except TypeError as e:
+                except (TypeError, SystemExit, Exception) as e:
                     tried.append(str(e))
 
             # 4) Posicional con callback como segundo argumento
             if not called:
                 try:
-                    send_fn(node_id, _on_response)
+                    send_fn(target_id, _on_response)
                     called = True
-                except TypeError as e:
+                except (TypeError, SystemExit, Exception) as e:
                     tried.append(str(e))
 
             # 5) Posicional solo id
             if not called:
                 try:
-                    send_fn(node_id)
+                    send_fn(target_id)
                     called = True
-                except TypeError as e:
+                except (TypeError, SystemExit, Exception) as e:
                     tried.append(str(e))
 
             # 6) Keywords alternativas
             if not called:
                 try:
-                    send_fn(destinationId=node_id, onResponse=_on_response)
+                    send_fn(destinationId=target_id, onResponse=_on_response)
                     called = True
-                except TypeError as e:
+                except (TypeError, SystemExit, Exception) as e:
                     tried.append(str(e))
                     try:
-                        send_fn(id=node_id, onResponse=_on_response)
+                        send_fn(id=target_id, onResponse=_on_response)
                         called = True
-                    except TypeError as e2:
+                    except (TypeError, SystemExit, Exception) as e2:
                         tried.append(str(e2))
 
             # 7) Último recurso: keyword mínima sin callback
             if not called:
                 try:
-                    send_fn(destinationId=node_id)
+                    send_fn(destinationId=target_id)
                     called = True
-                except Exception as e:
+                except (Exception, SystemExit) as e:
                     tried.append(str(e))
 
             if not called:
