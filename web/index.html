@@ -68,6 +68,9 @@
     <button class="tab-btn" data-tab="polls">
       <span>📊 Encuestas & Clima</span>
     </button>
+    <button class="tab-btn" data-tab="audit">
+      <span>📋 Auditoría</span>
+    </button>
   </nav>
 
   <!-- ==========================================================================
@@ -96,7 +99,7 @@
         <!-- Caja de Envío -->
         <form class="chat-input-bar" id="chat-form">
           <select id="chat-dest" class="select-custom" style="min-width: 140px;">
-            <option value="^all:0">Canal 0 (Público)</option>
+            <option value="^all:0">Canal 0 (SFNarrow)</option>
           </select>
           <input type="text" id="chat-text" class="input-custom" placeholder="Escribe un mensaje a la malla (máx 200 caracteres)..." maxlength="200" autocomplete="off" required>
           <button type="submit" class="btn-primary" id="btn-send-msg">
@@ -122,7 +125,19 @@
     <section id="pane-nodes" class="tab-pane">
       <div style="display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 16px;">
         <div style="display: flex; gap: 10px; align-items: center; flex: 1; min-width: 240px;">
-          <input type="text" id="nodes-search" class="input-custom" placeholder="Buscar por nombre, ID o alias..." style="max-width: 360px;">
+          <input type="text" id="nodes-search" class="input-custom" placeholder="Buscar por nombre, alias o ID..." style="max-width: 320px;">
+          
+          <select id="nodes-role-filter" class="select-custom" style="max-width: 180px;">
+            <option value="all">Todos los roles</option>
+            <option value="CLIENT">CLIENT</option>
+            <option value="ROUTER">ROUTER</option>
+            <option value="REPEATER">REPEATER</option>
+            <option value="ROUTER_CLIENT">ROUTER_CLIENT</option>
+            <option value="TRACKER">TRACKER</option>
+            <option value="SENSOR">SENSOR</option>
+            <option value="CLIENT_MUTE">CLIENT_MUTE</option>
+            <option value="CLIENT_HIDDEN">CLIENT_HIDDEN</option>
+          </select>
         </div>
         <div style="display: flex; gap: 8px;">
           <button class="btn-secondary filter-nodes active" data-filter="all">Todos</button>
@@ -135,19 +150,21 @@
         <table>
           <thead>
             <tr>
-              <th style="width: 40px;">⭐</th>
-              <th>Nodo / Alias</th>
-              <th>ID Hex</th>
-              <th>Rol</th>
-              <th>SNR / RSSI</th>
-              <th>Saltos</th>
-              <th>Batería</th>
-              <th>Acción</th>
+              <th style="width: 40px; cursor: pointer;" class="sort-header" data-sort="is_favorite">⭐</th>
+              <th style="cursor: pointer;" class="sort-header" data-sort="name">Nombre / Alias <span class="sort-arrow">↕</span></th>
+              <th style="cursor: pointer;" class="sort-header" data-sort="short_name">Corto <span class="sort-arrow">↕</span></th>
+              <th style="cursor: pointer;" class="sort-header" data-sort="id">ID Hex <span class="sort-arrow">↕</span></th>
+              <th style="cursor: pointer;" class="sort-header" data-sort="role_name">Rol <span class="sort-arrow">↕</span></th>
+              <th style="cursor: pointer;" class="sort-header" data-sort="hops">Saltos <span class="sort-arrow">↕</span></th>
+              <th style="cursor: pointer;" class="sort-header" data-sort="battery">Batería <span class="sort-arrow">↕</span></th>
+              <th style="cursor: pointer;" class="sort-header" data-sort="snr">SNR / RSSI <span class="sort-arrow">↕</span></th>
+              <th style="cursor: pointer;" class="sort-header" data-sort="last_heard">Última Señal <span class="sort-arrow">↕</span></th>
+              <th style="width: 70px;">Acción</th>
             </tr>
           </thead>
           <tbody id="nodes-tbody">
             <tr>
-              <td colspan="8" style="text-align: center; color: var(--text-dim); padding: 20px;">Cargando lista de nodos...</td>
+              <td colspan="10" style="text-align: center; color: var(--text-dim); padding: 20px;">Cargando lista de nodos...</td>
             </tr>
           </tbody>
         </table>
@@ -190,6 +207,96 @@
             <div id="weather-content" style="font-size: 0.9rem; color: var(--text-muted); line-height: 1.6; white-space: pre-wrap;">
               Consultando predicción...
             </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Pestaña 6: Auditoría de Comandos -->
+    <section id="pane-audit" class="tab-pane">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 12px;">
+        <div>
+          <h2 style="font-size: 1.2rem;">Auditoría y Estadísticas de Comandos</h2>
+          <p style="font-size: 0.85rem; color: var(--text-dim); margin-top: 2px;">Control de actividad de la malla y detección de abusos</p>
+        </div>
+        <div style="display: flex; gap: 8px;">
+          <button class="btn-secondary filter-audit-period active" data-hours="24">Últimas 24h</button>
+          <button class="btn-secondary filter-audit-period" data-hours="168">Últimos 7 días</button>
+          <button class="btn-secondary filter-audit-period" data-hours="all">Histórico Total</button>
+        </div>
+      </div>
+
+      <!-- Tarjetas Resumen Auditoría -->
+      <div class="grid-cards" style="margin-bottom: 20px;">
+        <div class="card">
+          <div class="card-header"><span style="color: var(--text-dim); font-size: 0.85rem;">Total Ejecuciones</span></div>
+          <div style="font-size: 1.8rem; font-weight: 700; color: var(--primary);" id="audit-total-cmds">--</div>
+          <div style="font-size: 0.75rem; color: var(--text-dim); margin-top: 4px;" id="audit-total-period">en el periodo</div>
+        </div>
+        <div class="card">
+          <div class="card-header"><span style="color: var(--text-dim); font-size: 0.85rem;">Nodos Emisores Únicos</span></div>
+          <div style="font-size: 1.8rem; font-weight: 700; color: var(--success);" id="audit-unique-nodes">--</div>
+          <div style="font-size: 0.75rem; color: var(--text-dim); margin-top: 4px;">usuarios distintos</div>
+        </div>
+        <div class="card">
+          <div class="card-header"><span style="color: var(--text-dim); font-size: 0.85rem;">Comando Más Solicitado</span></div>
+          <div style="font-size: 1.5rem; font-weight: 700; color: var(--warning);" id="audit-top-command">--</div>
+          <div style="font-size: 0.75rem; color: var(--text-dim); margin-top: 4px;" id="audit-top-command-count">--</div>
+        </div>
+        <div class="card">
+          <div class="card-header"><span style="color: var(--text-dim); font-size: 0.85rem;">Nodo Más Activo</span></div>
+          <div style="font-size: 1.5rem; font-weight: 700; color: #a78bfa;" id="audit-top-user">--</div>
+          <div style="font-size: 0.75rem; color: var(--text-dim); margin-top: 4px;" id="audit-top-user-count">--</div>
+        </div>
+      </div>
+
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); gap: 20px;">
+        <!-- Ranking de Nodos -->
+        <div>
+          <h3 style="font-size: 1rem; margin-bottom: 12px;">🏆 Ranking de Nodos por Peticiones</h3>
+          <div class="table-container">
+            <table>
+              <thead>
+                <tr>
+                  <th style="width: 40px;">#</th>
+                  <th>Nodo / Alias</th>
+                  <th>ID Hex</th>
+                  <th>Peticiones</th>
+                  <th>Último Comando</th>
+                  <th>Última Vez</th>
+                </tr>
+              </thead>
+              <tbody id="audit-ranking-tbody">
+                <tr>
+                  <td colspan="6" style="text-align: center; color: var(--text-dim); padding: 20px;">Cargando ranking...</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Historial Cronológico Reciente -->
+        <div>
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; gap: 8px;">
+            <h3 style="font-size: 1rem;">📜 Registro Reciente de Comandos</h3>
+            <input type="text" id="audit-logs-search" class="input-custom" placeholder="Filtrar comando o nodo..." style="max-width: 200px; padding: 4px 8px; font-size: 0.8rem;">
+          </div>
+          <div class="table-container" style="max-height: 420px; overflow-y: auto;">
+            <table>
+              <thead>
+                <tr>
+                  <th>Fecha/Hora</th>
+                  <th>Nodo Emisor</th>
+                  <th>Comando</th>
+                  <th>Argumentos</th>
+                </tr>
+              </thead>
+              <tbody id="audit-logs-tbody">
+                <tr>
+                  <td colspan="4" style="text-align: center; color: var(--text-dim); padding: 20px;">Cargando registro...</td>
+                </tr>
+              </tbody>
+            </table>
           </div>
         </div>
       </div>

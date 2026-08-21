@@ -7,12 +7,20 @@ class MeshDashboard {
   constructor() {
     this.ws = null;
     this.reconnectTimer = null;
+    this.syncInterval = null;
     this.nodesMap = new Map();
     this.messages = [];
+    this.channels = {};
     this.currentChannelFilter = 'all';
     this.currentNodeFilter = 'all';
+    this.currentRoleFilter = 'all';
+    this.sortField = 'is_favorite';
+    this.sortDirection = 'desc';
     this.searchQuery = '';
     this.localNode = null;
+    this.auditHours = 24;
+    this.auditData = null;
+    this.auditSearchQuery = '';
 
     this.initElements();
     this.bindEvents();
@@ -46,6 +54,18 @@ class MeshDashboard {
     this.weatherContent = document.getElementById('weather-content');
     this.weatherProvince = document.getElementById('weather-province');
     this.toastContainer = document.getElementById('toast-container');
+
+    // Elementos de Auditoría
+    this.auditTotalCmds = document.getElementById('audit-total-cmds');
+    this.auditTotalPeriod = document.getElementById('audit-total-period');
+    this.auditUniqueNodes = document.getElementById('audit-unique-nodes');
+    this.auditTopCommand = document.getElementById('audit-top-command');
+    this.auditTopCommandCount = document.getElementById('audit-top-command-count');
+    this.auditTopUser = document.getElementById('audit-top-user');
+    this.auditTopUserCount = document.getElementById('audit-top-user-count');
+    this.auditRankingTbody = document.getElementById('audit-ranking-tbody');
+    this.auditLogsTbody = document.getElementById('audit-logs-tbody');
+    this.auditLogsSearch = document.getElementById('audit-logs-search');
   }
 
   bindEvents() {
@@ -57,21 +77,13 @@ class MeshDashboard {
       });
     });
 
-    // Filtros de Chat
-    document.querySelectorAll('.filter-chip').forEach(chip => {
-      chip.addEventListener('click', () => {
-        document.querySelectorAll('.filter-chip').forEach(c => c.classList.remove('active'));
-        chip.classList.add('active');
-        this.currentChannelFilter = chip.dataset.ch;
-        this.renderMessages();
-      });
-    });
-
     // Envío de Mensaje Chat
-    this.chatForm.addEventListener('submit', (e) => {
-      e.preventDefault();
-      this.handleSendMessage();
-    });
+    if (this.chatForm) {
+      this.chatForm.addEventListener('submit', (e) => {
+        e.preventDefault();
+        this.handleSendMessage();
+      });
+    }
 
     // Búsqueda de Nodos
     const searchInput = document.getElementById('nodes-search');
@@ -82,12 +94,37 @@ class MeshDashboard {
       });
     }
 
+    // Filtro por Rol en Nodos
+    const roleFilter = document.getElementById('nodes-role-filter');
+    if (roleFilter) {
+      roleFilter.addEventListener('change', (e) => {
+        this.currentRoleFilter = e.target.value;
+        this.renderNodesTable();
+      });
+    }
+
     // Filtro de Nodos (Todos / RF / Favs)
     document.querySelectorAll('.filter-nodes').forEach(btn => {
       btn.addEventListener('click', () => {
         document.querySelectorAll('.filter-nodes').forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
         this.currentNodeFilter = btn.dataset.filter;
+        this.renderNodesTable();
+      });
+    });
+
+    // Ordenación de columnas de la tabla de Nodos
+    document.querySelectorAll('.sort-header').forEach(th => {
+      th.addEventListener('click', () => {
+        const field = th.dataset.sort;
+        if (!field) return;
+        if (this.sortField === field) {
+          this.sortDirection = this.sortDirection === 'asc' ? 'desc' : 'asc';
+        } else {
+          this.sortField = field;
+          this.sortDirection = (field === 'is_favorite' || field === 'battery' || field === 'snr' || field === 'last_heard') ? 'desc' : 'asc';
+        }
+        this.updateSortHeaders();
         this.renderNodesTable();
       });
     });
@@ -115,6 +152,39 @@ class MeshDashboard {
         }
       });
     }
+
+    // Filtros de Periodo en Auditoría
+    document.querySelectorAll('.filter-audit-period').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.filter-audit-period').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        const h = btn.dataset.hours;
+        this.auditHours = h === 'all' ? null : parseInt(h, 10);
+        this.loadAuditData();
+      });
+    });
+
+    // Buscador en Logs de Auditoría
+    if (this.auditLogsSearch) {
+      this.auditLogsSearch.addEventListener('input', (e) => {
+        this.auditSearchQuery = e.target.value.toLowerCase().trim();
+        this.renderAuditLogs();
+      });
+    }
+  }
+
+  updateSortHeaders() {
+    document.querySelectorAll('.sort-header').forEach(th => {
+      const arrow = th.querySelector('.sort-arrow');
+      if (!arrow) return;
+      if (th.dataset.sort === this.sortField) {
+        arrow.textContent = this.sortDirection === 'asc' ? '▲' : '▼';
+        th.style.color = 'var(--primary)';
+      } else {
+        arrow.textContent = '↕';
+        th.style.color = '';
+      }
+    });
   }
 
   switchTab(tabName) {
@@ -125,6 +195,14 @@ class MeshDashboard {
     const activePane = document.getElementById(`pane-${tabName}`);
     if (activeBtn) activeBtn.classList.add('active');
     if (activePane) activePane.classList.add('active');
+
+    if (tabName === 'audit') {
+      this.loadAuditData();
+    }
+  }
+
+  loadAuditData() {
+    this.sendAction('get_commands_audit', { hours: this.auditHours, limit: 100 });
   }
 
   // ==========================================================================
@@ -149,11 +227,11 @@ class MeshDashboard {
         console.log('[Mesh WS] Conectado exitosamente');
         this.setWsStatus(true, 'Conectado');
         this.showToast('Conectado a la pasarela WebSocket');
-        // Solicitar snapshot completo inicial inmediatamente al abrir socket
+        // Solicitar snapshot completo inicial
         this.requestFullSnapshot();
-        // Configurar actualización periódica suave cada 15s
+        // Sincronización suave cada 20s para estadísticas globales (sin resetear chat)
         if (this.syncInterval) clearInterval(this.syncInterval);
-        this.syncInterval = setInterval(() => this.requestFullSnapshot(), 15000);
+        this.syncInterval = setInterval(() => this.requestFullSnapshot(), 20000);
       };
 
       this.ws.onmessage = (event) => {
@@ -187,21 +265,13 @@ class MeshDashboard {
   }
 
   setWsStatus(online, text) {
-    if (this.ledWs) {
-      this.ledWs.className = `led ${online ? 'online' : 'offline'}`;
-    }
-    if (this.lblWs) {
-      this.lblWs.textContent = text;
-    }
+    if (this.ledWs) this.ledWs.className = `led ${online ? 'online' : 'offline'}`;
+    if (this.lblWs) this.lblWs.textContent = text;
   }
 
   setUartStatus(online, port) {
-    if (this.ledUart) {
-      this.ledUart.className = `led ${online ? 'online' : 'offline'}`;
-    }
-    if (this.lblUart) {
-      this.lblUart.textContent = online ? `Activo (${port || 'UART'})` : 'Desconectado';
-    }
+    if (this.ledUart) this.ledUart.className = `led ${online ? 'online' : 'offline'}`;
+    if (this.lblUart) this.lblUart.textContent = online ? `Activo (${port || 'UART'})` : 'Desconectado';
   }
 
   // ==========================================================================
@@ -211,23 +281,14 @@ class MeshDashboard {
     // 1. Mensaje de bienvenida
     if (payload.event === 'welcome') {
       if (payload.data?.system_status) {
-        this.setUartStatus(
-          payload.data.system_status.uart_connected,
-          payload.data.system_status.serial_port
-        );
+        this.setUartStatus(payload.data.system_status.uart_connected, payload.data.system_status.serial_port);
       }
       if (payload.data?.local_node) {
         this.localNode = payload.data.local_node;
         const name = this.localNode.short_name || this.localNode.my_node_id || 'Bot';
         if (this.lblLocalNode) this.lblLocalNode.textContent = name;
       }
-      // Solicitar snapshot completo inicial
-      this.sendAction('get_snapshot', {
-        include: ['nodes', 'routers', 'recent_messages', 'stats', 'system_status', 'local_node', 'channel_metrics']
-      });
-      // Cargar encuestas y meteorología
-      this.sendAction('get_polls');
-      this.sendAction('get_weather');
+      this.requestFullSnapshot();
       return;
     }
 
@@ -248,6 +309,21 @@ class MeshDashboard {
       case 'message_rx':
         this.addMessage(data, ts);
         break;
+      case 'node_updated':
+        if (data.id) {
+          const prev = this.nodesMap.get(data.id) || {};
+          this.nodesMap.set(data.id, { ...prev, ...data });
+          this.renderNodesTable();
+        }
+        break;
+      case 'device_telemetry':
+        if (data.id && this.nodesMap.has(data.id)) {
+          const node = this.nodesMap.get(data.id);
+          if (data.battery !== undefined) node.battery = data.battery;
+          if (data.voltage !== undefined) node.voltage = data.voltage;
+          this.renderNodesTable();
+        }
+        break;
       case 'system_status':
         this.setUartStatus(data.uart_connected, data.serial_port);
         break;
@@ -259,29 +335,12 @@ class MeshDashboard {
           this.lblAirTx.textContent = `${Number(data.air_util_tx).toFixed(1)}%`;
         }
         break;
-      case 'node_updated':
-      case 'node_discovered':
-        if (data && data.id) {
-          this.nodesMap.set(data.id, { ...(this.nodesMap.get(data.id) || {}), ...data });
-          this.renderNodesTable();
-        }
-        break;
-      case 'device_telemetry':
-        if (data && data.id && this.nodesMap.has(data.id)) {
-          const n = this.nodesMap.get(data.id);
-          n.battery = data.battery;
-          n.voltage = data.voltage;
-          this.renderNodesTable();
-        }
-        break;
       case 'trace_completed':
         this.renderTraceResult(data, ts);
         this.showToast(`Traceroute finalizado a ${data.to_name || data.to}`);
         break;
       case 'router_status':
-        if (data.routers) {
-          this.renderRouters(data.routers);
-        }
+        if (data.routers) this.renderRouters(data.routers);
         break;
       case 'poll_created':
         this.sendAction('get_polls');
@@ -310,14 +369,32 @@ class MeshDashboard {
     if (!data) return;
 
     if (resp.action === 'get_snapshot') {
-      // 1. Mensajes recientes
+      // 1. Mensajes: Reconciliación no destructiva
       if (data.recent_messages && Array.isArray(data.recent_messages)) {
-        this.messages = [];
-        data.recent_messages.forEach(m => {
-          if (m.data) this.messages.push({ ...m.data, ts: m.ts });
-          else this.messages.push(m);
-        });
-        this.renderMessages();
+        if (this.messages.length === 0) {
+          data.recent_messages.forEach(m => {
+            if (m.data) this.messages.push({ ...m.data, ts: m.ts });
+            else this.messages.push(m);
+          });
+          this.renderMessages();
+        } else {
+          let added = false;
+          data.recent_messages.forEach(m => {
+            const item = m.data ? { ...m.data, ts: m.ts } : m;
+            const exists = this.messages.some(old => 
+              (old.id && item.id && old.id === item.id) ||
+              (old.ts === item.ts && old.text === item.text && old.from === item.from)
+            );
+            if (!exists) {
+              this.messages.push(item);
+              added = true;
+            }
+          });
+          if (added) {
+            this.messages.sort((a, b) => (a.ts || '').localeCompare(b.ts || ''));
+            this.renderMessages();
+          }
+        }
       }
 
       // 2. Canales
@@ -327,69 +404,43 @@ class MeshDashboard {
       }
 
       // 3. Routers
-      if (data.routers && Array.isArray(data.routers)) {
-        this.renderRouters(data.routers);
-      }
+      if (data.routers && Array.isArray(data.routers)) this.renderRouters(data.routers);
 
-      // 4. Nodos de la red
+      // 4. Nodos
       if (data.nodes && Array.isArray(data.nodes)) {
-        this.nodesMap.clear();
         data.nodes.forEach(n => {
           const id = n.id || n.node_id;
-          if (id) {
-            this.nodesMap.set(id, { id: id, ...n });
-          }
+          if (id) this.nodesMap.set(id, { ...(this.nodesMap.get(id) || {}), ...n });
         });
         this.renderNodesTable();
         this.renderChannelFiltersAndDestinations();
       }
 
-      // 5. Traceroutes recientes
-      if (data.traces && Array.isArray(data.traces) && data.traces.length > 0) {
+      // 5. Traces
+      if (data.traces && Array.isArray(data.traces)) {
         if (this.tracesGrid) {
           this.tracesGrid.innerHTML = '';
           data.traces.forEach(tr => this.renderTraceResult(tr, tr.updated_at || tr.created_at));
         }
       }
 
-      // 6. Estado UART
-      if (data.system_status) {
-        this.setUartStatus(data.system_status.uart_connected, data.system_status.serial_port);
-      }
-
-      // 7. Nodo local
+      // 6. UART y Stats
+      if (data.system_status) this.setUartStatus(data.system_status.uart_connected, data.system_status.serial_port);
       if (data.local_node) {
         this.localNode = data.local_node;
-        const name = this.localNode.short_name || this.localNode.my_node_id || 'Bot';
-        if (this.lblLocalNode) this.lblLocalNode.textContent = name;
-      }
-
-      // 8. Métricas de canal LoRa
-      if (data.channel_metrics) {
-        if (this.lblChUtil && data.channel_metrics.channel_util !== undefined) {
-          this.lblChUtil.textContent = `${Number(data.channel_metrics.channel_util).toFixed(1)}%`;
-        }
-        if (this.lblAirTx && data.channel_metrics.air_util_tx !== undefined) {
-          this.lblAirTx.textContent = `${Number(data.channel_metrics.air_util_tx).toFixed(1)}%`;
-        }
-      }
-
-      // 9. Estadísticas
-      if (data.stats) {
-        if (this.countNodes && data.stats.nodes_total) {
-          this.countNodes.textContent = data.stats.nodes_total;
-        }
+        if (this.lblLocalNode) this.lblLocalNode.textContent = this.localNode.short_name || this.localNode.my_node_id;
       }
     } else if (resp.action === 'get_polls') {
       this.renderPolls(data.polls || []);
     } else if (resp.action === 'get_weather') {
       this.renderWeather(data);
+    } else if (resp.action === 'get_commands_audit') {
+      this.renderAuditData(data);
     } else if (resp.action === 'set_node_favorite') {
       if (data.node_id && this.nodesMap.has(data.node_id)) {
         this.nodesMap.get(data.node_id).is_favorite = data.is_favorite;
         this.renderNodesTable();
       }
-      this.showToast(`Nodo ${data.node_id} ${data.is_favorite ? 'añadido a favoritos' : 'desmarcado'}`);
     }
   }
 
@@ -452,12 +503,20 @@ class MeshDashboard {
   }
 
   // ==========================================================================
-  // Renderizado: Live Chat
+  // Renderizado: Live Chat (Sin Parpadeos)
   // ==========================================================================
   addMessage(msg, ts) {
-    this.messages.push({ ...msg, ts: ts || new Date().toISOString() });
-    if (this.messages.length > 100) this.messages.shift();
-    this.renderMessages();
+    const timestamp = ts || new Date().toISOString();
+    const exists = this.messages.some(old => 
+      (old.local_id && msg.local_id && old.local_id === msg.local_id) ||
+      (old.text === msg.text && old.from === msg.from && Math.abs(new Date(old.ts) - new Date(timestamp)) < 2000)
+    );
+
+    if (!exists) {
+      this.messages.push({ ...msg, ts: timestamp });
+      if (this.messages.length > 100) this.messages.shift();
+      this.renderMessages();
+    }
   }
 
   renderMessages() {
@@ -491,8 +550,15 @@ class MeshDashboard {
         : `<span class="badge badge-ch0">${this.escapeHtml(chName)}</span>`;
       const mqttBadge = m.via_mqtt ? `<span class="badge badge-mqtt">MQTT</span>` : '';
       const outBadge = m.is_outgoing ? `<span class="badge" style="background: var(--success-bg); color: var(--success);">Enviado</span>` : '';
-      const snrText = m.snr !== undefined && m.snr !== null ? `SNR: ${Number(m.snr).toFixed(1)}dB` : '';
-      const hopsText = m.hops !== undefined && m.hops !== null ? `${m.hops} ${m.hops === 1 ? 'salto' : 'saltos'}` : '';
+      
+      // Claridad de SNR: Directo vs Último Salto
+      let snrText = '';
+      if (m.snr !== undefined && m.snr !== null) {
+        const isDirSignal = (m.hops === 0 || isDirect);
+        const snrLabel = isDirSignal ? 'SNR Directo' : `SNR Último Salto`;
+        snrText = `${snrLabel}: ${Number(m.snr).toFixed(1)}dB`;
+      }
+      const hopsText = (m.hops !== undefined && m.hops !== null && m.hops > 0) ? `${m.hops} ${m.hops === 1 ? 'salto' : 'saltos'}` : '';
 
       return `
         <div class="msg-card" style="${m.is_outgoing ? 'border-left: 3px solid var(--primary);' : ''}">
@@ -533,14 +599,17 @@ class MeshDashboard {
       dest = destValue;
     }
 
+    const localId = 'out_' + Date.now();
+
     this.sendAction('send_message', {
       text: text,
       dest: dest,
       channel: channel,
     });
 
-    // Añadir al feed local de inmediato
+    // Añadir al feed local con ID único
     this.addMessage({
+      local_id: localId,
       from: this.localNode?.my_node_id || 'local',
       from_name: this.localNode?.short_name || 'Tú (Web)',
       from_short_name: 'WEB',
@@ -616,7 +685,7 @@ class MeshDashboard {
   }
 
   // ==========================================================================
-  // Renderizado: Nodos
+  // Renderizado: Nodos (Filtro por Rol y Ordenación Bidireccional)
   // ==========================================================================
   renderNodesTable() {
     if (!this.nodesTbody) return;
@@ -624,7 +693,7 @@ class MeshDashboard {
     let nodes = Array.from(this.nodesMap.values());
     if (this.countNodes) this.countNodes.textContent = nodes.length;
 
-    // Filtro texto
+    // 1. Filtro texto (busca por nombre largo, nombre corto o ID)
     if (this.searchQuery) {
       nodes = nodes.filter(n => {
         const id = (n.id || '').toLowerCase();
@@ -634,17 +703,46 @@ class MeshDashboard {
       });
     }
 
-    // Filtro categoría
+    // 2. Filtro por Rol
+    if (this.currentRoleFilter && this.currentRoleFilter !== 'all') {
+      nodes = nodes.filter(n => (n.role_name || '').toUpperCase() === this.currentRoleFilter.toUpperCase());
+    }
+
+    // 3. Filtro categoría
     if (this.currentNodeFilter === 'rf') {
       nodes = nodes.filter(n => !n.via_mqtt);
     } else if (this.currentNodeFilter === 'fav') {
       nodes = nodes.filter(n => n.is_favorite);
     }
 
+    // 4. Ordenación Multidimensional
+    const field = this.sortField;
+    const dir = this.sortDirection === 'asc' ? 1 : -1;
+
+    nodes.sort((a, b) => {
+      let valA = a[field];
+      let valB = b[field];
+
+      if (field === 'is_favorite') {
+        valA = valA ? 1 : 0;
+        valB = valB ? 1 : 0;
+      } else if (field === 'battery' || field === 'snr' || field === 'hops' || field === 'last_heard' || field === 'uptime') {
+        valA = (valA !== undefined && valA !== null) ? Number(valA) : -999999;
+        valB = (valB !== undefined && valB !== null) ? Number(valB) : -999999;
+      } else {
+        valA = (valA || '').toString().toLowerCase();
+        valB = (valB || '').toString().toLowerCase();
+      }
+
+      if (valA < valB) return -1 * dir;
+      if (valA > valB) return 1 * dir;
+      return 0;
+    });
+
     if (nodes.length === 0) {
       this.nodesTbody.innerHTML = `
         <tr>
-          <td colspan="8" style="text-align: center; color: var(--text-dim); padding: 20px;">
+          <td colspan="10" style="text-align: center; color: var(--text-dim); padding: 20px;">
             No se encontraron nodos con los filtros aplicados.
           </td>
         </tr>`;
@@ -653,6 +751,8 @@ class MeshDashboard {
 
     this.nodesTbody.innerHTML = nodes.map(n => {
       const isFav = !!n.is_favorite;
+      
+      // Formateo de Batería y Voltaje
       let battery = '--';
       if (n.battery !== undefined && n.battery !== null) {
         if (n.battery > 100) battery = '⚡ 100%';
@@ -668,6 +768,17 @@ class MeshDashboard {
       const hops = n.hops !== undefined && n.hops !== null ? n.hops : '--';
       const nodeId = n.id || n.node_id;
 
+      // Última señal
+      let lastHeardStr = '--';
+      if (n.last_heard) {
+        try {
+          const dt = new Date(n.last_heard * 1000);
+          lastHeardStr = dt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + ' ' + dt.toLocaleDateString([], { month: 'numeric', day: 'numeric' });
+        } catch (e) {
+          lastHeardStr = '--';
+        }
+      }
+
       return `
         <tr>
           <td>
@@ -676,14 +787,17 @@ class MeshDashboard {
             </button>
           </td>
           <td>
-            <strong>${this.escapeHtml(n.name || n.short_name || 'Sin nombre')}</strong>
-            ${n.short_name ? `<div style="font-size: 0.75rem; color: var(--text-muted);">${this.escapeHtml(n.short_name)}</div>` : ''}
+            <strong>${this.escapeHtml(n.name || 'Sin nombre')}</strong>
+          </td>
+          <td style="font-weight: 600; color: var(--primary); font-family: monospace;">
+            ${this.escapeHtml(n.short_name || '--')}
           </td>
           <td style="font-family: monospace; font-size: 0.85rem;">${this.escapeHtml(nodeId || '')}</td>
           <td><span class="badge" style="background: var(--primary-bg); color: var(--primary);">${this.escapeHtml(n.role_name || 'CLIENT')}</span></td>
-          <td>${snr}</td>
           <td>${hops}</td>
           <td>${battery}</td>
+          <td>${snr}</td>
+          <td style="font-size: 0.8rem; color: var(--text-muted);">${lastHeardStr}</td>
           <td>
             <button class="btn-secondary" style="padding: 3px 8px; font-size: 0.75rem;" onclick="window.dashboard.requestTraceTo('${nodeId}')">
               Trace
@@ -706,11 +820,15 @@ class MeshDashboard {
 
     const timeStr = ts ? ts.replace('T', ' ').substring(0, 19) : new Date().toLocaleString();
     const hopsFwd = trace.hops_forward || [];
-    const hopsBwd = trace.hops_backward || [];
-
-    const fwdStr = hopsFwd.length > 0 
-      ? hopsFwd.map(h => `${this.escapeHtml(h.name || h.id)} (${h.snr !== undefined ? h.snr + 'dB' : ''})`).join(' ➔ ')
-      : 'Directo / Sin repetidores intermedios';
+    
+    let fwdStr = '';
+    if (hopsFwd.length > 0) {
+      fwdStr = hopsFwd.map(h => `${this.escapeHtml(h.name || h.id)} (${h.snr !== undefined && h.snr !== null ? h.snr + 'dB' : ''})`).join(' ➔ ');
+    } else {
+      // Directo con señal si está disponible
+      const directSnr = trace.snr !== undefined && trace.snr !== null ? ` (SNR: ${Number(trace.snr).toFixed(1)} dB)` : '';
+      fwdStr = `Directo / Sin repetidores intermedios${directSnr}`;
+    }
 
     const cardHtml = `
       <div class="card" style="border-left: 4px solid var(--primary);">
@@ -745,6 +863,99 @@ class MeshDashboard {
   }
 
   // ==========================================================================
+  // Renderizado: Auditoría y Estadísticas de Comandos
+  // ==========================================================================
+  renderAuditData(data) {
+    this.auditData = data;
+    const summary = data.summary || {};
+    const ranking = data.ranking || [];
+
+    // 1. Tarjetas de Resumen
+    if (this.auditTotalCmds) this.auditTotalCmds.textContent = summary.total_24h ?? '--';
+    if (this.auditTotalPeriod) {
+      this.auditTotalPeriod.textContent = this.auditHours ? `en las últimas ${this.auditHours}h` : 'histórico total';
+    }
+    if (this.auditUniqueNodes) this.auditUniqueNodes.textContent = summary.unique_nodes_24h ?? '--';
+    if (this.auditTopCommand) this.auditTopCommand.textContent = summary.top_command_24h ? `/${summary.top_command_24h}` : 'N/D';
+    if (this.auditTopCommandCount) this.auditTopCommandCount.textContent = summary.top_command_count ? `${summary.top_command_count} peticiones` : '--';
+    if (this.auditTopUser) this.auditTopUser.textContent = summary.top_user_24h || 'N/D';
+    if (this.auditTopUserCount) this.auditTopUserCount.textContent = summary.top_user_count ? `${summary.top_user_count} comandos` : '--';
+
+    // 2. Ranking de Nodos
+    if (this.auditRankingTbody) {
+      if (ranking.length === 0) {
+        this.auditRankingTbody.innerHTML = `
+          <tr><td colspan="6" style="text-align: center; color: var(--text-dim); padding: 20px;">No hay comandos registrados en este periodo.</td></tr>
+        `;
+      } else {
+        this.auditRankingTbody.innerHTML = ranking.map((r, idx) => {
+          const isHeavy = r.count > 20;
+          const warningBadge = isHeavy ? `<span class="badge" style="background: var(--danger-bg); color: var(--danger); margin-left: 4px;">Uso Alto</span>` : '';
+          const name = r.name || r.short_name || 'Desconocido';
+          const lastTime = r.last_command_at ? r.last_command_at.replace('T', ' ').substring(11, 19) : '--:--';
+
+          return `
+            <tr>
+              <td style="font-weight: 700; color: var(--text-dim);">${idx + 1}</td>
+              <td>
+                <strong>${this.escapeHtml(name)}</strong>
+                ${r.short_name ? `<span style="font-size: 0.75rem; color: var(--primary); margin-left: 4px;">[${this.escapeHtml(r.short_name)}]</span>` : ''}
+                ${warningBadge}
+              </td>
+              <td style="font-family: monospace; font-size: 0.85rem;">${this.escapeHtml(r.node_id || '')}</td>
+              <td><span class="badge" style="background: var(--primary-bg); color: var(--primary); font-weight: 700;">${r.count}</span></td>
+              <td><code style="color: var(--warning);">/${this.escapeHtml(r.last_command || '')}</code></td>
+              <td style="font-size: 0.8rem; color: var(--text-muted);">${lastTime}</td>
+            </tr>
+          `;
+        }).join('');
+      }
+    }
+
+    // 3. Registro Cronológico
+    this.renderAuditLogs();
+  }
+
+  renderAuditLogs() {
+    if (!this.auditLogsTbody || !this.auditData) return;
+    let logs = this.auditData.recent_logs || [];
+
+    if (this.auditSearchQuery) {
+      logs = logs.filter(l => {
+        const cmd = (l.command || '').toLowerCase();
+        const nid = (l.node_id || '').toLowerCase();
+        const name = (l.name || '').toLowerCase();
+        const sname = (l.short_name || '').toLowerCase();
+        return cmd.includes(this.auditSearchQuery) || nid.includes(this.auditSearchQuery) || name.includes(this.auditSearchQuery) || sname.includes(this.auditSearchQuery);
+      });
+    }
+
+    if (logs.length === 0) {
+      this.auditLogsTbody.innerHTML = `
+        <tr><td colspan="4" style="text-align: center; color: var(--text-dim); padding: 20px;">No hay registros coincidentes.</td></tr>
+      `;
+      return;
+    }
+
+    this.auditLogsTbody.innerHTML = logs.map(l => {
+      const timeStr = l.created_at ? l.created_at.replace('T', ' ').substring(0, 19) : '--';
+      const sender = l.short_name || l.name || l.node_id || 'N/D';
+
+      return `
+        <tr>
+          <td style="font-size: 0.8rem; color: var(--text-muted);">${timeStr}</td>
+          <td>
+            <strong>${this.escapeHtml(sender)}</strong>
+            <div style="font-size: 0.75rem; color: var(--text-dim); font-family: monospace;">${this.escapeHtml(l.node_id || '')}</div>
+          </td>
+          <td><span class="badge" style="background: var(--primary-bg); color: var(--primary);">/${this.escapeHtml(l.command || '')}</span></td>
+          <td style="font-size: 0.85rem; color: var(--text-muted);">${this.escapeHtml(l.message || l.parameters || '--')}</td>
+        </tr>
+      `;
+    }).join('');
+  }
+
+  // ==========================================================================
   // Renderizado: Encuestas & Clima
   // ==========================================================================
   renderPolls(polls) {
@@ -758,23 +969,21 @@ class MeshDashboard {
     this.pollsContainer.innerHTML = polls.map(p => {
       const options = p.options || [];
       const counts = p.counts || [];
-      const total = p.total_votes || 1;
+      const total = p.total_votes || 0;
 
-      const optionsHtml = options.map((opt, idx) => {
-        const votes = counts[idx] || 0;
-        const pct = Math.round((votes / (total || 1)) * 100);
+      const optsHtml = options.map((opt, idx) => {
+        const c = counts[idx] || 0;
+        const pct = total > 0 ? Math.round((c / total) * 100) : 0;
+
         return `
           <div style="margin-bottom: 8px;">
-            <div style="display: flex; justify-content: space-between; font-size: 0.85rem; margin-bottom: 4px;">
+            <div style="display: flex; justify-content: space-between; font-size: 0.85rem; margin-bottom: 3px;">
               <span>${this.escapeHtml(opt)}</span>
-              <span><strong>${votes}</strong> votos (${pct}%)</span>
+              <span><strong>${c}</strong> (${pct}%)</span>
             </div>
             <div style="background: var(--bg-main); height: 8px; border-radius: 4px; overflow: hidden;">
-              <div style="background: var(--primary); width: ${pct}%; height: 100%;"></div>
+              <div style="background: var(--primary); height: 100%; width: ${pct}%;"></div>
             </div>
-            <button class="btn-secondary" style="margin-top: 4px; padding: 2px 8px; font-size: 0.75rem;" onclick="window.dashboard.votePoll(${p.id}, ${idx})">
-              Votar esta opción
-            </button>
           </div>
         `;
       }).join('');
@@ -782,73 +991,74 @@ class MeshDashboard {
       return `
         <div class="card">
           <div class="card-header">
-            <span>${this.escapeHtml(p.question || 'Encuesta')}</span>
-            <span class="badge" style="background: var(--primary-bg); color: var(--primary);">ID #${p.id}</span>
+            <span>Encuesta #${p.id}</span>
+            <span class="badge" style="background: var(--primary-bg); color: var(--primary);">${total} votos</span>
           </div>
-          <div style="margin-top: 8px;">${optionsHtml}</div>
+          <div style="font-weight: 600; margin-bottom: 12px; font-size: 1rem;">
+            ${this.escapeHtml(p.question)}
+          </div>
+          ${optsHtml}
+          <div style="font-size: 0.75rem; color: var(--text-dim); margin-top: 10px;">
+            Creada por ${this.escapeHtml(p.owner_node_id || 'N/D')}
+          </div>
         </div>
       `;
     }).join('');
   }
 
-  votePoll(pollId, optIdx) {
-    this.sendAction('vote_poll', {
-      poll_id: pollId,
-      option_index: optIdx,
-      node_id: this.localNode?.my_node_id || 'web_client'
-    });
-    this.showToast(`Voto registrado en la encuesta #${pollId}`);
-    setTimeout(() => this.sendAction('get_polls'), 500);
-  }
-
-  renderWeather(data) {
-    if (this.weatherProvince) {
-      this.weatherProvince.textContent = `Predicción: ${data.province || 'Cádiz'}`;
-    }
-    if (this.weatherContent) {
-      this.weatherContent.textContent = data.content || 'Sin datos de predicción meteorológica disponibles.';
-    }
-  }
-
-  // ==========================================================================
-  // Enviar Acciones por WebSocket
-  // ==========================================================================
-  sendAction(actionName, params = {}) {
-    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
-      this.showToast('No hay conexión con el servidor WebSocket', 'danger');
+  renderWeather(weather) {
+    if (!this.weatherContent) return;
+    if (!weather || Object.keys(weather).length === 0) {
+      this.weatherContent.textContent = 'No hay datos meteorológicos recientes en la base de datos.';
       return;
     }
 
-    const payload = {
-      action: actionName,
-      req_id: `req_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
-      params: params
+    if (this.weatherProvince && weather.province) {
+      this.weatherProvince.textContent = `AEMET · ${weather.province}`;
+    }
+
+    this.weatherContent.textContent = weather.summary || weather.data_raw || 'Predicción disponible.';
+  }
+
+  // ==========================================================================
+  // Utilidades y Toasts
+  // ==========================================================================
+  sendAction(action, params = {}) {
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+      return;
+    }
+
+    const req = {
+      action: action,
+      req_id: 'req_' + Math.random().toString(36).substring(2, 9),
+      params: params,
     };
 
-    this.ws.send(JSON.stringify(payload));
+    this.ws.send(JSON.stringify(req));
   }
 
-  // ==========================================================================
-  // Utilidades
-  // ==========================================================================
   showToast(message, type = 'info') {
     if (!this.toastContainer) return;
+
     const toast = document.createElement('div');
     toast.className = 'toast';
-    if (type === 'danger') {
-      toast.style.borderColor = 'var(--danger)';
-      toast.style.color = 'var(--danger)';
-    } else {
-      toast.style.borderColor = 'var(--primary)';
-    }
+    if (type === 'danger') toast.style.borderLeftColor = 'var(--danger)';
+    if (type === 'warning') toast.style.borderLeftColor = 'var(--warning)';
     toast.textContent = message;
+
     this.toastContainer.appendChild(toast);
-    setTimeout(() => toast.remove(), 4000);
+
+    setTimeout(() => {
+      toast.style.opacity = '0';
+      toast.style.transform = 'translateY(10px)';
+      toast.style.transition = 'all 0.3s ease';
+      setTimeout(() => toast.remove(), 300);
+    }, 3000);
   }
 
-  escapeHtml(text) {
-    if (!text) return '';
-    return String(text)
+  escapeHtml(str) {
+    if (!str) return '';
+    return String(str)
       .replace(/&/g, '&amp;')
       .replace(/</g, '&lt;')
       .replace(/>/g, '&gt;')
@@ -857,7 +1067,7 @@ class MeshDashboard {
   }
 }
 
-// Iniciar aplicación al cargar el DOM
-window.addEventListener('DOMContentLoaded', () => {
+// Inicialización global al cargar DOM
+document.addEventListener('DOMContentLoaded', () => {
   window.dashboard = new MeshDashboard();
 });

@@ -1650,3 +1650,105 @@ class Database:
                 (status, when_str, outbox_id),
             )
             conn.commit()
+
+    # ---------- AUDITORÍA DE COMANDOS ----------
+    def get_commands_audit(
+        self,
+        limit: int = 50,
+        node_id: Optional[str] = None,
+        command: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        """Historial cronológico detallado de comandos ejecutados."""
+        with closing(self._connect()) as conn:
+            sql = """
+                SELECT c.id, c.node_id, c.command, c.message, c.parameters, c.created_at,
+                       n.name, n.short_name, n.role, n.via_mqtt, n.snr
+                FROM commands_sent c
+                LEFT JOIN nodes n ON n.node_id = c.node_id
+            """
+            conds = []
+            params = []
+            if node_id:
+                conds.append("c.node_id = ?")
+                params.append(node_id)
+            if command:
+                conds.append("c.command = ?")
+                params.append(command)
+            if conds:
+                sql += " WHERE " + " AND ".join(conds)
+            sql += " ORDER BY c.id DESC LIMIT ?"
+            params.append(int(limit))
+
+            cur = conn.execute(sql, tuple(params))
+            return [dict(r) for r in cur.fetchall()]
+
+    def get_top_command_users(self, limit: int = 10, hours: Optional[int] = 24) -> List[Dict[str, Any]]:
+        """Ranking de nodos con más comandos ejecutados en las últimas N horas (o histórico)."""
+        with closing(self._connect()) as conn:
+            sql = """
+                SELECT c.node_id, COUNT(*) AS count,
+                       MAX(c.created_at) AS last_command_at,
+                       (SELECT c2.command FROM commands_sent c2 WHERE c2.node_id = c.node_id ORDER BY c2.id DESC LIMIT 1) AS last_command,
+                       n.name, n.short_name, n.role, n.via_mqtt
+                FROM commands_sent c
+                LEFT JOIN nodes n ON n.node_id = c.node_id
+            """
+            params = []
+            if hours is not None:
+                threshold = (datetime.now() - timedelta(hours=hours)).isoformat(timespec='seconds')
+                sql += " WHERE c.created_at >= ?"
+                params.append(threshold)
+            sql += " GROUP BY c.node_id ORDER BY count DESC LIMIT ?"
+            params.append(int(limit))
+
+            cur = conn.execute(sql, tuple(params))
+            return [dict(r) for r in cur.fetchall()]
+
+    def get_commands_audit_summary(self, hours: int = 24) -> Dict[str, Any]:
+        """Resumen estadístico de uso de comandos para tarjetas de dashboard."""
+        out = {
+            "total_24h": 0,
+            "unique_nodes_24h": 0,
+            "top_command_24h": "N/D",
+            "top_command_count": 0,
+            "top_user_24h": "N/D",
+            "top_user_count": 0,
+        }
+        with closing(self._connect()) as conn:
+            threshold = (datetime.now() - timedelta(hours=hours)).isoformat(timespec='seconds')
+            
+            # Total 24h y nodos únicos
+            row = conn.execute(
+                "SELECT COUNT(*) AS total, COUNT(DISTINCT node_id) AS unique_nodes FROM commands_sent WHERE created_at >= ?",
+                (threshold,),
+            ).fetchone()
+            if row:
+                out["total_24h"] = int(row["total"] or 0)
+                out["unique_nodes_24h"] = int(row["unique_nodes"] or 0)
+
+            # Comando top 24h
+            row = conn.execute(
+                "SELECT command, COUNT(*) AS c FROM commands_sent WHERE created_at >= ? GROUP BY command ORDER BY c DESC LIMIT 1",
+                (threshold,),
+            ).fetchone()
+            if row:
+                out["top_command_24h"] = str(row["command"] or "N/D")
+                out["top_command_count"] = int(row["c"] or 0)
+
+            # Nodo top 24h
+            row = conn.execute(
+                """
+                SELECT c.node_id, n.short_name, n.name, COUNT(*) AS cnt
+                FROM commands_sent c
+                LEFT JOIN nodes n ON n.node_id = c.node_id
+                WHERE c.created_at >= ?
+                GROUP BY c.node_id ORDER BY cnt DESC LIMIT 1
+                """,
+                (threshold,),
+            ).fetchone()
+            if row:
+                disp_name = row["short_name"] or row["name"] or row["node_id"] or "N/D"
+                out["top_user_24h"] = str(disp_name)
+                out["top_user_count"] = int(row["cnt"] or 0)
+
+        return out

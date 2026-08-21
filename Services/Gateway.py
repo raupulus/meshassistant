@@ -257,6 +257,17 @@ class GatewayService:
                     "channel": int(channel)
                 }
 
+            elif action == "get_commands_audit":
+                hours = params.get("hours", 24)
+                limit = params.get("limit", 50)
+                node_id = params.get("node_id")
+                cmd = params.get("command")
+                response["data"] = {
+                    "ranking": self.db.get_top_command_users(limit=15, hours=hours),
+                    "recent_logs": self.db.get_commands_audit(limit=limit, node_id=node_id, command=cmd),
+                    "summary": self.db.get_commands_audit_summary(hours=hours if hours else 24),
+                }
+
             elif action == "restart_serial":
                 response["data"] = {"requested": True, "message": "Solicitud de reinicio de enlace serie registrada"}
 

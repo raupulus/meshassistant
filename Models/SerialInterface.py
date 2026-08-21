@@ -181,15 +181,25 @@ class SerialInterface:
             decoded = packet.get('decoded', {})
             if isinstance(decoded, dict):
                 from Models.EventBroadcaster import broadcast_event
+                # Resolver node_id canónico
+                from_num = packet.get('from')
+                from_node_id = packet.get('fromId')
+                if not from_node_id and from_num is not None:
+                    try:
+                        from_node_id = f"!{int(from_num):08x}"
+                    except Exception:
+                        from_node_id = str(from_num)
+
                 # Telemetría de dispositivo / métricas de canal
                 telemetry = decoded.get('telemetry')
                 if isinstance(telemetry, dict):
-                    dev_m = telemetry.get('deviceMetrics')
+                    dev_m = telemetry.get('deviceMetrics') or telemetry.get('device_metrics') or telemetry
                     if isinstance(dev_m, dict):
-                        from_node_id = packet.get('fromId') or str(packet.get('from'))
                         battery_lvl = dev_m.get('batteryLevel')
                         voltage_val = dev_m.get('voltage')
                         uptime_val = dev_m.get('uptimeSeconds')
+                        ch_util = dev_m.get('channelUtilization')
+                        air_tx = dev_m.get('airUtilTx')
 
                         # Persistir telemetría en BD si el nodo existe o registrarlo
                         if from_node_id:
@@ -203,9 +213,16 @@ class SerialInterface:
                                     db_data['voltage'] = voltage_val
                                 if uptime_val is not None:
                                     db_data['uptime'] = uptime_val
+                                if packet.get('rxSnr') is not None:
+                                    db_data['snr'] = packet.get('rxSnr')
+                                if packet.get('rxRssi') is not None:
+                                    db_data['rssi'] = packet.get('rxRssi')
                                 if db_data:
                                     db.create_node_if_not_exists(from_node_id)
                                     db.update_node(from_node_id, db_data)
+                                
+                                if from_node_id in self.node_dict:
+                                    self.node_dict[from_node_id].update_metadata(db_data)
                             except Exception:
                                 pass
 
@@ -213,14 +230,14 @@ class SerialInterface:
                             "id": from_node_id,
                             "battery": battery_lvl,
                             "voltage": voltage_val,
-                            "channel_util": dev_m.get('channelUtilization'),
-                            "air_util_tx": dev_m.get('airUtilTx'),
+                            "channel_util": ch_util,
+                            "air_util_tx": air_tx,
                             "uptime_seconds": uptime_val,
                         })
-                        if dev_m.get('channelUtilization') is not None or dev_m.get('airUtilTx') is not None:
+                        if ch_util is not None or air_tx is not None:
                             broadcast_event("channel_metrics", {
-                                "channel_util": dev_m.get('channelUtilization'),
-                                "air_util_tx": dev_m.get('airUtilTx'),
+                                "channel_util": ch_util,
+                                "air_util_tx": air_tx,
                             })
 
                 # Routing / ACK de paquetes
@@ -231,8 +248,8 @@ class SerialInterface:
                         "status": "delivered" if routing.get('errorReason') == 'NONE' else 'error',
                         "error_reason": routing.get('errorReason'),
                     })
-        except Exception:
-            pass
+        except Exception as e:
+            log_p(f"Error procesando on_receive_data: {e}", level="DEBUG")
 
     def disconnect(self):
         # Cerrar la interfaz solo si está inicializada
@@ -386,8 +403,48 @@ class SerialInterface:
         pass
 
     def on_node_update (self, node, interface):
-        # TODO: Parece que aquí entra al reconectar dispositivo
-        log_p(f"Nodo conectado actualizado, on_node_update")
+        """Callback reactivo cuando Meshtastic actualiza cualquier nodo en memoria (telemetría, user, posición)."""
+        try:
+            if not isinstance(node, dict):
+                return
+            user = node.get('user') or {}
+            node_id = user.get('id')
+            if not node_id and node.get('num') is not None:
+                try:
+                    node_id = f"!{int(node['num']):08x}"
+                except Exception:
+                    pass
+
+            if not node_id:
+                return
+
+            fromNodeInfo = self.node_dict.get(node_id)
+            if not fromNodeInfo:
+                fromNodeInfo = Node(node_id)
+                self.node_dict[node_id] = fromNodeInfo
+
+            fromNodeInfo.update_metadata(node)
+            log_p(f"Nodo reactivo actualizado: {fromNodeInfo.name} ({node_id})", level="DEBUG")
+
+            try:
+                from Models.EventBroadcaster import broadcast_event
+                broadcast_event("node_updated", {
+                    "id": node_id,
+                    "num": node.get('num'),
+                    "name": fromNodeInfo.name,
+                    "short_name": fromNodeInfo.short_name,
+                    "role": fromNodeInfo.role,
+                    "snr": fromNodeInfo.snr,
+                    "rssi": fromNodeInfo.rssi,
+                    "hops": fromNodeInfo.hops,
+                    "battery": fromNodeInfo.battery,
+                    "voltage": fromNodeInfo.voltage,
+                    "last_heard": fromNodeInfo.last_heard,
+                })
+            except Exception:
+                pass
+        except Exception as e:
+            log_p(f"Error en on_node_update: {e}", level="WARN")
 
 
     def on_connection (self, interface):
