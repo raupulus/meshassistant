@@ -67,3 +67,9 @@ TIDES_PERIOD_MIN = 360    # Cadencia de descarga de mareas en minutos (6 h por d
 TIDES_DAYS = 2            # Días de predicción de marea a descargar
 TIDES_HWI_MIN = 60        # Solo para la estimación offline: intervalo de establecimiento
                           # del puerto (lunitidal interval) en minutos. Aprox. Cádiz.
+
+## Pasarela Gateway WiFi (WebSockets / IPC en tiempo real)
+GATEWAY_WS_HOST = '0.0.0.0'                      # Escucha en red local
+GATEWAY_WS_PORT = 8680                           # Puerto WebSocket (868 MHz)
+GATEWAY_EVENTS_SOCKET = '/tmp/meshassistant_events.sock'  # Socket Unix DGRAM
+GATEWAY_API_TOKEN = ''                           # Opcional: token de autenticación en handshake

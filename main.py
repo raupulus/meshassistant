@@ -89,6 +89,22 @@ def loop():
                             return_hops=return_hops,
                         )
                         log_p(f"[traceroute] Trace #{pending['id']} completado con éxito: {text[:60]}")
+
+                        # Notificar a la pasarela WiFi
+                        try:
+                            from Models.EventBroadcaster import broadcast_event
+                            broadcast_event("trace_completed", {
+                                "trace_id": pending['id'],
+                                "to": node_id,
+                                "to_name": to_name,
+                                "to_name_short": to_short,
+                                "success": True,
+                                "hops_forward": hops,
+                                "hops_backward": return_hops,
+                                "raw_text": text,
+                            })
+                        except Exception:
+                            pass
                     except Exception as e:
                         # En caso de fallo, guardar el error como texto plano en data_raw
                         error_txt = f"{e.__class__.__name__}: {e}"
@@ -100,6 +116,16 @@ def loop():
                             to_name_short=None,
                             hops=None,
                         )
+                        try:
+                            from Models.EventBroadcaster import broadcast_event
+                            broadcast_event("trace_completed", {
+                                "trace_id": pending['id'],
+                                "to": node_id,
+                                "success": False,
+                                "error": error_txt,
+                            })
+                        except Exception:
+                            pass
             except Exception as e:
                 log_p(f"[traceroute] Error en bucle de traces: {e}", level="WARN")
                 # No interrumpir el loop por errores de BD
@@ -192,6 +218,17 @@ def loop():
                 # No romper el loop por AEMET, pero dejar rastro para poder
                 # diagnosticar fallos en la publicación de alertas de emergencia.
                 log_p(f"Error publicando alerta AEMET: {e}", level="WARN")
+
+            # Heartbeat para la pasarela WiFi
+            try:
+                from Models.EventBroadcaster import broadcast_event
+                broadcast_event("system_status", {
+                    "uart_connected": interface.interface is not None,
+                    "serial_port": SERIAL_DEVICE_PATH,
+                    "nodes_in_memory": len(interface.node_dict),
+                })
+            except Exception:
+                pass
 
             sleep(5)
 

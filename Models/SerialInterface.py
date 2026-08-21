@@ -102,6 +102,27 @@ class SerialInterface:
 
     def on_receive_position(self, packet, interface):
         log_p(f"on_receive_position: {packet}", level="DEBUG")
+        try:
+            decoded = packet.get('decoded', {})
+            pos = decoded.get('position', {}) if isinstance(decoded, dict) else {}
+            if pos:
+                from Models.EventBroadcaster import broadcast_event
+                lat = pos.get('latitude')
+                if lat is None and pos.get('latitudeI') is not None:
+                    lat = pos.get('latitudeI') / 1e7
+                lon = pos.get('longitude')
+                if lon is None and pos.get('longitudeI') is not None:
+                    lon = pos.get('longitudeI') / 1e7
+
+                broadcast_event("position_rx", {
+                    "id": packet.get('fromId') or str(packet.get('from')),
+                    "lat": lat,
+                    "lon": lon,
+                    "alt": pos.get('altitude'),
+                    "time": pos.get('time'),
+                })
+        except Exception:
+            pass
 
     def on_receive_user(self, packet, interface):
         # log_p(f"on_receive_user: {packet}", level="DEBUG")
@@ -137,8 +158,58 @@ class SerialInterface:
                     "hop_start": packet.get('hopStart', None),
                 })
 
+                try:
+                    from Models.EventBroadcaster import broadcast_event
+                    broadcast_event("node_updated", {
+                        "id": id,
+                        "num": nodenumber,
+                        "name": user.get('longName'),
+                        "short_name": user.get('shortName'),
+                        "mac_addr": user.get('macaddr'),
+                        "hw_model": user.get('hwModel'),
+                        "role": user.get('role'),
+                        "snr": packet.get('rxSnr'),
+                        "rssi": packet.get('rxRssi'),
+                        "hops": fromNodeInfo.hops,
+                    })
+                except Exception:
+                    pass
+
     def on_receive_data(self, packet, interface):
         log_p(f"on_receive_data: {packet}", level="DEBUG")
+        try:
+            decoded = packet.get('decoded', {})
+            if isinstance(decoded, dict):
+                from Models.EventBroadcaster import broadcast_event
+                # Telemetría de dispositivo / métricas de canal
+                telemetry = decoded.get('telemetry')
+                if isinstance(telemetry, dict):
+                    dev_m = telemetry.get('deviceMetrics')
+                    if isinstance(dev_m, dict):
+                        broadcast_event("device_telemetry", {
+                            "id": packet.get('fromId') or str(packet.get('from')),
+                            "battery": dev_m.get('batteryLevel'),
+                            "voltage": dev_m.get('voltage'),
+                            "channel_util": dev_m.get('channelUtilization'),
+                            "air_util_tx": dev_m.get('airUtilTx'),
+                            "uptime_seconds": dev_m.get('uptimeSeconds'),
+                        })
+                        if dev_m.get('channelUtilization') is not None or dev_m.get('airUtilTx') is not None:
+                            broadcast_event("channel_metrics", {
+                                "channel_util": dev_m.get('channelUtilization'),
+                                "air_util_tx": dev_m.get('airUtilTx'),
+                            })
+
+                # Routing / ACK de paquetes
+                routing = decoded.get('routing')
+                if isinstance(routing, dict) and routing.get('errorReason') is not None:
+                    broadcast_event("message_ack", {
+                        "dest": packet.get('toId') or str(packet.get('to')),
+                        "status": "delivered" if routing.get('errorReason') == 'NONE' else 'error',
+                        "error_reason": routing.get('errorReason'),
+                    })
+        except Exception:
+            pass
 
     def disconnect(self):
         # Cerrar la interfaz solo si está inicializada
@@ -305,6 +376,21 @@ class SerialInterface:
         """
         log_p("Conexión establecida con el dispositivo Meshtastic")
         self.get_nodes()
+        try:
+            from Models.EventBroadcaster import broadcast_event
+            my_info = getattr(interface, 'myInfo', None)
+            local_node = getattr(interface, 'nodes', {}).get(getattr(my_info, 'my_node_num', None), {})
+            user = local_node.get('user', {}) if isinstance(local_node, dict) else {}
+            broadcast_event("local_node_info", {
+                "my_node_id": user.get('id') or (f"!{my_info.my_node_num:08x}" if getattr(my_info, 'my_node_num', None) else None),
+                "my_num": getattr(my_info, 'my_node_num', None),
+                "name": user.get('longName'),
+                "short_name": user.get('shortName'),
+                "hw_model": user.get('hwModel'),
+                "region": str(getattr(my_info, 'region', None) or ''),
+            })
+        except Exception:
+            pass
 
     def traceroute(self, node_id: str, timeout: float = 10.0):
         """Ejecuta un TraceRoute real usando Meshtastic `sendTraceRoute` y capta la salida textual.
@@ -614,6 +700,25 @@ class SerialInterface:
                     "rx_rssi": fromNodeInfo.rssi,
                     "via_mqtt": fromNodeInfo.via_mqtt,
                 }
+
+                # Emitir evento en tiempo real a la pasarela WiFi (IPC no bloqueante, en RAM)
+                try:
+                    from Models.EventBroadcaster import broadcast_event
+                    broadcast_event("message_rx", {
+                        "from": from_id,
+                        "from_name": fromNodeInfo.name,
+                        "from_short_name": fromNodeInfo.short_name,
+                        "to": to_id,
+                        "channel": packet.get('channel', 0),
+                        "text": msg,
+                        "snr": fromNodeInfo.snr,
+                        "rssi": fromNodeInfo.rssi,
+                        "hops": fromNodeInfo.hops,
+                        "is_direct": is_direct,
+                        "via_mqtt": fromNodeInfo.via_mqtt,
+                    })
+                except Exception:
+                    pass
 
                 # Busco comando y argumentos en el mensaje
                 command, cmd_args = search_command(msg)

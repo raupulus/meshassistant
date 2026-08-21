@@ -10,3 +10,5 @@
 meshtastic>=2.7.5     # API/CLI Meshtastic por puerto serie
 pypubsub>=4.0.3       # Bus de eventos (pub/sub) usado por meshtastic y el proyecto
 requests>=2.32.0      # Cliente HTTP (AEMET y API de chistes)
+websockets>=12.0      # Servidor y cliente WebSocket asíncrono para la pasarela WiFi
+
