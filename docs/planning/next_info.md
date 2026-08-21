@@ -18,6 +18,7 @@
    - **HTML5 semántico**
    - **CSS autocontenido local** (diseño moderno con tema oscuro, responsive y utilidades visuales)
    - **JavaScript Vanilla** (manejo nativo de WebSocket, reconexión automática y renderizado dinámico del DOM)
+5. Estructurar la documentación técnica del módulo en un directorio propio e independiente: **`docs/info/web/`**.
 
 ---
 
@@ -99,14 +100,13 @@ web/
 
 ---
 
-## 5. Decisiones Técnicas y Reglas de Desarrollo
+## 5. Documentación Dedicada (`docs/info/web/`)
 
-1. **100% Offline (Sin Conexión a Internet):** Todo el CSS, JS, iconos SVG y fuentes del sistema deben residir localmente en `web/`. Prohibido el uso de CDNs externas (`cdn.tailwindcss.com`, Google Fonts, FontAwesome externo, etc.).
-2. **Cero Dependencias de Construcción:** No se usarán herramientas tipo Webpack, Vite ni Node.js. El código HTML/JS/CSS se edita y sirve directamente como ficheros estáticos.
-3. **Reconexión Automática Resiliente:** Si se reinicia el servicio o cae el WiFi, `app.js` reintenta la conexión WebSocket automáticamente cada 3 segundos con indicador visual de reconexión.
-4. **Responsive / Mobile-First:** Totalmente optimizado para pantallas de smartphone (diseño compacto con navegación por pestañas inferiores/superiores).
-5. **Seguridad / Token:** Si `GATEWAY_API_TOKEN` está configurado en `env.py`, el dashboard solicita el token o lo lee de la URL (`?token=...`) para autorizar la sesión.
-6. **Mantenimiento de Documentación y `AGENTS.md`:** Cada nueva funcionalidad o módulo añadido debe registrarse en `AGENTS.md` y documentarse en su sección correspondiente de `docs/info/`.
+La documentación de este módulo se organizará en su propio directorio:
+- **`docs/info/web/00-indice.md`:** Visión general, acceso y configuración.
+- **`docs/info/web/01-arquitectura-servidor-http.md`:** Funcionamiento del servidor de estáticos integrado en `Gateway.py`.
+- **`docs/info/web/02-componentes-y-pestanas.md`:** Guía detallada de cada panel interactivo del frontend.
+- **`docs/info/web/03-guia-offline-estilos.md`:** Especificación de CSS/JS autocontenido y diseño 100% offline.
 
 ---
 
@@ -123,7 +123,7 @@ Actúa como ingeniero senior full-stack (Python + Frontend ligero). Vamos a impl
 3. El frontend debe ser SPA ligero en `web/` con HTML5, CSS autocontenido y JavaScript Vanilla (sin Node.js ni bundlers).
 4. Todo el flujo de datos en tiempo real debe comunicarse con el WebSocket local mediante el Contrato Formal definido en `docs/info/gateway/02-contrato-api-websocket.md`.
 5. El bot de radio (`main.py`) y la prioridad del puerto serie UART no deben verse afectados en absoluto.
-6. Mantener `AGENTS.md` y `docs/info/gateway/` siempre actualizados con las nuevas capacidades.
+6. Crear la suite de documentación dedicada en `docs/info/web/` y mantener `AGENTS.md` y `docs/info/00-indice.md` actualizados.
 7. Código y comentarios en español conforme a las reglas del repositorio.
 
 ### Tareas a ejecutar:
@@ -135,5 +135,5 @@ Actúa como ingeniero senior full-stack (Python + Frontend ligero). Vamos a impl
    - Envío de acciones (`get_snapshot`, `send_message`, `request_trace`, `vote_poll`, `set_node_favorite`).
 4. **Estilos Locales en `web/style.css`:** CSS moderno y autocontenido (tema oscuro, animaciones de pulso para estado, barras de progreso y tipografía de sistema).
 5. **Tests automatizados en `tests/test_gateway_http.py`:** Validar que `Services/Gateway.py` responde correctamente con HTTP 200 y los ficheros estáticos a peticiones GET de navegadores.
-6. **Actualización de Documentación en `docs/info/gateway/` y `AGENTS.md`:** Documentar el acceso web y la estructura del dashboard.
+6. **Documentación Completa en `docs/info/web/`:** (Índice, arquitectura servidor HTTP, componentes y guía offline).
 ```
