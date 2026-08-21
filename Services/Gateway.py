@@ -276,6 +276,61 @@ class GatewayService:
             self.connected_clients.discard(ws)
             log_p(f"[Gateway WS] Cliente desconectado: {remote_addr}")
 
+    def _process_http_request(self, connection: Any, request: Any) -> Optional[Any]:
+        """Procesa peticiones HTTP entrantes para servir la SPA del mini dashboard de forma 100% offline."""
+        # Si es una petición de WebSocket upgrade, permitir que continúe el handshake
+        if request.headers.get("Upgrade", "").lower() == "websocket":
+            return None
+
+        # Petición HTTP estándar
+        from websockets.http11 import Response, Headers
+
+        path = request.path.split("?")[0]
+        if path == "/" or not path:
+            path = "/index.html"
+
+        # Resolver ruta segura dentro del directorio web/
+        web_dir = os.path.abspath(os.path.join(BASE_DIR, "web"))
+        requested_file = os.path.abspath(os.path.join(web_dir, path.lstrip("/")))
+
+        # Prevención de Directory Traversal y comprobación de existencia
+        if not requested_file.startswith(web_dir) or not os.path.isfile(requested_file):
+            headers = Headers()
+            headers["Content-Type"] = "text/plain; charset=utf-8"
+            return Response(404, "Not Found", headers, b"404 Not Found")
+
+        # Determinar MIME type adecuado
+        content_type = "application/octet-stream"
+        if requested_file.endswith(".html"):
+            content_type = "text/html; charset=utf-8"
+        elif requested_file.endswith(".js"):
+            content_type = "application/javascript; charset=utf-8"
+        elif requested_file.endswith(".css"):
+            content_type = "text/css; charset=utf-8"
+        elif requested_file.endswith(".svg"):
+            content_type = "image/svg+xml"
+        elif requested_file.endswith(".json"):
+            content_type = "application/json; charset=utf-8"
+        elif requested_file.endswith(".png"):
+            content_type = "image/png"
+        elif requested_file.endswith(".ico"):
+            content_type = "image/x-icon"
+
+        try:
+            with open(requested_file, "rb") as f:
+                body = f.read()
+
+            headers = Headers()
+            headers["Content-Type"] = content_type
+            headers["Content-Length"] = str(len(body))
+            headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+            return Response(200, "OK", headers, body)
+        except Exception as e:
+            log_p(f"[Gateway HTTP] Error leyendo archivo {requested_file}: {e}", level="WARN")
+            headers = Headers()
+            headers["Content-Type"] = "text/plain; charset=utf-8"
+            return Response(500, "Internal Server Error", headers, b"500 Internal Server Error")
+
     async def start(self) -> None:
         """Inicia el servidor WebSocket y el receptor Unix Socket."""
         self._running = True
@@ -298,13 +353,14 @@ class GatewayService:
         )
         log_p(f"[Gateway] Escuchando eventos IPC en {self.socket_path}")
 
-        # 2. Iniciar servidor WebSocket TCP
+        # 2. Iniciar servidor WebSocket TCP con soporte HTTP estático
         server = await websockets.serve(
             self._ws_handler,
             self.host,
             self.port,
+            process_request=self._process_http_request,
         )
-        log_p(f"[Gateway] Servidor WebSocket activo en ws://{self.host}:{self.port}")
+        log_p(f"[Gateway] Servidor WebSocket y Web UI activos en http://{self.host}:{self.port}")
 
         try:
             await asyncio.Future()  # Mantener corriendo

@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Meshassistant · Dashboard de Malla</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- ==========================================================================
+       Header & Barra de Estado en Tiempo Real
+       ========================================================================== -->
+  <header>
+    <div class="brand">
+      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path>
+      </svg>
+      <span>Meshassistant</span>
+    </div>
+
+    <div class="status-bar">
+      <!-- Estado Serie UART -->
+      <div class="status-item" title="Estado de la conexión UART con el nodo Meshtastic">
+        <div id="led-uart" class="led offline"></div>
+        <span>UART: <strong id="lbl-uart">Desconectado</strong></span>
+      </div>
+
+      <!-- Estado WebSocket Local -->
+      <div class="status-item" title="Estado del socket WebSocket">
+        <div id="led-ws" class="led offline"></div>
+        <span>WS: <strong id="lbl-ws">Conectando...</strong></span>
+      </div>
+
+      <!-- Nodo Local -->
+      <div class="status-item" title="Identidad del nodo conectado físicamente">
+        <span>Nodo: <strong id="lbl-local-node">--</strong></span>
+      </div>
+
+      <!-- Métricas LoRa -->
+      <div class="status-item" title="Ocupación del espectro LoRa (Canal / Aire TX)">
+        <span>Ch Util: <strong id="lbl-ch-util">0.0%</strong></span>
+        <span style="color: var(--text-dim);">|</span>
+        <span>Tx: <strong id="lbl-air-tx">0.0%</strong></span>
+      </div>
+    </div>
+  </header>
+
+  <!-- ==========================================================================
+       Pestañas de Navegación
+       ========================================================================== -->
+  <nav class="tabs">
+    <button class="tab-btn active" data-tab="chat">
+      <span>💬 Mensajes</span>
+      <span class="badge-count" id="count-msgs">0</span>
+    </button>
+    <button class="tab-btn" data-tab="routers">
+      <span>📡 Routers</span>
+      <span class="badge-count" id="count-routers">0</span>
+    </button>
+    <button class="tab-btn" data-tab="nodes">
+      <span>👥 Nodos</span>
+      <span class="badge-count" id="count-nodes">0</span>
+    </button>
+    <button class="tab-btn" data-tab="traces">
+      <span>🗺️ Traceroutes</span>
+    </button>
+    <button class="tab-btn" data-tab="polls">
+      <span>📊 Encuestas & Clima</span>
+    </button>
+  </nav>
+
+  <!-- ==========================================================================
+       Contenido Principal
+       ========================================================================== -->
+  <main>
+
+    <!-- Pestaña 1: Live Chat -->
+    <section id="pane-chat" class="tab-pane active">
+      <div class="chat-container">
+        <!-- Filtro rápido de canales -->
+        <div class="chat-filter-bar">
+          <span style="font-size: 0.8rem; color: var(--text-muted); margin-right: 4px;">Filtrar:</span>
+          <button class="filter-chip active" data-ch="all">Todos</button>
+          <button class="filter-chip" data-ch="0">Canal 0 (Público)</button>
+          <button class="filter-chip" data-ch="direct">Privados / Directos</button>
+        </div>
+
+        <!-- Feed de Mensajes -->
+        <div class="chat-messages" id="chat-feed">
+          <div style="text-align: center; color: var(--text-dim); padding: 20px;">
+            Conectando a la malla LoRa en tiempo real...
+          </div>
+        </div>
+
+        <!-- Caja de Envío -->
+        <form class="chat-input-bar" id="chat-form">
+          <select id="chat-dest" class="select-custom" style="min-width: 140px;">
+            <option value="^all:0">Canal 0 (Público)</option>
+          </select>
+          <input type="text" id="chat-text" class="input-custom" placeholder="Escribe un mensaje a la malla (máx 200 caracteres)..." maxlength="200" autocomplete="off" required>
+          <button type="submit" class="btn-primary" id="btn-send-msg">
+            <span>Enviar</span>
+            <svg style="width: 16px; height: 16px;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"></path></svg>
+          </button>
+        </form>
+      </div>
+    </section>
+
+    <!-- Pestaña 2: Routers y Repetidores -->
+    <section id="pane-routers" class="tab-pane">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+        <h2 style="font-size: 1.2rem;">Repetidores y Routers Monitoreados</h2>
+        <button class="btn-secondary" id="btn-refresh-routers">Actualizar Estado</button>
+      </div>
+      <div class="grid-cards" id="routers-grid">
+        <div style="color: var(--text-dim);">Cargando repetidores...</div>
+      </div>
+    </section>
+
+    <!-- Pestaña 3: Nodos de la Red -->
+    <section id="pane-nodes" class="tab-pane">
+      <div style="display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 16px;">
+        <div style="display: flex; gap: 10px; align-items: center; flex: 1; min-width: 240px;">
+          <input type="text" id="nodes-search" class="input-custom" placeholder="Buscar por nombre, ID o alias..." style="max-width: 360px;">
+        </div>
+        <div style="display: flex; gap: 8px;">
+          <button class="btn-secondary filter-nodes active" data-filter="all">Todos</button>
+          <button class="btn-secondary filter-nodes" data-filter="rf">Solo RF</button>
+          <button class="btn-secondary filter-nodes" data-filter="fav">Favoritos ⭐</button>
+        </div>
+      </div>
+
+      <div class="table-container">
+        <table>
+          <thead>
+            <tr>
+              <th style="width: 40px;">⭐</th>
+              <th>Nodo / Alias</th>
+              <th>ID Hex</th>
+              <th>Rol</th>
+              <th>SNR / RSSI</th>
+              <th>Saltos</th>
+              <th>Batería</th>
+              <th>Acción</th>
+            </tr>
+          </thead>
+          <tbody id="nodes-tbody">
+            <tr>
+              <td colspan="8" style="text-align: center; color: var(--text-dim); padding: 20px;">Cargando lista de nodos...</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Pestaña 4: Traceroutes -->
+    <section id="pane-traces" class="tab-pane">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 12px;">
+        <h2 style="font-size: 1.2rem;">Últimos Traceroutes Ejecutados</h2>
+        <form id="form-manual-trace" style="display: flex; gap: 8px;">
+          <input type="text" id="trace-dest-input" class="input-custom" placeholder="ID o Nombre Corto destino..." required style="width: 200px;">
+          <button type="submit" class="btn-primary">Lanzar Trace</button>
+        </form>
+      </div>
+      <div class="grid-cards" id="traces-grid">
+        <div style="color: var(--text-dim);">No hay traceroutes recientes cargados.</div>
+      </div>
+    </section>
+
+    <!-- Pestaña 5: Encuestas & Clima -->
+    <section id="pane-polls" class="tab-pane">
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 20px;">
+        <!-- Bloque Encuestas -->
+        <div>
+          <h2 style="font-size: 1.2rem; margin-bottom: 16px;">Encuestas Comunitarias</h2>
+          <div id="polls-container" style="display: flex; flex-direction: column; gap: 16px;">
+            <div style="color: var(--text-dim);">Cargando encuestas activas...</div>
+          </div>
+        </div>
+
+        <!-- Bloque Clima AEMET -->
+        <div>
+          <h2 style="font-size: 1.2rem; margin-bottom: 16px;">Predicción Meteorológica AEMET</h2>
+          <div class="card" id="weather-card">
+            <div class="card-header">
+              <span id="weather-province">Meteorología Oficial</span>
+              <span class="badge" style="background: var(--primary-bg); color: var(--primary);">AEMET</span>
+            </div>
+            <div id="weather-content" style="font-size: 0.9rem; color: var(--text-muted); line-height: 1.6; white-space: pre-wrap;">
+              Consultando predicción...
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Contenedor de Alertas Toast -->
+  <div id="toast-container"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>

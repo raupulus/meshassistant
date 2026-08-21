@@ -24,6 +24,7 @@ el [`README.md`](../../README.md) y para las normas de desarrollo el
 | 13 | [Instalación y despliegue](13-instalacion-despliegue.md) | Hardware, venv, cron y systemd. |
 | 14 | [Roadmap](14-roadmap.md) | Funcionalidades pendientes y placeholders. |
 | 15 | [Pasarela Gateway](gateway/00-indice.md) | Pasarela WiFi en tiempo real (WebSockets / IPC / Contrato API). |
+| 16 | [Dashboard Web](web/00-indice.md) | Mini dashboard web 100% offline integrado en el puerto 8680. |
 
 ## Convenciones de la documentación
 

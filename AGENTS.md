@@ -62,11 +62,12 @@ Models/
   Api.py              Cliente HTTP genérico con reintentos (chistes).
 
 Services/
-  Gateway.py          Pasarela WebSocket e IPC en tiempo real (puerto 8680).
+  Gateway.py          Pasarela WebSocket, servidor HTTP e IPC en tiempo real (puerto 8680).
 
+web/                  Mini dashboard web 100% offline (index.html, app.js, style.css).
 clients/              Clientes de referencia y prueba (pico_w_sample.py).
 Crons/                Reservado para futuro.
-docs/info/            Documentación técnica por módulo (incluye docs/info/gateway/).
+docs/info/            Documentación técnica por módulo (incluye docs/info/gateway/ y docs/info/web/).
 ```
 
 > Cada comando es `Commands/<nombre>.py` con un callback `<nombre>_callback` y se
