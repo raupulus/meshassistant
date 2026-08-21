@@ -9,6 +9,14 @@ from datetime import datetime
 from typing import Any, Dict, Optional, Set
 import websockets
 
+import sys
+from pathlib import Path
+
+# Asegurar raíz del proyecto en sys.path al ejecutarse directamente como servicio
+BASE_DIR = Path(__file__).resolve().parent.parent
+if str(BASE_DIR) not in sys.path:
+    sys.path.insert(0, str(BASE_DIR))
+
 import env
 from functions import log_p
 from Models.Database import Database
