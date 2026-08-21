@@ -146,8 +146,14 @@ class MeshDashboard {
       this.ws = new WebSocket(wsUrl);
 
       this.ws.onopen = () => {
+        console.log('[Mesh WS] Conectado exitosamente');
         this.setWsStatus(true, 'Conectado');
         this.showToast('Conectado a la pasarela WebSocket');
+        // Solicitar snapshot completo inicial inmediatamente al abrir socket
+        this.requestFullSnapshot();
+        // Configurar actualización periódica suave cada 15s
+        if (this.syncInterval) clearInterval(this.syncInterval);
+        this.syncInterval = setInterval(() => this.requestFullSnapshot(), 15000);
       };
 
       this.ws.onmessage = (event) => {
@@ -286,6 +292,14 @@ class MeshDashboard {
     }
   }
 
+  requestFullSnapshot() {
+    this.sendAction('get_snapshot', {
+      include: ['nodes', 'routers', 'recent_messages', 'stats', 'system_status', 'local_node', 'channel_metrics', 'traces']
+    });
+    this.sendAction('get_polls');
+    this.sendAction('get_weather');
+  }
+
   handleActionResponse(resp) {
     if (!resp.success) {
       this.showToast(`Error: ${resp.error || 'Acción fallida'}`, 'danger');
@@ -296,22 +310,68 @@ class MeshDashboard {
     if (!data) return;
 
     if (resp.action === 'get_snapshot') {
-      if (data.recent_messages) {
+      // 1. Mensajes recientes
+      if (data.recent_messages && Array.isArray(data.recent_messages)) {
         this.messages = [];
         data.recent_messages.forEach(m => {
           if (m.data) this.messages.push({ ...m.data, ts: m.ts });
+          else this.messages.push(m);
         });
         this.renderMessages();
       }
-      if (data.routers) {
+
+      // 2. Routers
+      if (data.routers && Array.isArray(data.routers)) {
         this.renderRouters(data.routers);
       }
+
+      // 3. Nodos de la red
+      if (data.nodes && Array.isArray(data.nodes)) {
+        this.nodesMap.clear();
+        data.nodes.forEach(n => {
+          const id = n.id || n.node_id;
+          if (id) {
+            this.nodesMap.set(id, { id: id, ...n });
+          }
+        });
+        this.renderNodesTable();
+      }
+
+      // 4. Traceroutes recientes
+      if (data.traces && Array.isArray(data.traces) && data.traces.length > 0) {
+        if (this.tracesGrid) {
+          this.tracesGrid.innerHTML = '';
+          data.traces.forEach(tr => this.renderTraceResult(tr, tr.updated_at || tr.created_at));
+        }
+      }
+
+      // 5. Estado UART
       if (data.system_status) {
         this.setUartStatus(data.system_status.uart_connected, data.system_status.serial_port);
       }
+
+      // 6. Nodo local
+      if (data.local_node) {
+        this.localNode = data.local_node;
+        const name = this.localNode.short_name || this.localNode.my_node_id || 'Bot';
+        if (this.lblLocalNode) this.lblLocalNode.textContent = name;
+      }
+
+      // 7. Métricas de canal LoRa
       if (data.channel_metrics) {
-        if (this.lblChUtil) this.lblChUtil.textContent = `${Number(data.channel_metrics.channel_util || 0).toFixed(1)}%`;
-        if (this.lblAirTx) this.lblAirTx.textContent = `${Number(data.channel_metrics.air_util_tx || 0).toFixed(1)}%`;
+        if (this.lblChUtil && data.channel_metrics.channel_util !== undefined) {
+          this.lblChUtil.textContent = `${Number(data.channel_metrics.channel_util).toFixed(1)}%`;
+        }
+        if (this.lblAirTx && data.channel_metrics.air_util_tx !== undefined) {
+          this.lblAirTx.textContent = `${Number(data.channel_metrics.air_util_tx).toFixed(1)}%`;
+        }
+      }
+
+      // 8. Estadísticas
+      if (data.stats) {
+        if (this.countNodes && data.stats.nodes_total) {
+          this.countNodes.textContent = data.stats.nodes_total;
+        }
       }
     } else if (resp.action === 'get_polls') {
       this.renderPolls(data.polls || []);

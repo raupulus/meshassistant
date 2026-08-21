@@ -1550,3 +1550,69 @@ class Database:
             row = conn.execute(sql).fetchone()
             avg = row['avg'] if row and row['avg'] is not None else None
             return {'avg': float(avg) if avg is not None else None, 'count': int(row['c']) if row else 0}
+
+    def get_all_nodes(self, limit: int = 500, only_rf: bool = False) -> List[Dict[str, Any]]:
+        """Devuelve la lista de nodos ordenados por favoritos y actividad reciente."""
+        with closing(self._connect()) as conn:
+            sql = """
+                SELECT node_id AS id, node_id, name, num, short_name, mac_addr, hw_model, role,
+                       is_favorite, snr, rssi, hops, uptime, via_mqtt, last_heard, updated_at
+                FROM nodes
+            """
+            params: List[Any] = []
+            if only_rf:
+                sql += " WHERE COALESCE(via_mqtt, 0) = 0"
+            sql += " ORDER BY is_favorite DESC, COALESCE(last_heard, 0) DESC, updated_at DESC LIMIT ?"
+            params.append(int(limit))
+            cur = conn.execute(sql, tuple(params))
+            
+            roles_map = {
+                0: 'CLIENT', 1: 'CLIENT_MUTE', 2: 'ROUTER', 3: 'ROUTER_CLIENT',
+                4: 'REPEATER', 5: 'TRACKER', 6: 'SENSOR', 7: 'TAK', 8: 'CLIENT_HIDDEN'
+            }
+            results = []
+            for r in cur.fetchall():
+                d = dict(r)
+                role_val = d.get('role')
+                d['role_name'] = roles_map.get(role_val, 'CLIENT') if isinstance(role_val, int) else (str(role_val) if role_val else 'CLIENT')
+                results.append(d)
+            return results
+
+    def get_recent_traces(self, limit: int = 15) -> List[Dict[str, Any]]:
+        """Devuelve los últimos traceroutes completados con sus saltos estructurados."""
+        with closing(self._connect()) as conn:
+            cur = conn.execute(
+                """
+                SELECT id, "from", "to", status, created_at, updated_at, hops, hops_back,
+                       to_name, to_name_short, data_raw,
+                       hop1_id, hop1_name, hop1_snr,
+                       hop2_id, hop2_name, hop2_snr,
+                       hop3_id, hop3_name, hop3_snr,
+                       hop4_id, hop4_name, hop4_snr,
+                       hop5_id, hop5_name, hop5_snr,
+                       hop6_id, hop6_name, hop6_snr,
+                       hop7_id, hop7_name, hop7_snr
+                FROM traces
+                WHERE status IN ('done', 'error')
+                ORDER BY id DESC
+                LIMIT ?
+                """,
+                (int(limit),),
+            )
+            rows = cur.fetchall()
+            out = []
+            for r in rows:
+                item = dict(r)
+                hops_fwd = []
+                for i in range(1, 8):
+                    h_id = item.get(f"hop{i}_id")
+                    if h_id:
+                        hops_fwd.append({
+                            "id": h_id,
+                            "name": item.get(f"hop{i}_name") or h_id,
+                            "snr": item.get(f"hop{i}_snr"),
+                        })
+                item["hops_forward"] = hops_fwd
+                item["success"] = (item.get("status") == "done")
+                out.append(item)
+            return out

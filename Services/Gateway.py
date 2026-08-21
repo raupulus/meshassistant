@@ -153,7 +153,10 @@ class GatewayService:
                     snapshot_data["channel_metrics"] = self.last_channel_metrics
 
                 if "nodes" in include:
-                    snapshot_data["nodes"] = self.db.nodes_overview()
+                    snapshot_data["nodes"] = self.db.get_all_nodes(limit=300)
+                    snapshot_data["nodes_summary"] = self.db.nodes_overview()
+                if "traces" in include:
+                    snapshot_data["traces"] = self.db.get_recent_traces(limit=10)
                 if "stats" in include:
                     snapshot_data["stats"] = self.db.stats_summary()
                 if "routers" in include:
@@ -279,7 +282,9 @@ class GatewayService:
     def _process_http_request(self, connection: Any, request: Any) -> Optional[Any]:
         """Procesa peticiones HTTP entrantes para servir la SPA del mini dashboard de forma 100% offline."""
         # Si es una petición de WebSocket upgrade, permitir que continúe el handshake
-        if request.headers.get("Upgrade", "").lower() == "websocket":
+        upgrade_hdr = request.headers.get("Upgrade", "").lower()
+        conn_hdr = request.headers.get("Connection", "").lower()
+        if "websocket" in upgrade_hdr or "upgrade" in conn_hdr:
             return None
 
         # Petición HTTP estándar
