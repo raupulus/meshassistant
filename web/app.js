@@ -320,12 +320,18 @@ class MeshDashboard {
         this.renderMessages();
       }
 
-      // 2. Routers
+      // 2. Canales
+      if (data.channels) {
+        this.channels = data.channels;
+        this.renderChannelFiltersAndDestinations();
+      }
+
+      // 3. Routers
       if (data.routers && Array.isArray(data.routers)) {
         this.renderRouters(data.routers);
       }
 
-      // 3. Nodos de la red
+      // 4. Nodos de la red
       if (data.nodes && Array.isArray(data.nodes)) {
         this.nodesMap.clear();
         data.nodes.forEach(n => {
@@ -335,9 +341,10 @@ class MeshDashboard {
           }
         });
         this.renderNodesTable();
+        this.renderChannelFiltersAndDestinations();
       }
 
-      // 4. Traceroutes recientes
+      // 5. Traceroutes recientes
       if (data.traces && Array.isArray(data.traces) && data.traces.length > 0) {
         if (this.tracesGrid) {
           this.tracesGrid.innerHTML = '';
@@ -345,19 +352,19 @@ class MeshDashboard {
         }
       }
 
-      // 5. Estado UART
+      // 6. Estado UART
       if (data.system_status) {
         this.setUartStatus(data.system_status.uart_connected, data.system_status.serial_port);
       }
 
-      // 6. Nodo local
+      // 7. Nodo local
       if (data.local_node) {
         this.localNode = data.local_node;
         const name = this.localNode.short_name || this.localNode.my_node_id || 'Bot';
         if (this.lblLocalNode) this.lblLocalNode.textContent = name;
       }
 
-      // 7. Métricas de canal LoRa
+      // 8. Métricas de canal LoRa
       if (data.channel_metrics) {
         if (this.lblChUtil && data.channel_metrics.channel_util !== undefined) {
           this.lblChUtil.textContent = `${Number(data.channel_metrics.channel_util).toFixed(1)}%`;
@@ -367,7 +374,7 @@ class MeshDashboard {
         }
       }
 
-      // 8. Estadísticas
+      // 9. Estadísticas
       if (data.stats) {
         if (this.countNodes && data.stats.nodes_total) {
           this.countNodes.textContent = data.stats.nodes_total;
@@ -387,11 +394,69 @@ class MeshDashboard {
   }
 
   // ==========================================================================
+  // Canales y Destinatarios
+  // ==========================================================================
+  renderChannelFiltersAndDestinations() {
+    // 1. Renderizar chips de filtro de chat
+    const filterWrap = document.getElementById('chat-filters-wrap');
+    if (filterWrap && this.channels) {
+      let chipsHtml = `<span style="font-size: 0.8rem; color: var(--text-muted); margin-right: 4px;">Filtrar:</span>`;
+      chipsHtml += `<button class="filter-chip ${this.currentChannelFilter === 'all' ? 'active' : ''}" data-ch="all">Todos</button>`;
+
+      for (const [chNum, chObj] of Object.entries(this.channels)) {
+        const name = chObj.name || `Canal ${chNum}`;
+        const active = String(this.currentChannelFilter) === String(chNum) ? 'active' : '';
+        chipsHtml += `<button class="filter-chip ${active}" data-ch="${chNum}">Ch ${chNum} (${name})</button>`;
+      }
+
+      chipsHtml += `<button class="filter-chip ${this.currentChannelFilter === 'direct' ? 'active' : ''}" data-ch="direct">Privados / Directos</button>`;
+      filterWrap.innerHTML = chipsHtml;
+
+      // Re-enlazar eventos
+      filterWrap.querySelectorAll('.filter-chip').forEach(btn => {
+        btn.addEventListener('click', () => {
+          filterWrap.querySelectorAll('.filter-chip').forEach(b => b.classList.remove('active'));
+          btn.classList.add('active');
+          this.currentChannelFilter = btn.dataset.ch;
+          this.renderMessages();
+        });
+      });
+    }
+
+    // 2. Renderizar opciones del selector de destino en el formulario
+    if (this.chatDest && this.channels) {
+      const currentVal = this.chatDest.value;
+      let optsHtml = '';
+
+      optsHtml += `<optgroup label="Canales Públicos">`;
+      for (const [chNum, chObj] of Object.entries(this.channels)) {
+        const name = chObj.name || `Canal ${chNum}`;
+        optsHtml += `<option value="^all:${chNum}">Canal ${chNum} (${name})</option>`;
+      }
+      optsHtml += `</optgroup>`;
+
+      // Añadir favoritos
+      const favs = Array.from(this.nodesMap.values()).filter(n => n.is_favorite);
+      if (favs.length > 0) {
+        optsHtml += `<optgroup label="Nodos Favoritos">`;
+        favs.forEach(f => {
+          const label = f.short_name ? `${f.short_name} (${f.id})` : (f.name || f.id);
+          optsHtml += `<option value="${f.id}">⭐ ${this.escapeHtml(label)}</option>`;
+        });
+        optsHtml += `</optgroup>`;
+      }
+
+      this.chatDest.innerHTML = optsHtml;
+      if (currentVal) this.chatDest.value = currentVal;
+    }
+  }
+
+  // ==========================================================================
   // Renderizado: Live Chat
   // ==========================================================================
   addMessage(msg, ts) {
     this.messages.push({ ...msg, ts: ts || new Date().toISOString() });
-    if (this.messages.length > 50) this.messages.shift();
+    if (this.messages.length > 100) this.messages.shift();
     this.renderMessages();
   }
 
@@ -400,9 +465,8 @@ class MeshDashboard {
 
     const filtered = this.messages.filter(m => {
       if (this.currentChannelFilter === 'all') return true;
-      if (this.currentChannelFilter === '0') return m.channel === 0 && !m.is_direct;
-      if (this.currentChannelFilter === 'direct') return m.is_direct;
-      return true;
+      if (this.currentChannelFilter === 'direct') return !!m.is_direct;
+      return String(m.channel ?? 0) === String(this.currentChannelFilter) && !m.is_direct;
     });
 
     if (this.countMsgs) this.countMsgs.textContent = this.messages.length;
@@ -419,19 +483,24 @@ class MeshDashboard {
       const senderName = m.from_name || m.from_short_name || m.from || 'Desconocido';
       const timeStr = m.ts ? m.ts.replace('T', ' ').substring(11, 19) : '--:--';
       const isDirect = m.is_direct;
+      const chNum = m.channel ?? 0;
+      const chName = (this.channels && this.channels[chNum]?.name) ? `Ch ${chNum} (${this.channels[chNum].name})` : `Canal ${chNum}`;
+      
       const channelBadge = isDirect 
         ? `<span class="badge badge-direct">Directo</span>`
-        : `<span class="badge badge-ch0">Canal ${m.channel ?? 0}</span>`;
+        : `<span class="badge badge-ch0">${this.escapeHtml(chName)}</span>`;
       const mqttBadge = m.via_mqtt ? `<span class="badge badge-mqtt">MQTT</span>` : '';
-      const snrText = m.snr !== undefined ? `SNR: ${Number(m.snr).toFixed(1)}dB` : '';
-      const hopsText = m.hops !== undefined ? `${m.hops} ${m.hops === 1 ? 'salto' : 'saltos'}` : '';
+      const outBadge = m.is_outgoing ? `<span class="badge" style="background: var(--success-bg); color: var(--success);">Enviado</span>` : '';
+      const snrText = m.snr !== undefined && m.snr !== null ? `SNR: ${Number(m.snr).toFixed(1)}dB` : '';
+      const hopsText = m.hops !== undefined && m.hops !== null ? `${m.hops} ${m.hops === 1 ? 'salto' : 'saltos'}` : '';
 
       return `
-        <div class="msg-card">
+        <div class="msg-card" style="${m.is_outgoing ? 'border-left: 3px solid var(--primary);' : ''}">
           <div class="msg-header">
             <div style="display: flex; align-items: center; gap: 8px;">
               ${channelBadge}
               ${mqttBadge}
+              ${outBadge}
               <span class="msg-sender">${this.escapeHtml(senderName)}</span>
               <span style="font-size: 0.75rem; color: var(--text-dim);">${this.escapeHtml(m.from || '')}</span>
             </div>
@@ -470,8 +539,20 @@ class MeshDashboard {
       channel: channel,
     });
 
+    // Añadir al feed local de inmediato
+    this.addMessage({
+      from: this.localNode?.my_node_id || 'local',
+      from_name: this.localNode?.short_name || 'Tú (Web)',
+      from_short_name: 'WEB',
+      to: dest,
+      channel: channel,
+      text: text,
+      is_direct: (dest !== '^all'),
+      is_outgoing: true,
+    });
+
     this.chatText.value = '';
-    this.showToast('Mensaje enviado a la cola de emisión');
+    this.showToast('Mensaje enviado a la cola de emisión LoRa');
   }
 
   // ==========================================================================
@@ -487,31 +568,41 @@ class MeshDashboard {
     }
 
     this.routersGrid.innerHTML = routers.map(r => {
-      const isOnline = r.status === 'online';
+      const isOnline = (r.status === 'online') || (r.last_seen_sec !== undefined && r.last_seen_sec !== null && r.last_seen_sec < 86400);
       const snr = r.snr !== undefined && r.snr !== null ? `${Number(r.snr).toFixed(1)} dB` : '--';
-      const lastSeen = r.last_seen_sec !== undefined ? `${Math.round(r.last_seen_sec / 60)} min` : '--';
+      
+      let lastSeen = 'sin señal';
+      if (r.last_seen_sec !== undefined && r.last_seen_sec !== null) {
+        const s = r.last_seen_sec;
+        if (s < 60) lastSeen = `hace ${s}s`;
+        else if (s < 3600) lastSeen = `hace ${Math.floor(s / 60)}m`;
+        else if (s < 86400) lastSeen = `hace ${Math.floor(s / 3600)}h ${Math.floor((s % 3600) / 60)}m`;
+        else lastSeen = `hace ${Math.floor(s / 86400)}d`;
+      }
+
+      const routerId = r.id || r.node_id || r.name;
 
       return `
         <div class="card">
           <div class="card-header">
-            <span>${this.escapeHtml(r.name || r.id)}</span>
+            <span>${this.escapeHtml(r.name || routerId)}</span>
             <span class="badge" style="background: ${isOnline ? 'var(--success-bg)' : 'var(--danger-bg)'}; color: ${isOnline ? 'var(--success)' : 'var(--danger)'};">
               ${isOnline ? 'ONLINE' : 'OFFLINE'}
             </span>
           </div>
           <div class="card-row">
             <span>ID Hex:</span>
-            <span>${this.escapeHtml(r.id)}</span>
+            <span>${this.escapeHtml(routerId)}</span>
           </div>
           <div class="card-row">
-            <span>SNR Medio:</span>
+            <span>SNR:</span>
             <span>${snr}</span>
           </div>
           <div class="card-row">
-            <span>Último visto hace:</span>
+            <span>Última señal:</span>
             <span>${lastSeen}</span>
           </div>
-          <button class="btn-secondary" style="margin-top: 6px; width: 100%; font-weight: 600;" onclick="window.dashboard.requestTraceTo('${r.id}')">
+          <button class="btn-secondary" style="margin-top: 6px; width: 100%; font-weight: 600;" onclick="window.dashboard.requestTraceTo('${routerId}')">
             📍 Lanzar Traceroute
           </button>
         </div>
@@ -562,14 +653,25 @@ class MeshDashboard {
 
     this.nodesTbody.innerHTML = nodes.map(n => {
       const isFav = !!n.is_favorite;
-      const battery = n.battery !== undefined ? `${n.battery}%` : '--';
-      const snr = n.snr !== undefined ? `${Number(n.snr).toFixed(1)} dB` : '--';
-      const hops = n.hops !== undefined ? n.hops : '--';
+      let battery = '--';
+      if (n.battery !== undefined && n.battery !== null) {
+        if (n.battery > 100) battery = '⚡ 100%';
+        else battery = `${n.battery}%`;
+        if (n.voltage !== undefined && n.voltage !== null) {
+          battery += ` <span style="color: var(--text-dim); font-size: 0.75rem;">(${Number(n.voltage).toFixed(2)}V)</span>`;
+        }
+      } else if (n.voltage !== undefined && n.voltage !== null) {
+        battery = `${Number(n.voltage).toFixed(2)}V`;
+      }
+
+      const snr = n.snr !== undefined && n.snr !== null ? `${Number(n.snr).toFixed(1)} dB` : '--';
+      const hops = n.hops !== undefined && n.hops !== null ? n.hops : '--';
+      const nodeId = n.id || n.node_id;
 
       return `
         <tr>
           <td>
-            <button class="star-btn ${isFav ? 'fav' : ''}" onclick="window.dashboard.toggleFavorite('${n.id}', ${!isFav})">
+            <button class="star-btn ${isFav ? 'fav' : ''}" onclick="window.dashboard.toggleFavorite('${nodeId}', ${!isFav})">
               ★
             </button>
           </td>
@@ -577,13 +679,13 @@ class MeshDashboard {
             <strong>${this.escapeHtml(n.name || n.short_name || 'Sin nombre')}</strong>
             ${n.short_name ? `<div style="font-size: 0.75rem; color: var(--text-muted);">${this.escapeHtml(n.short_name)}</div>` : ''}
           </td>
-          <td style="font-family: monospace; font-size: 0.85rem;">${this.escapeHtml(n.id || '')}</td>
+          <td style="font-family: monospace; font-size: 0.85rem;">${this.escapeHtml(nodeId || '')}</td>
           <td><span class="badge" style="background: var(--primary-bg); color: var(--primary);">${this.escapeHtml(n.role_name || 'CLIENT')}</span></td>
           <td>${snr}</td>
           <td>${hops}</td>
           <td>${battery}</td>
           <td>
-            <button class="btn-secondary" style="padding: 3px 8px; font-size: 0.75rem;" onclick="window.dashboard.requestTraceTo('${n.id}')">
+            <button class="btn-secondary" style="padding: 3px 8px; font-size: 0.75rem;" onclick="window.dashboard.requestTraceTo('${nodeId}')">
               Trace
             </button>
           </td>

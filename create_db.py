@@ -190,6 +190,19 @@ def _execute_schema(conn: sqlite3.Connection) -> None:
 
         CREATE UNIQUE INDEX IF NOT EXISTS idx_voto_unico ON encuesta_votos(encuesta_id, node_id);
 
+        -- Cola de mensajes salientes (Web / API / WiFi Gateway)
+        CREATE TABLE IF NOT EXISTS outbox (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            text TEXT NOT NULL,
+            dest TEXT NOT NULL DEFAULT '^all',
+            channel INTEGER NOT NULL DEFAULT 0,
+            status TEXT NOT NULL DEFAULT 'pending',
+            created_at TEXT NULL,
+            sent_at TEXT NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_outbox_status ON outbox(status, created_at);
+
         -- Tablas antiguas de control de traces eliminadas del esquema
         """
     )
@@ -218,9 +231,15 @@ def _execute_schema(conn: sqlite3.Connection) -> None:
         conn.execute('ALTER TABLE aemet ADD COLUMN message TEXT NULL')
         conn.commit()
 
-    # Ensure new column in nodes: role
+    # Ensure new column in nodes: role, battery, voltage
     if not _has_column('nodes', 'role'):
         conn.execute('ALTER TABLE nodes ADD COLUMN role INTEGER NULL')
+        conn.commit()
+    if not _has_column('nodes', 'battery'):
+        conn.execute('ALTER TABLE nodes ADD COLUMN battery INTEGER NULL')
+        conn.commit()
+    if not _has_column('nodes', 'voltage'):
+        conn.execute('ALTER TABLE nodes ADD COLUMN voltage REAL NULL')
         conn.commit()
 
     # Create indexes if not exist

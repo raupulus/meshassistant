@@ -186,13 +186,36 @@ class SerialInterface:
                 if isinstance(telemetry, dict):
                     dev_m = telemetry.get('deviceMetrics')
                     if isinstance(dev_m, dict):
+                        from_node_id = packet.get('fromId') or str(packet.get('from'))
+                        battery_lvl = dev_m.get('batteryLevel')
+                        voltage_val = dev_m.get('voltage')
+                        uptime_val = dev_m.get('uptimeSeconds')
+
+                        # Persistir telemetría en BD si el nodo existe o registrarlo
+                        if from_node_id:
+                            try:
+                                from Models.Database import Database
+                                db = Database()
+                                db_data = {}
+                                if battery_lvl is not None:
+                                    db_data['battery'] = battery_lvl
+                                if voltage_val is not None:
+                                    db_data['voltage'] = voltage_val
+                                if uptime_val is not None:
+                                    db_data['uptime'] = uptime_val
+                                if db_data:
+                                    db.create_node_if_not_exists(from_node_id)
+                                    db.update_node(from_node_id, db_data)
+                            except Exception:
+                                pass
+
                         broadcast_event("device_telemetry", {
-                            "id": packet.get('fromId') or str(packet.get('from')),
-                            "battery": dev_m.get('batteryLevel'),
-                            "voltage": dev_m.get('voltage'),
+                            "id": from_node_id,
+                            "battery": battery_lvl,
+                            "voltage": voltage_val,
                             "channel_util": dev_m.get('channelUtilization'),
                             "air_util_tx": dev_m.get('airUtilTx'),
-                            "uptime_seconds": dev_m.get('uptimeSeconds'),
+                            "uptime_seconds": uptime_val,
                         })
                         if dev_m.get('channelUtilization') is not None or dev_m.get('airUtilTx') is not None:
                             broadcast_event("channel_metrics", {
@@ -648,7 +671,7 @@ class SerialInterface:
                     #"rssi": packet.get('rxRssi', None),
                     #"hop_limit": packet.get('hopLimit', None),
                     #"hop_start": packet.get('hopStart', None),
-                    #"last_heard": node_info.get('lastHeard', None),
+                    "last_heard": node_info.get('lastHeard', None),
                     "hops": node_info.get('hopsAway', None),
                     "is_favorite": node_info.get('isFavorite', None),
                 })

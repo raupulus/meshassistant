@@ -163,7 +163,39 @@ class GatewayService:
                     router_ids = getattr(env, "ROUTER_NODES", []) or getattr(env, "ROUTERS_LIST", [])
                     if isinstance(router_ids, str):
                         router_ids = [r.strip() for r in router_ids.split(",") if r.strip()]
-                    snapshot_data["routers"] = self.db.get_router_nodes(router_ids)
+                    raw_routers = self.db.get_router_nodes(router_ids)
+                    
+                    # Enriquecer routers con estado online/offline y segundos desde última señal
+                    enriched_routers = []
+                    now_dt = datetime.now()
+                    for node in raw_routers:
+                        r = dict(node)
+                        nid = r.get('node_id') or r.get('identifier') or r.get('id')
+                        r['id'] = nid
+                        r['name'] = r.get('short_name') or r.get('name') or nid or 'Router'
+                        ts = r.get('last_heard') or r.get('updated_at')
+                        diff_sec = None
+                        if ts:
+                            try:
+                                if isinstance(ts, (int, float)) or str(ts).isdigit():
+                                    dt = datetime.fromtimestamp(float(ts))
+                                else:
+                                    dt = datetime.fromisoformat(str(ts))
+                                diff_sec = max(0, int((now_dt - dt).total_seconds()))
+                            except Exception:
+                                diff_sec = None
+                        r['last_seen_sec'] = diff_sec
+                        r['status'] = 'online' if (diff_sec is not None and diff_sec < 86400 and not r.get('offline')) else 'offline'
+                        enriched_routers.append(r)
+                    
+                    snapshot_data["routers"] = enriched_routers
+
+                # Incluir mapa de canales configurados
+                try:
+                    from data import channels
+                    snapshot_data["channels"] = channels
+                except Exception:
+                    pass
 
                 response["data"] = snapshot_data
 
@@ -205,7 +237,7 @@ class GatewayService:
                 is_fav = bool(params.get("is_favorite", True))
                 if not node_id:
                     raise ValueError("Parámetro 'node_id' obligatorio")
-                self.db.update_node(str(node_id), {"is_favorite": 1 if is_fav else 0})
+                self.db.update_node(str(node_id), {"is_favorite": is_fav})
                 response["data"] = {"node_id": node_id, "is_favorite": is_fav}
 
             elif action == "send_message":
@@ -214,8 +246,16 @@ class GatewayService:
                 channel = params.get("channel", 0)
                 if not text:
                     raise ValueError("Parámetro 'text' obligatorio")
-                # Por ahora registramos la petición; encolamiento en radio si aplica
-                response["data"] = {"queued": True, "text": text, "dest": dest, "channel": channel}
+                
+                # Encolar en outbox para que main.py lo transmita por serie/radio
+                outbox_id = self.db.enqueue_outbox(str(text), dest=str(dest), channel=int(channel))
+                response["data"] = {
+                    "queued": True,
+                    "outbox_id": outbox_id,
+                    "text": text,
+                    "dest": dest,
+                    "channel": int(channel)
+                }
 
             elif action == "restart_serial":
                 response["data"] = {"requested": True, "message": "Solicitud de reinicio de enlace serie registrada"}

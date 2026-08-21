@@ -131,6 +131,37 @@ def loop():
                 # No interrumpir el loop por errores de BD
                 pass
 
+            # Despacho de mensajes pendientes en cola de salida (Web / API / Gateway)
+            try:
+                pending_msg = db.get_next_pending_outbox()
+                if pending_msg:
+                    out_id = pending_msg['id']
+                    out_text = pending_msg['text']
+                    out_dest = pending_msg['dest']
+                    out_ch = pending_msg['channel']
+                    log_p(f"[outbox] Transmitiendo mensaje #{out_id} a '{out_dest}' ch={out_ch}: {out_text[:40]}")
+                    ok = interface.send(out_text, dest=out_dest, channel=out_ch)
+                    db.mark_outbox_sent(out_id, ok=ok)
+                    
+                    try:
+                        from Models.EventBroadcaster import broadcast_event
+                        my_info = getattr(interface.interface, 'myInfo', None)
+                        my_id = f"!{my_info.my_node_num:08x}" if getattr(my_info, 'my_node_num', None) else "local"
+                        broadcast_event("message_rx", {
+                            "from": my_id,
+                            "from_name": "Bot (Local)",
+                            "from_short_name": "BOT",
+                            "to": out_dest,
+                            "channel": out_ch,
+                            "text": out_text,
+                            "is_direct": (out_dest != '^all'),
+                            "via_mqtt": False,
+                        })
+                    except Exception:
+                        pass
+            except Exception as e:
+                log_p(f"[outbox] Error procesando mensaje saliente: {e}", level="WARN")
+
             # Publicación de alertas AEMET mínima (si hay API key y dentro de ventana horaria)
             try:
                 if getattr(__import__('env'), 'AEMET_API_KEY', None):

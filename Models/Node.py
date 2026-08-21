@@ -17,6 +17,8 @@ class Node:
     hop_start = None
     uptime = None
     via_mqtt = False
+    battery = None
+    voltage = None
     last_heard = None
 
 
@@ -43,6 +45,8 @@ class Node:
                 self.hop_start = row.get('hop_start', self.hop_start)
                 self.uptime = row.get('uptime', self.uptime)
                 self.via_mqtt = bool(row.get('via_mqtt')) if row.get('via_mqtt') is not None else self.via_mqtt
+                self.battery = row.get('battery', self.battery)
+                self.voltage = row.get('voltage', self.voltage)
                 self.last_heard = row.get('last_heard', self.last_heard)
             else:
                 db.create_node_if_not_exists(self.id)
@@ -60,8 +64,23 @@ class Node:
         self.is_favorite = node_info.get('is_favorite', self.is_favorite)
         self.uptime = node_info.get('uptime', self.uptime)
         self.via_mqtt = node_info.get('via_mqtt', self.via_mqtt)
-
-        # self.public_key = node_info.get('public_key', 0)
+        
+        # Telemetría de batería si está presente
+        dev_m = node_info.get('deviceMetrics') or node_info.get('device_metrics') or {}
+        if isinstance(dev_m, dict):
+            if dev_m.get('batteryLevel') is not None:
+                self.battery = dev_m.get('batteryLevel')
+            if dev_m.get('voltage') is not None:
+                self.voltage = dev_m.get('voltage')
+            if dev_m.get('uptimeSeconds') is not None:
+                self.uptime = dev_m.get('uptimeSeconds')
+        
+        if node_info.get('battery') is not None:
+            self.battery = node_info.get('battery')
+        if node_info.get('batteryLevel') is not None:
+            self.battery = node_info.get('batteryLevel')
+        if node_info.get('voltage') is not None:
+            self.voltage = node_info.get('voltage')
 
         self.snr = node_info.get('snr', self.snr)
         self.rssi = node_info.get('rssi', self.rssi)
@@ -96,6 +115,8 @@ class Node:
                 "hop_start": self.hop_start,
                 "uptime": self.uptime,
                 "via_mqtt": self.via_mqtt,
+                "battery": self.battery,
+                "voltage": self.voltage,
                 "last_heard": self.last_heard,
             })
         except Exception:

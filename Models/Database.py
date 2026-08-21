@@ -371,7 +371,7 @@ class Database:
                 """
                 SELECT node_id, name, num, short_name, mac_addr, hw_model, role, is_favorite,
                        snr, rssi, public_key, hops, hop_start, uptime, via_mqtt,
-                       last_heard, updated_at
+                       battery, voltage, last_heard, updated_at
                 FROM nodes
                 WHERE node_id = ?
                 """,
@@ -389,7 +389,7 @@ class Database:
                 """
                 SELECT node_id, name, num, short_name, mac_addr, hw_model, role, is_favorite,
                        snr, rssi, public_key, hops, hop_start, uptime, via_mqtt,
-                       last_heard, updated_at
+                       battery, voltage, last_heard, updated_at
                 FROM nodes
                 WHERE UPPER(node_id) = UPPER(?)
                    OR UPPER(short_name) = UPPER(?)
@@ -493,6 +493,8 @@ class Database:
             "hop_start",
             "uptime",
             "via_mqtt",
+            "battery",
+            "voltage",
             "last_heard",
         }
 
@@ -1556,7 +1558,7 @@ class Database:
         with closing(self._connect()) as conn:
             sql = """
                 SELECT node_id AS id, node_id, name, num, short_name, mac_addr, hw_model, role,
-                       is_favorite, snr, rssi, hops, uptime, via_mqtt, last_heard, updated_at
+                       is_favorite, snr, rssi, hops, uptime, via_mqtt, battery, voltage, last_heard, updated_at
                 FROM nodes
             """
             params: List[Any] = []
@@ -1616,3 +1618,35 @@ class Database:
                 item["success"] = (item.get("status") == "done")
                 out.append(item)
             return out
+
+    # ---------- OUTBOX (COLA DE MENSAJES SALIENTES) ----------
+    def enqueue_outbox(self, text: str, dest: str = '^all', channel: int = 0) -> int:
+        """Encola un mensaje para ser enviado a la malla por el proceso de radio (main.py)."""
+        when_str = datetime.now().isoformat(timespec='seconds')
+        with closing(self._connect()) as conn:
+            cur = conn.execute(
+                "INSERT INTO outbox (text, dest, channel, status, created_at) VALUES (?, ?, ?, 'pending', ?)",
+                (text, str(dest), int(channel), when_str),
+            )
+            conn.commit()
+            return int(cur.lastrowid)
+
+    def get_next_pending_outbox(self) -> Optional[Dict[str, Any]]:
+        """Obtiene el siguiente mensaje pendiente de envío."""
+        with closing(self._connect()) as conn:
+            cur = conn.execute(
+                "SELECT id, text, dest, channel, created_at FROM outbox WHERE status = 'pending' ORDER BY id ASC LIMIT 1"
+            )
+            row = cur.fetchone()
+            return dict(row) if row else None
+
+    def mark_outbox_sent(self, outbox_id: int, ok: bool = True) -> None:
+        """Marca un mensaje saliente como enviado o con error."""
+        status = 'sent' if ok else 'error'
+        when_str = datetime.now().isoformat(timespec='seconds')
+        with closing(self._connect()) as conn:
+            conn.execute(
+                "UPDATE outbox SET status = ?, sent_at = ? WHERE id = ?",
+                (status, when_str, outbox_id),
+            )
+            conn.commit()
