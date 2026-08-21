@@ -30,7 +30,11 @@ Visión funcional completa: ver `README.md`. Detalle por módulo: ver `docs/info
   - `meshtastic` — API/CLI para hablar con el nodo por serie.
   - `pypubsub` — bus de eventos (`from pubsub import pub`) que usa meshtastic.
   - `requests` — cliente HTTP (AEMET y API de chistes).
-- **Sin framework web.** Son dos scripts ejecutables (`main.py`, `cron_tasks.py`).
+  - `websockets` — servidor y cliente WebSocket asíncrono para la pasarela WiFi.
+- **Procesos ejecutables:**
+  - `main.py` — proceso principal del bot (daemon de radio/UART).
+  - `cron_tasks.py` — tareas periódicas ejecutadas por cron cada minuto.
+  - `Services/Gateway.py` — pasarela WiFi WebSocket e IPC en tiempo real (puerto 8680).
 
 ---
 
@@ -44,20 +48,25 @@ data.py            commands_dict (registro de comandos) y channels (mapa de cana
 functions.py       Utilidades: log_p, search_command, sanitize_text.
 env.example.py     Plantilla de configuración. Se copia a env.py (NO versionado).
 requirements.txt   Dependencias.
-tests/             Tests y scripts de prueba (test.py, test_aemet_*.py). No forman parte del bot.
+tests/             Tests y scripts de prueba (test_*.py).
 
 Commands/          Un fichero por comando. Cada uno expone <cmd>_callback(...).
-  help.py about.py ping.py chiste.py ia.py uptime.py weather.py maremoto.py
+  help.py about.py ping.py chiste.py ia.py uptime.py weather.py maremoto.py routers.py ...
 
 Models/
   SerialInterface.py  Envoltura de meshtastic: connect/reconnect, send, eventos, traceroute.
+  EventBroadcaster.py Emisor de eventos IPC no bloqueante por Unix Domain Socket.
   Database.py         Acceso a SQLite (todas las queries).
   Node.py             Nodo de la malla, con carga/persistencia automática en BD.
   Aemet.py            Cliente AEMET + reglas de publicación (ventana horaria, periodo).
   Api.py              Cliente HTTP genérico con reintentos (chistes).
 
-Crons/  Services/     Reservados para futuro (vacíos).
-docs/info/            Documentación técnica por módulo.
+Services/
+  Gateway.py          Pasarela WebSocket e IPC en tiempo real (puerto 8680).
+
+clients/              Clientes de referencia y prueba (pico_w_sample.py).
+Crons/                Reservado para futuro.
+docs/info/            Documentación técnica por módulo (incluye docs/info/gateway/).
 ```
 
 > Cada comando es `Commands/<nombre>.py` con un callback `<nombre>_callback` y se
