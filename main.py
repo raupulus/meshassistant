@@ -258,7 +258,7 @@ def loop():
                 # diagnosticar fallos en la publicación de alertas de emergencia.
                 log_p(f"Error publicando alerta AEMET: {e}", level="WARN")
 
-            # Heartbeat para la pasarela WiFi
+            # Heartbeat para la pasarela WiFi y métricas de canal
             try:
                 from Models.EventBroadcaster import broadcast_event
                 broadcast_event("system_status", {
@@ -266,6 +266,21 @@ def loop():
                     "serial_port": SERIAL_DEVICE_PATH,
                     "nodes_in_memory": len(interface.node_dict),
                 })
+
+                # Consultar y emitir telemetría de canal del nodo local
+                if interface and interface.interface:
+                    my_info = getattr(interface.interface, 'myInfo', None)
+                    my_num = getattr(my_info, 'my_node_num', None)
+                    if my_num and hasattr(interface.interface, 'nodes'):
+                        ln = interface.interface.nodes.get(my_num) or {}
+                        dm = ln.get('deviceMetrics') or ln.get('device_metrics') or {}
+                        ch_u = dm.get('channelUtilization') if dm.get('channelUtilization') is not None else dm.get('channel_utilization')
+                        a_tx = dm.get('airUtilTx') if dm.get('airUtilTx') is not None else dm.get('air_util_tx')
+                        if ch_u is not None or a_tx is not None:
+                            broadcast_event("channel_metrics", {
+                                "channel_util": ch_u,
+                                "air_util_tx": a_tx,
+                            })
             except Exception:
                 pass
 

@@ -461,11 +461,19 @@ class MeshDashboard {
         }
       }
 
-      // 6. UART y Stats
+      // 6. UART, Local Node y Métricas de Canal
       if (data.system_status) this.setUartStatus(data.system_status.uart_connected, data.system_status.serial_port);
       if (data.local_node) {
         this.localNode = data.local_node;
         if (this.lblLocalNode) this.lblLocalNode.textContent = this.localNode.short_name || this.localNode.my_node_id;
+      }
+      if (data.channel_metrics) {
+        if (this.lblChUtil && data.channel_metrics.channel_util !== undefined && data.channel_metrics.channel_util !== null) {
+          this.lblChUtil.textContent = `${Number(data.channel_metrics.channel_util).toFixed(1)}%`;
+        }
+        if (this.lblAirTx && data.channel_metrics.air_util_tx !== undefined && data.channel_metrics.air_util_tx !== null) {
+          this.lblAirTx.textContent = `${Number(data.channel_metrics.air_util_tx).toFixed(1)}%`;
+        }
       }
     } else if (resp.action === "get_polls") {
       this.renderPolls(data.polls || []);

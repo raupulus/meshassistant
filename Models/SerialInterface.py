@@ -22,7 +22,12 @@ class SerialInterface:
             (self.on_receive_nodeinfo, "meshtastic.receive.nodeinfo"),
             (self.on_node_update, "meshtastic.node.updated"),
             (self.on_receive_user, "meshtastic.receive.user"),
+            (self.on_receive_position, "meshtastic.receive.position"),
+            (self.on_receive_data, "meshtastic.receive.telemetry"),
             (self.on_receive_data, "meshtastic.receive.data"),
+            (self.on_receive_data, "meshtastic.receive.data.TELEMETRY_APP"),
+            (self.on_receive_data, "meshtastic.receive.data.67"),
+            (self.on_receive_data, "meshtastic.receive"),
             (self.on_connection_lost, "meshtastic.connection.lost"),
             (self.on_connection_closed, "meshtastic.connection.closed"),
         ]
@@ -178,76 +183,79 @@ class SerialInterface:
     def on_receive_data(self, packet, interface):
         log_p(f"on_receive_data: {packet}", level="DEBUG")
         try:
+            if not isinstance(packet, dict):
+                return
+
             decoded = packet.get('decoded', {})
-            if isinstance(decoded, dict):
-                from Models.EventBroadcaster import broadcast_event
-                # Resolver node_id canónico
-                from_num = packet.get('from')
-                from_node_id = packet.get('fromId')
-                if not from_node_id and from_num is not None:
+            from Models.EventBroadcaster import broadcast_event
+            
+            # Resolver node_id canónico
+            from_num = packet.get('from')
+            from_node_id = packet.get('fromId')
+            if not from_node_id and from_num is not None:
+                try:
+                    from_node_id = f"!{int(from_num):08x}"
+                except Exception:
+                    from_node_id = str(from_num)
+
+            # Extraer telemetría flexible
+            telemetry = decoded.get('telemetry') or decoded.get('deviceMetrics') or decoded.get('device_metrics') or packet.get('telemetry') or packet.get('deviceMetrics') or {}
+            dev_m = telemetry.get('deviceMetrics') or telemetry.get('device_metrics') or telemetry if isinstance(telemetry, dict) else {}
+
+            if isinstance(dev_m, dict) and dev_m:
+                battery_lvl = dev_m.get('batteryLevel') if dev_m.get('batteryLevel') is not None else dev_m.get('battery')
+                voltage_val = dev_m.get('voltage')
+                uptime_val = dev_m.get('uptimeSeconds') if dev_m.get('uptimeSeconds') is not None else dev_m.get('uptime')
+                ch_util = dev_m.get('channelUtilization') if dev_m.get('channelUtilization') is not None else dev_m.get('channel_utilization')
+                air_tx = dev_m.get('airUtilTx') if dev_m.get('airUtilTx') is not None else dev_m.get('air_util_tx')
+
+                # Persistir telemetría en BD si el nodo existe
+                if from_node_id:
                     try:
-                        from_node_id = f"!{int(from_num):08x}"
+                        from Models.Database import Database
+                        db = Database()
+                        db_data = {}
+                        if battery_lvl is not None:
+                            db_data['battery'] = battery_lvl
+                        if voltage_val is not None:
+                            db_data['voltage'] = voltage_val
+                        if uptime_val is not None:
+                            db_data['uptime'] = uptime_val
+                        if packet.get('rxSnr') is not None:
+                            db_data['snr'] = packet.get('rxSnr')
+                        if packet.get('rxRssi') is not None:
+                            db_data['rssi'] = packet.get('rxRssi')
+                        if db_data:
+                            db.create_node_if_not_exists(from_node_id)
+                            db.update_node(from_node_id, db_data)
+                        
+                        if from_node_id in self.node_dict:
+                            self.node_dict[from_node_id].update_metadata(db_data)
                     except Exception:
-                        from_node_id = str(from_num)
+                        pass
 
-                # Telemetría de dispositivo / métricas de canal
-                telemetry = decoded.get('telemetry')
-                if isinstance(telemetry, dict):
-                    dev_m = telemetry.get('deviceMetrics') or telemetry.get('device_metrics') or telemetry
-                    if isinstance(dev_m, dict):
-                        battery_lvl = dev_m.get('batteryLevel')
-                        voltage_val = dev_m.get('voltage')
-                        uptime_val = dev_m.get('uptimeSeconds')
-                        ch_util = dev_m.get('channelUtilization')
-                        air_tx = dev_m.get('airUtilTx')
-
-                        # Persistir telemetría en BD si el nodo existe o registrarlo
-                        if from_node_id:
-                            try:
-                                from Models.Database import Database
-                                db = Database()
-                                db_data = {}
-                                if battery_lvl is not None:
-                                    db_data['battery'] = battery_lvl
-                                if voltage_val is not None:
-                                    db_data['voltage'] = voltage_val
-                                if uptime_val is not None:
-                                    db_data['uptime'] = uptime_val
-                                if packet.get('rxSnr') is not None:
-                                    db_data['snr'] = packet.get('rxSnr')
-                                if packet.get('rxRssi') is not None:
-                                    db_data['rssi'] = packet.get('rxRssi')
-                                if db_data:
-                                    db.create_node_if_not_exists(from_node_id)
-                                    db.update_node(from_node_id, db_data)
-                                
-                                if from_node_id in self.node_dict:
-                                    self.node_dict[from_node_id].update_metadata(db_data)
-                            except Exception:
-                                pass
-
-                        broadcast_event("device_telemetry", {
-                            "id": from_node_id,
-                            "battery": battery_lvl,
-                            "voltage": voltage_val,
-                            "channel_util": ch_util,
-                            "air_util_tx": air_tx,
-                            "uptime_seconds": uptime_val,
-                        })
-                        if ch_util is not None or air_tx is not None:
-                            broadcast_event("channel_metrics", {
-                                "channel_util": ch_util,
-                                "air_util_tx": air_tx,
-                            })
-
-                # Routing / ACK de paquetes
-                routing = decoded.get('routing')
-                if isinstance(routing, dict) and routing.get('errorReason') is not None:
-                    broadcast_event("message_ack", {
-                        "dest": packet.get('toId') or str(packet.get('to')),
-                        "status": "delivered" if routing.get('errorReason') == 'NONE' else 'error',
-                        "error_reason": routing.get('errorReason'),
+                broadcast_event("device_telemetry", {
+                    "id": from_node_id,
+                    "battery": battery_lvl,
+                    "voltage": voltage_val,
+                    "channel_util": ch_util,
+                    "air_util_tx": air_tx,
+                    "uptime_seconds": uptime_val,
+                })
+                if ch_util is not None or air_tx is not None:
+                    broadcast_event("channel_metrics", {
+                        "channel_util": ch_util,
+                        "air_util_tx": air_tx,
                     })
+
+            # Routing / ACK de paquetes
+            routing = decoded.get('routing') if isinstance(decoded, dict) else None
+            if isinstance(routing, dict) and routing.get('errorReason') is not None:
+                broadcast_event("message_ack", {
+                    "dest": packet.get('toId') or str(packet.get('to')),
+                    "status": "delivered" if routing.get('errorReason') == 'NONE' else 'error',
+                    "error_reason": routing.get('errorReason'),
+                })
         except Exception as e:
             log_p(f"Error procesando on_receive_data: {e}", level="DEBUG")
 
@@ -469,6 +477,17 @@ class SerialInterface:
                     "voltage": fromNodeInfo.voltage,
                     "last_heard": fromNodeInfo.last_heard,
                 })
+
+                # Telemetría de canal si está presente en el nodo
+                dev_m = node.get('deviceMetrics') or node.get('device_metrics') or {}
+                if isinstance(dev_m, dict):
+                    ch_u = dev_m.get('channelUtilization') if dev_m.get('channelUtilization') is not None else dev_m.get('channel_utilization')
+                    a_tx = dev_m.get('airUtilTx') if dev_m.get('airUtilTx') is not None else dev_m.get('air_util_tx')
+                    if ch_u is not None or a_tx is not None:
+                        broadcast_event("channel_metrics", {
+                            "channel_util": ch_u,
+                            "air_util_tx": a_tx,
+                        })
             except Exception:
                 pass
         except Exception as e:
@@ -497,6 +516,17 @@ class SerialInterface:
                 "hw_model": user.get('hwModel'),
                 "region": str(getattr(my_info, 'region', None) or ''),
             })
+
+            # Métricas de canal iniciales del nodo local
+            dev_m = local_node.get('deviceMetrics') or local_node.get('device_metrics') or {}
+            if isinstance(dev_m, dict):
+                ch_u = dev_m.get('channelUtilization') if dev_m.get('channelUtilization') is not None else dev_m.get('channel_utilization')
+                a_tx = dev_m.get('airUtilTx') if dev_m.get('airUtilTx') is not None else dev_m.get('air_util_tx')
+                if ch_u is not None or a_tx is not None:
+                    broadcast_event("channel_metrics", {
+                        "channel_util": ch_u,
+                        "air_util_tx": a_tx,
+                    })
         except Exception:
             pass
 
