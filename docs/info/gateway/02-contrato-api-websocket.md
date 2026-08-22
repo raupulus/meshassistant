@@ -459,3 +459,76 @@ Emitido en tiempo real cuando llega un mensaje por radio (canal o privado).
   "error": null
 }
 ```
+
+### 3.8. `request_node_info` (Solicitar Metadatos de un Nodo por Radio LoRa)
+- **Petición:**
+```json
+{
+  "action": "request_node_info",
+  "req_id": "ni_01",
+  "params": {
+    "node_id": "!1309e02c"
+  }
+}
+```
+- **Respuesta:**
+```json
+{
+  "type": "response",
+  "action": "request_node_info",
+  "req_id": "ni_01",
+  "success": true,
+  "data": {
+    "node_id": "!1309e02c",
+    "status": "queued",
+    "outbox_id": 48
+  },
+  "error": null
+}
+```
+
+### 3.9. `get_commands_audit` (Estadísticas y Auditoría de Comandos)
+- **Petición:**
+```json
+{
+  "action": "get_commands_audit",
+  "req_id": "aud_01",
+  "params": {
+    "hours": 24,
+    "limit": 100,
+    "offset": 0
+  }
+}
+```
+- **Respuesta:**
+```json
+{
+  "type": "response",
+  "action": "get_commands_audit",
+  "req_id": "aud_01",
+  "success": true,
+  "data": {
+    "period_hours": 24,
+    "summary": {
+      "total": 35,
+      "unique_nodes": 12,
+      "top_command": "ping",
+      "top_command_count": 18,
+      "top_user": "Raupulus",
+      "top_user_count": 9
+    },
+    "ranking": [
+      {
+        "node_id": "!1309e02c",
+        "name": "Raupulus",
+        "short_name": "Rau5",
+        "count": 9,
+        "last_command": "ping",
+        "last_command_at": "2026-08-22T02:15:00"
+      }
+    ],
+    "recent_logs": [ ... ]
+  },
+  "error": null
+}
+```

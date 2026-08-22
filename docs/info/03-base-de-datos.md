@@ -42,8 +42,11 @@ con `CREATE TABLE IF NOT EXISTS`. Además realiza **migraciones idempotentes**:
 | `hops`, `hop_start` | INTEGER | Saltos. |
 | `uptime` | INTEGER | Uptime reportado. |
 | `via_mqtt` | INTEGER | 0/1 (si llega por MQTT). |
+| `battery` | INTEGER NULL | Nivel de batería reportado (0-100%). |
+| `voltage` | REAL NULL | Voltaje de batería (V). |
 | `last_heard` | INTEGER | Último contacto (epoch). |
-| `updated_at` | TEXT | ISO 8601. |
+| `created_at` | TEXT | Fecha y hora en que fue descubierto por primera vez. |
+| `updated_at` | TEXT | ISO 8601 de última actualización. |
 
 Índices: `idx_nodes_short_name`, `idx_nodes_num`, `idx_nodes_role`.
 
@@ -137,7 +140,24 @@ Hace de **cola** (`status='pending'`) y de **resultado** a la vez.
 | `command` | TEXT | Comando sin prefijo. |
 | `parameters` | TEXT NULL | Reservado. |
 | `message` | TEXT | Texto posterior al comando. |
-| `created_at` | TEXT | |
+| `created_at` | TEXT | ISO 8601. |
+
+Índice: `idx_commands_sent_created ON commands_sent(created_at, node_id)`.
+
+### `outbox` — cola de mensajes y peticiones salientes por radio
+Permite a procesos externos (como la API WebSocket del Gateway) encolar mensajes y solicitudes de radio (`__REQ_NODEINFO__`, mensajes de chat, etc.) de forma no bloqueante para que `main.py` los transmita por UART.
+
+| Columna | Tipo | Notas |
+|---|---|---|
+| `id` | INTEGER PK | |
+| `text` | TEXT NOT NULL | Texto del mensaje o comando reservado. |
+| `dest` | TEXT | Destino (`^all` o `!xxxxxxxx`). |
+| `channel` | INTEGER | Canal de transmisión (0-7). |
+| `status` | TEXT | `pending` \| `sent` \| `error`. |
+| `created_at` | TEXT | Momento de encolado. |
+| `sent_at` | TEXT NULL | Momento de transmisión. |
+
+Índice: `idx_outbox_status_created ON outbox(status, created_at)`.
 
 ## Palabras reservadas
 

@@ -71,10 +71,26 @@ db = Database(db_path="...")    # ruta explícita (tests)
 | `aemet_fix_legacy_rows(limit=500)` | Migra filas antiguas que guardaron XML crudo. |
 | `_parse_cap_es(xml_text)` *(static)* | Extrae texto ES de un XML CAP 1.2. |
 
-### Log de comandos
+### Log y Auditoría de Comandos
 | Método | Descripción |
 |---|---|
-| `log_command(*, node_id, command, message=None, parameters=None)` | Inserta en `commands_sent`. |
+| `log_command(*, node_id, command, message=None, parameters=None)` | Inserta en `commands_sent` tras validar comando y nodo. |
+| `get_commands_audit(limit=100, offset=0, hours=24, node_id=None, command=None)` | Devuelve logs paginados con filtrado temporal. |
+| `get_top_command_users(limit=20, hours=24)` | Ranking de usuarios más activos en el periodo. |
+| `get_commands_audit_summary(hours=24)` | Resumen numérico: total comandos, nodos únicos, top comando y top usuario. |
+
+### Outbox (Cola Asíncrona Saliente)
+| Método | Descripción |
+|---|---|
+| `enqueue_outbox(text, dest='^all', channel=0)` | Encola un mensaje para que `main.py` lo envíe (deduplica si está pendiente). |
+| `get_next_pending_outbox()` | Obtiene el siguiente mensaje pendiente de envío. |
+| `mark_outbox_sent(outbox_id, ok=True)` | Marca el mensaje como enviado (`sent`) o con error (`error`). |
+
+### Traceroutes y Rutas
+| Método | Descripción |
+|---|---|
+| `get_latest_trace_route_info(identifier, base_identifiers=['RAU0'])` | Devuelve saltos exteriores, lista de repetidores intermedios (`intermediates`) y SNR exterior de la ruta. |
+| `get_recent_traces(limit=15)` | Devuelve los últimos traceroutes con saltos estructurados. |
 
 ### Cola (pendiente)
 | Método | Descripción |
