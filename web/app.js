@@ -362,11 +362,17 @@ class MeshDashboard {
         this.setUartStatus(data.uart_connected, data.serial_port);
         break;
       case "channel_metrics":
-        if (this.lblChUtil && data.channel_util !== undefined) {
+        if (this.lblChUtil && data.channel_util !== undefined && data.channel_util !== null) {
           this.lblChUtil.textContent = `${Number(data.channel_util).toFixed(1)}%`;
         }
-        if (this.lblAirTx && data.air_util_tx !== undefined) {
+        if (this.lblAirTx && data.air_util_tx !== undefined && data.air_util_tx !== null) {
           this.lblAirTx.textContent = `${Number(data.air_util_tx).toFixed(1)}%`;
+        }
+        break;
+      case "local_node_info":
+        if (data) {
+          this.localNode = data;
+          if (this.lblLocalNode) this.lblLocalNode.textContent = data.short_name || data.name || data.my_node_id || "Bot";
         }
         break;
       case "trace_completed":

@@ -506,27 +506,30 @@ class SerialInterface:
         try:
             from Models.EventBroadcaster import broadcast_event
             my_info = getattr(interface, 'myInfo', None)
-            local_node = getattr(interface, 'nodes', {}).get(getattr(my_info, 'my_node_num', None), {})
-            user = local_node.get('user', {}) if isinstance(local_node, dict) else {}
-            broadcast_event("local_node_info", {
-                "my_node_id": user.get('id') or (f"!{my_info.my_node_num:08x}" if getattr(my_info, 'my_node_num', None) else None),
-                "my_num": getattr(my_info, 'my_node_num', None),
-                "name": user.get('longName'),
-                "short_name": user.get('shortName'),
-                "hw_model": user.get('hwModel'),
-                "region": str(getattr(my_info, 'region', None) or ''),
-            })
+            my_num = getattr(my_info, 'my_node_num', None)
+            if my_num:
+                my_id = f"!{my_num:08x}"
+                local_node = getattr(interface, 'nodes', {}).get(my_id) or getattr(interface, 'nodesByNum', {}).get(my_num) or {}
+                user = local_node.get('user', {}) if isinstance(local_node, dict) else {}
+                broadcast_event("local_node_info", {
+                    "my_node_id": user.get('id') or my_id,
+                    "my_num": my_num,
+                    "name": user.get('longName'),
+                    "short_name": user.get('shortName'),
+                    "hw_model": user.get('hwModel'),
+                    "region": str(getattr(my_info, 'region', None) or ''),
+                })
 
-            # Métricas de canal iniciales del nodo local
-            dev_m = local_node.get('deviceMetrics') or local_node.get('device_metrics') or {}
-            if isinstance(dev_m, dict):
-                ch_u = dev_m.get('channelUtilization') if dev_m.get('channelUtilization') is not None else dev_m.get('channel_utilization')
-                a_tx = dev_m.get('airUtilTx') if dev_m.get('airUtilTx') is not None else dev_m.get('air_util_tx')
-                if ch_u is not None or a_tx is not None:
-                    broadcast_event("channel_metrics", {
-                        "channel_util": ch_u,
-                        "air_util_tx": a_tx,
-                    })
+                # Métricas de canal iniciales del nodo local
+                dev_m = local_node.get('deviceMetrics') or local_node.get('device_metrics') or {}
+                if isinstance(dev_m, dict):
+                    ch_u = dev_m.get('channelUtilization') if dev_m.get('channelUtilization') is not None else dev_m.get('channel_utilization')
+                    a_tx = dev_m.get('airUtilTx') if dev_m.get('airUtilTx') is not None else dev_m.get('air_util_tx')
+                    if ch_u is not None or a_tx is not None:
+                        broadcast_event("channel_metrics", {
+                            "channel_util": ch_u,
+                            "air_util_tx": a_tx,
+                        })
         except Exception:
             pass
 

@@ -267,20 +267,37 @@ def loop():
                     "nodes_in_memory": len(interface.node_dict),
                 })
 
-                # Consultar y emitir telemetría de canal del nodo local
+                # Consultar y emitir telemetría de canal y datos del nodo local
                 if interface and interface.interface:
                     my_info = getattr(interface.interface, 'myInfo', None)
                     my_num = getattr(my_info, 'my_node_num', None)
-                    if my_num and hasattr(interface.interface, 'nodes'):
-                        ln = interface.interface.nodes.get(my_num) or {}
-                        dm = ln.get('deviceMetrics') or ln.get('device_metrics') or {}
-                        ch_u = dm.get('channelUtilization') if dm.get('channelUtilization') is not None else dm.get('channel_utilization')
-                        a_tx = dm.get('airUtilTx') if dm.get('airUtilTx') is not None else dm.get('air_util_tx')
-                        if ch_u is not None or a_tx is not None:
-                            broadcast_event("channel_metrics", {
-                                "channel_util": ch_u,
-                                "air_util_tx": a_tx,
+                    if my_num:
+                        my_id = f"!{my_num:08x}"
+                        ln = {}
+                        if hasattr(interface.interface, 'nodes') and my_id in interface.interface.nodes:
+                            ln = interface.interface.nodes[my_id]
+                        elif hasattr(interface.interface, 'nodesByNum') and my_num in interface.interface.nodesByNum:
+                            ln = interface.interface.nodesByNum[my_num]
+
+                        if isinstance(ln, dict):
+                            user = ln.get('user', {})
+                            broadcast_event("local_node_info", {
+                                "my_node_id": user.get('id') or my_id,
+                                "my_num": my_num,
+                                "name": user.get('longName'),
+                                "short_name": user.get('shortName'),
+                                "hw_model": user.get('hwModel'),
+                                "region": str(getattr(my_info, 'region', None) or ''),
                             })
+
+                            dm = ln.get('deviceMetrics') or ln.get('device_metrics') or {}
+                            ch_u = dm.get('channelUtilization') if dm.get('channelUtilization') is not None else dm.get('channel_utilization')
+                            a_tx = dm.get('airUtilTx') if dm.get('airUtilTx') is not None else dm.get('air_util_tx')
+                            if ch_u is not None or a_tx is not None:
+                                broadcast_event("channel_metrics", {
+                                    "channel_util": ch_u,
+                                    "air_util_tx": a_tx,
+                                })
             except Exception:
                 pass
 
