@@ -159,12 +159,13 @@
               <th style="cursor: pointer;" class="sort-header" data-sort="battery">Batería <span class="sort-arrow">↕</span></th>
               <th style="cursor: pointer;" class="sort-header" data-sort="snr">SNR / RSSI <span class="sort-arrow">↕</span></th>
               <th style="cursor: pointer;" class="sort-header" data-sort="last_heard">Última Señal <span class="sort-arrow">↕</span></th>
-              <th style="width: 70px;">Acción</th>
+              <th style="cursor: pointer;" class="sort-header" data-sort="created_at">Primera Vez <span class="sort-arrow">↕</span></th>
+              <th style="width: 110px;">Acciones</th>
             </tr>
           </thead>
           <tbody id="nodes-tbody">
             <tr>
-              <td colspan="10" style="text-align: center; color: var(--text-dim); padding: 20px;">Cargando lista de nodos...</td>
+              <td colspan="11" style="text-align: center; color: var(--text-dim); padding: 20px;">Cargando lista de nodos...</td>
             </tr>
           </tbody>
         </table>
@@ -219,7 +220,8 @@
           <h2 style="font-size: 1.2rem;">Auditoría y Estadísticas de Comandos</h2>
           <p style="font-size: 0.85rem; color: var(--text-dim); margin-top: 2px;">Control de actividad de la malla y detección de abusos</p>
         </div>
-        <div style="display: flex; gap: 8px;">
+        <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+          <button class="btn-secondary filter-audit-period" data-hours="1">Última hora</button>
           <button class="btn-secondary filter-audit-period active" data-hours="24">Últimas 24h</button>
           <button class="btn-secondary filter-audit-period" data-hours="168">Últimos 7 días</button>
           <button class="btn-secondary filter-audit-period" data-hours="all">Histórico Total</button>
@@ -253,7 +255,7 @@
       <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); gap: 20px;">
         <!-- Ranking de Nodos -->
         <div>
-          <h3 style="font-size: 1rem; margin-bottom: 12px;">🏆 Ranking de Nodos por Peticiones</h3>
+          <h3 style="font-size: 1rem; margin-bottom: 12px;">🏆 Top 20 Nodos por Peticiones</h3>
           <div class="table-container">
             <table>
               <thead>
@@ -297,6 +299,12 @@
                 </tr>
               </tbody>
             </table>
+          </div>
+          <!-- Paginación -->
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 10px; font-size: 0.85rem;">
+            <button class="btn-secondary" id="btn-audit-prev" style="padding: 4px 10px;">◀ Anterior</button>
+            <span id="lbl-audit-page" style="color: var(--text-dim);">Página 1</span>
+            <button class="btn-secondary" id="btn-audit-next" style="padding: 4px 10px;">Siguiente ▶</button>
           </div>
         </div>
       </div>

@@ -41,6 +41,12 @@ commands_dict = {
         "usage": "/ping o !ping",
         "info": "Confirma recepción e indica saltos y calidad de señal"
     },
+    "test": {
+        "callback": ping_callback,
+        "in_group": True,
+        "usage": "/test o !test",
+        "info": "Confirma recepción e indica saltos y calidad de señal (alias de /ping)"
+    },
     "weather": {
         "callback": weather_callback,
         "in_group": True,

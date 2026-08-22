@@ -139,26 +139,34 @@ def loop():
                     out_text = pending_msg['text']
                     out_dest = pending_msg['dest']
                     out_ch = pending_msg['channel']
-                    log_p(f"[outbox] Transmitiendo mensaje #{out_id} a '{out_dest}' ch={out_ch}: {out_text[:40]}")
-                    ok = interface.send(out_text, dest=out_dest, channel=out_ch)
-                    db.mark_outbox_sent(out_id, ok=ok)
-                    
-                    try:
-                        from Models.EventBroadcaster import broadcast_event
-                        my_info = getattr(interface.interface, 'myInfo', None)
-                        my_id = f"!{my_info.my_node_num:08x}" if getattr(my_info, 'my_node_num', None) else "local"
-                        broadcast_event("message_rx", {
-                            "from": my_id,
-                            "from_name": "Bot (Local)",
-                            "from_short_name": "BOT",
-                            "to": out_dest,
-                            "channel": out_ch,
-                            "text": out_text,
-                            "is_direct": (out_dest != '^all'),
-                            "via_mqtt": False,
-                        })
-                    except Exception:
-                        pass
+
+                    if out_text == "__REQ_NODEINFO__":
+                        log_p(f"[outbox] Procesando solicitud NodeInfo para '{out_dest}'")
+                        ok = interface.request_node_info(out_dest)
+                        db.mark_outbox_sent(out_id, ok=ok)
+                    else:
+                        log_p(f"[outbox] Transmitiendo mensaje #{out_id} a '{out_dest}' ch={out_ch}: {out_text[:40]}")
+                        ok = interface.send(out_text, dest=out_dest, channel=out_ch)
+                        db.mark_outbox_sent(out_id, ok=ok)
+                        
+                        try:
+                            from Models.EventBroadcaster import broadcast_event
+                            my_info = getattr(interface.interface, 'myInfo', None)
+                            my_id = f"!{my_info.my_node_num:08x}" if getattr(my_info, 'my_node_num', None) else "local"
+                            broadcast_event("message_rx", {
+                                "outbox_id": out_id,
+                                "from": my_id,
+                                "from_name": "Bot (Local)",
+                                "from_short_name": "BOT",
+                                "to": out_dest,
+                                "channel": out_ch,
+                                "text": out_text,
+                                "is_direct": (out_dest != '^all'),
+                                "is_outgoing": True,
+                                "via_mqtt": False,
+                            })
+                        except Exception:
+                            pass
             except Exception as e:
                 log_p(f"[outbox] Error procesando mensaje saliente: {e}", level="WARN")
 

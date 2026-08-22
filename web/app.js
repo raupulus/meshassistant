@@ -11,16 +11,19 @@ class MeshDashboard {
     this.nodesMap = new Map();
     this.messages = [];
     this.channels = {};
-    this.currentChannelFilter = 'all';
-    this.currentNodeFilter = 'all';
-    this.currentRoleFilter = 'all';
-    this.sortField = 'is_favorite';
-    this.sortDirection = 'desc';
-    this.searchQuery = '';
+    this.currentChannelFilter = "all";
+    this.currentNodeFilter = "all";
+    this.currentRoleFilter = "all";
+    this.sortField = "is_favorite";
+    this.sortDirection = "desc";
+    this.searchQuery = "";
     this.localNode = null;
     this.auditHours = 24;
+    this.auditLimit = 100;
+    this.auditOffset = 0;
+    this.auditPage = 1;
     this.auditData = null;
-    this.auditSearchQuery = '';
+    this.auditSearchQuery = "";
 
     this.initElements();
     this.bindEvents();
@@ -29,49 +32,52 @@ class MeshDashboard {
 
   initElements() {
     // LEDs y Status
-    this.ledUart = document.getElementById('led-uart');
-    this.lblUart = document.getElementById('lbl-uart');
-    this.ledWs = document.getElementById('led-ws');
-    this.lblWs = document.getElementById('lbl-ws');
-    this.lblLocalNode = document.getElementById('lbl-local-node');
-    this.lblChUtil = document.getElementById('lbl-ch-util');
-    this.lblAirTx = document.getElementById('lbl-air-tx');
+    this.ledUart = document.getElementById("led-uart");
+    this.lblUart = document.getElementById("lbl-uart");
+    this.ledWs = document.getElementById("led-ws");
+    this.lblWs = document.getElementById("lbl-ws");
+    this.lblLocalNode = document.getElementById("lbl-local-node");
+    this.lblChUtil = document.getElementById("lbl-ch-util");
+    this.lblAirTx = document.getElementById("lbl-air-tx");
 
     // Conteo Badges
-    this.countMsgs = document.getElementById('count-msgs');
-    this.countRouters = document.getElementById('count-routers');
-    this.countNodes = document.getElementById('count-nodes');
+    this.countMsgs = document.getElementById("count-msgs");
+    this.countRouters = document.getElementById("count-routers");
+    this.countNodes = document.getElementById("count-nodes");
 
     // Contenedores
-    this.chatFeed = document.getElementById('chat-feed');
-    this.chatForm = document.getElementById('chat-form');
-    this.chatText = document.getElementById('chat-text');
-    this.chatDest = document.getElementById('chat-dest');
-    this.routersGrid = document.getElementById('routers-grid');
-    this.nodesTbody = document.getElementById('nodes-tbody');
-    this.tracesGrid = document.getElementById('traces-grid');
-    this.pollsContainer = document.getElementById('polls-container');
-    this.weatherContent = document.getElementById('weather-content');
-    this.weatherProvince = document.getElementById('weather-province');
-    this.toastContainer = document.getElementById('toast-container');
+    this.chatFeed = document.getElementById("chat-feed");
+    this.chatForm = document.getElementById("chat-form");
+    this.chatText = document.getElementById("chat-text");
+    this.chatDest = document.getElementById("chat-dest");
+    this.routersGrid = document.getElementById("routers-grid");
+    this.nodesTbody = document.getElementById("nodes-tbody");
+    this.tracesGrid = document.getElementById("traces-grid");
+    this.pollsContainer = document.getElementById("polls-container");
+    this.weatherContent = document.getElementById("weather-content");
+    this.weatherProvince = document.getElementById("weather-province");
+    this.toastContainer = document.getElementById("toast-container");
 
     // Elementos de Auditoría
-    this.auditTotalCmds = document.getElementById('audit-total-cmds');
-    this.auditTotalPeriod = document.getElementById('audit-total-period');
-    this.auditUniqueNodes = document.getElementById('audit-unique-nodes');
-    this.auditTopCommand = document.getElementById('audit-top-command');
-    this.auditTopCommandCount = document.getElementById('audit-top-command-count');
-    this.auditTopUser = document.getElementById('audit-top-user');
-    this.auditTopUserCount = document.getElementById('audit-top-user-count');
-    this.auditRankingTbody = document.getElementById('audit-ranking-tbody');
-    this.auditLogsTbody = document.getElementById('audit-logs-tbody');
-    this.auditLogsSearch = document.getElementById('audit-logs-search');
+    this.auditTotalCmds = document.getElementById("audit-total-cmds");
+    this.auditTotalPeriod = document.getElementById("audit-total-period");
+    this.auditUniqueNodes = document.getElementById("audit-unique-nodes");
+    this.auditTopCommand = document.getElementById("audit-top-command");
+    this.auditTopCommandCount = document.getElementById("audit-top-command-count");
+    this.auditTopUser = document.getElementById("audit-top-user");
+    this.auditTopUserCount = document.getElementById("audit-top-user-count");
+    this.auditRankingTbody = document.getElementById("audit-ranking-tbody");
+    this.auditLogsTbody = document.getElementById("audit-logs-tbody");
+    this.auditLogsSearch = document.getElementById("audit-logs-search");
+    this.btnAuditPrev = document.getElementById("btn-audit-prev");
+    this.btnAuditNext = document.getElementById("btn-audit-next");
+    this.lblAuditPage = document.getElementById("lbl-audit-page");
   }
 
   bindEvents() {
     // Pestañas
-    document.querySelectorAll('.tab-btn').forEach(btn => {
-      btn.addEventListener('click', () => {
+    document.querySelectorAll(".tab-btn").forEach(btn => {
+      btn.addEventListener("click", () => {
         const tab = btn.dataset.tab;
         this.switchTab(tab);
       });
@@ -79,50 +85,50 @@ class MeshDashboard {
 
     // Envío de Mensaje Chat
     if (this.chatForm) {
-      this.chatForm.addEventListener('submit', (e) => {
+      this.chatForm.addEventListener("submit", (e) => {
         e.preventDefault();
         this.handleSendMessage();
       });
     }
 
     // Búsqueda de Nodos
-    const searchInput = document.getElementById('nodes-search');
+    const searchInput = document.getElementById("nodes-search");
     if (searchInput) {
-      searchInput.addEventListener('input', (e) => {
+      searchInput.addEventListener("input", (e) => {
         this.searchQuery = e.target.value.toLowerCase().trim();
         this.renderNodesTable();
       });
     }
 
     // Filtro por Rol en Nodos
-    const roleFilter = document.getElementById('nodes-role-filter');
+    const roleFilter = document.getElementById("nodes-role-filter");
     if (roleFilter) {
-      roleFilter.addEventListener('change', (e) => {
+      roleFilter.addEventListener("change", (e) => {
         this.currentRoleFilter = e.target.value;
         this.renderNodesTable();
       });
     }
 
     // Filtro de Nodos (Todos / RF / Favs)
-    document.querySelectorAll('.filter-nodes').forEach(btn => {
-      btn.addEventListener('click', () => {
-        document.querySelectorAll('.filter-nodes').forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
+    document.querySelectorAll(".filter-nodes").forEach(btn => {
+      btn.addEventListener("click", () => {
+        document.querySelectorAll(".filter-nodes").forEach(b => b.classList.remove("active"));
+        btn.classList.add("active");
         this.currentNodeFilter = btn.dataset.filter;
         this.renderNodesTable();
       });
     });
 
     // Ordenación de columnas de la tabla de Nodos
-    document.querySelectorAll('.sort-header').forEach(th => {
-      th.addEventListener('click', () => {
+    document.querySelectorAll(".sort-header").forEach(th => {
+      th.addEventListener("click", () => {
         const field = th.dataset.sort;
         if (!field) return;
         if (this.sortField === field) {
-          this.sortDirection = this.sortDirection === 'asc' ? 'desc' : 'asc';
+          this.sortDirection = this.sortDirection === "asc" ? "desc" : "asc";
         } else {
           this.sortField = field;
-          this.sortDirection = (field === 'is_favorite' || field === 'battery' || field === 'snr' || field === 'last_heard') ? 'desc' : 'asc';
+          this.sortDirection = (field === "is_favorite" || field === "battery" || field === "snr" || field === "last_heard" || field === "created_at") ? "desc" : "asc";
         }
         this.updateSortHeaders();
         this.renderNodesTable();
@@ -130,79 +136,107 @@ class MeshDashboard {
     });
 
     // Refrescar Routers
-    const btnRefreshRouters = document.getElementById('btn-refresh-routers');
+    const btnRefreshRouters = document.getElementById("btn-refresh-routers");
     if (btnRefreshRouters) {
-      btnRefreshRouters.addEventListener('click', () => {
-        this.sendAction('get_snapshot', { include: ['routers'] });
-        this.showToast('Solicitando estado actualizado de repetidores...');
+      btnRefreshRouters.addEventListener("click", () => {
+        this.sendAction("get_snapshot", { include: ["routers"] });
+        this.showToast("Solicitando estado actualizado de repetidores...");
       });
     }
 
     // Formulario de Traceroute Manual
-    const formTrace = document.getElementById('form-manual-trace');
+    const formTrace = document.getElementById("form-manual-trace");
     if (formTrace) {
-      formTrace.addEventListener('submit', (e) => {
+      formTrace.addEventListener("submit", (e) => {
         e.preventDefault();
-        const input = document.getElementById('trace-dest-input');
+        const input = document.getElementById("trace-dest-input");
         const dest = input.value.trim();
         if (dest) {
-          this.sendAction('request_trace', { dest: dest });
+          this.sendAction("request_trace", { dest: dest });
           this.showToast(`Traceroute encolado hacia ${dest}`);
-          input.value = '';
+          input.value = "";
         }
       });
     }
 
     // Filtros de Periodo en Auditoría
-    document.querySelectorAll('.filter-audit-period').forEach(btn => {
-      btn.addEventListener('click', () => {
-        document.querySelectorAll('.filter-audit-period').forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
+    document.querySelectorAll(".filter-audit-period").forEach(btn => {
+      btn.addEventListener("click", () => {
+        document.querySelectorAll(".filter-audit-period").forEach(b => b.classList.remove("active"));
+        btn.classList.add("active");
         const h = btn.dataset.hours;
-        this.auditHours = h === 'all' ? null : parseInt(h, 10);
+        this.auditHours = h === "all" ? null : parseInt(h, 10);
+        this.auditOffset = 0;
+        this.auditPage = 1;
         this.loadAuditData();
       });
     });
 
     // Buscador en Logs de Auditoría
     if (this.auditLogsSearch) {
-      this.auditLogsSearch.addEventListener('input', (e) => {
+      this.auditLogsSearch.addEventListener("input", (e) => {
         this.auditSearchQuery = e.target.value.toLowerCase().trim();
         this.renderAuditLogs();
+      });
+    }
+
+    // Paginación en Logs de Auditoría
+    if (this.btnAuditPrev) {
+      this.btnAuditPrev.addEventListener("click", () => {
+        if (this.auditOffset >= this.auditLimit) {
+          this.auditOffset -= this.auditLimit;
+          this.auditPage--;
+          this.loadAuditData();
+        }
+      });
+    }
+
+    if (this.btnAuditNext) {
+      this.btnAuditNext.addEventListener("click", () => {
+        const logs = this.auditData?.recent_logs || [];
+        if (logs.length === this.auditLimit) {
+          this.auditOffset += this.auditLimit;
+          this.auditPage++;
+          this.loadAuditData();
+        }
       });
     }
   }
 
   updateSortHeaders() {
-    document.querySelectorAll('.sort-header').forEach(th => {
-      const arrow = th.querySelector('.sort-arrow');
+    document.querySelectorAll(".sort-header").forEach(th => {
+      const arrow = th.querySelector(".sort-arrow");
       if (!arrow) return;
       if (th.dataset.sort === this.sortField) {
-        arrow.textContent = this.sortDirection === 'asc' ? '▲' : '▼';
-        th.style.color = 'var(--primary)';
+        arrow.textContent = this.sortDirection === "asc" ? "▲" : "▼";
+        th.style.color = "var(--primary)";
       } else {
-        arrow.textContent = '↕';
-        th.style.color = '';
+        arrow.textContent = "↕";
+        th.style.color = "";
       }
     });
   }
 
   switchTab(tabName) {
-    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-    document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+    document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
+    document.querySelectorAll(".tab-pane").forEach(p => p.classList.remove("active"));
 
     const activeBtn = document.querySelector(`.tab-btn[data-tab="${tabName}"]`);
     const activePane = document.getElementById(`pane-${tabName}`);
-    if (activeBtn) activeBtn.classList.add('active');
-    if (activePane) activePane.classList.add('active');
+    if (activeBtn) activeBtn.classList.add("active");
+    if (activePane) activePane.classList.add("active");
 
-    if (tabName === 'audit') {
+    if (tabName === "audit") {
       this.loadAuditData();
     }
   }
 
   loadAuditData() {
-    this.sendAction('get_commands_audit', { hours: this.auditHours, limit: 100 });
+    this.sendAction("get_commands_audit", {
+      hours: this.auditHours,
+      limit: this.auditLimit,
+      offset: this.auditOffset
+    });
   }
 
   // ==========================================================================
@@ -214,22 +248,22 @@ class MeshDashboard {
       this.reconnectTimer = null;
     }
 
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const host = window.location.host || '127.0.0.1:8680';
+    const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+    const host = window.location.host || "127.0.0.1:8680";
     const wsUrl = `${protocol}//${host}`;
 
-    this.setWsStatus(false, 'Conectando...');
+    this.setWsStatus(false, "Conectando...");
 
     try {
       this.ws = new WebSocket(wsUrl);
 
       this.ws.onopen = () => {
-        console.log('[Mesh WS] Conectado exitosamente');
-        this.setWsStatus(true, 'Conectado');
-        this.showToast('Conectado a la pasarela WebSocket');
+        console.log("[Mesh WS] Conectado exitosamente");
+        this.setWsStatus(true, "Conectado");
+        this.showToast("Conectado a la pasarela WebSocket");
         // Solicitar snapshot completo inicial
         this.requestFullSnapshot();
-        // Sincronización suave cada 20s para estadísticas globales (sin resetear chat)
+        // Sincronización suave cada 20s para estadísticas globales
         if (this.syncInterval) clearInterval(this.syncInterval);
         this.syncInterval = setInterval(() => this.requestFullSnapshot(), 20000);
       };
@@ -239,21 +273,21 @@ class MeshDashboard {
           const payload = JSON.parse(event.data);
           this.handleIncomingMessage(payload);
         } catch (err) {
-          console.error('[WS Parse Error]', err, event.data);
+          console.error("[WS Parse Error]", err, event.data);
         }
       };
 
       this.ws.onclose = () => {
-        this.setWsStatus(false, 'Reconectando en 3s...');
+        this.setWsStatus(false, "Reconectando en 3s...");
         this.scheduleReconnect();
       };
 
       this.ws.onerror = () => {
-        this.setWsStatus(false, 'Error');
+        this.setWsStatus(false, "Error");
         this.ws.close();
       };
     } catch (e) {
-      this.setWsStatus(false, 'Fallo conexión');
+      this.setWsStatus(false, "Fallo conexión");
       this.scheduleReconnect();
     }
   }
@@ -265,13 +299,13 @@ class MeshDashboard {
   }
 
   setWsStatus(online, text) {
-    if (this.ledWs) this.ledWs.className = `led ${online ? 'online' : 'offline'}`;
+    if (this.ledWs) this.ledWs.className = `led ${online ? "online" : "offline"}`;
     if (this.lblWs) this.lblWs.textContent = text;
   }
 
   setUartStatus(online, port) {
-    if (this.ledUart) this.ledUart.className = `led ${online ? 'online' : 'offline'}`;
-    if (this.lblUart) this.lblUart.textContent = online ? `Activo (${port || 'UART'})` : 'Desconectado';
+    if (this.ledUart) this.ledUart.className = `led ${online ? "online" : "offline"}`;
+    if (this.lblUart) this.lblUart.textContent = online ? `Activo (${port || "UART"})` : "Desconectado";
   }
 
   // ==========================================================================
@@ -279,13 +313,13 @@ class MeshDashboard {
   // ==========================================================================
   handleIncomingMessage(payload) {
     // 1. Mensaje de bienvenida
-    if (payload.event === 'welcome') {
+    if (payload.event === "welcome") {
       if (payload.data?.system_status) {
         this.setUartStatus(payload.data.system_status.uart_connected, payload.data.system_status.serial_port);
       }
       if (payload.data?.local_node) {
         this.localNode = payload.data.local_node;
-        const name = this.localNode.short_name || this.localNode.my_node_id || 'Bot';
+        const name = this.localNode.short_name || this.localNode.my_node_id || "Bot";
         if (this.lblLocalNode) this.lblLocalNode.textContent = name;
       }
       this.requestFullSnapshot();
@@ -293,7 +327,7 @@ class MeshDashboard {
     }
 
     // 2. Respuesta a una acción previa
-    if (payload.type === 'response') {
+    if (payload.type === "response") {
       this.handleActionResponse(payload);
       return;
     }
@@ -306,17 +340,17 @@ class MeshDashboard {
 
   handlePushEvent(eventName, data, ts) {
     switch (eventName) {
-      case 'message_rx':
+      case "message_rx":
         this.addMessage(data, ts);
         break;
-      case 'node_updated':
+      case "node_updated":
         if (data.id) {
           const prev = this.nodesMap.get(data.id) || {};
           this.nodesMap.set(data.id, { ...prev, ...data });
           this.renderNodesTable();
         }
         break;
-      case 'device_telemetry':
+      case "device_telemetry":
         if (data.id && this.nodesMap.has(data.id)) {
           const node = this.nodesMap.get(data.id);
           if (data.battery !== undefined) node.battery = data.battery;
@@ -324,10 +358,10 @@ class MeshDashboard {
           this.renderNodesTable();
         }
         break;
-      case 'system_status':
+      case "system_status":
         this.setUartStatus(data.uart_connected, data.serial_port);
         break;
-      case 'channel_metrics':
+      case "channel_metrics":
         if (this.lblChUtil && data.channel_util !== undefined) {
           this.lblChUtil.textContent = `${Number(data.channel_util).toFixed(1)}%`;
         }
@@ -335,40 +369,40 @@ class MeshDashboard {
           this.lblAirTx.textContent = `${Number(data.air_util_tx).toFixed(1)}%`;
         }
         break;
-      case 'trace_completed':
+      case "trace_completed":
         this.renderTraceResult(data, ts);
         this.showToast(`Traceroute finalizado a ${data.to_name || data.to}`);
         break;
-      case 'router_status':
+      case "router_status":
         if (data.routers) this.renderRouters(data.routers);
         break;
-      case 'poll_created':
-        this.sendAction('get_polls');
+      case "poll_created":
+        this.sendAction("get_polls");
         break;
-      case 'message_ack':
+      case "message_ack":
         this.showToast(`Mensaje entregado con éxito a ${data.dest}`);
         break;
     }
   }
 
   requestFullSnapshot() {
-    this.sendAction('get_snapshot', {
-      include: ['nodes', 'routers', 'recent_messages', 'stats', 'system_status', 'local_node', 'channel_metrics', 'traces']
+    this.sendAction("get_snapshot", {
+      include: ["nodes", "routers", "recent_messages", "stats", "system_status", "local_node", "channel_metrics", "traces"]
     });
-    this.sendAction('get_polls');
-    this.sendAction('get_weather');
+    this.sendAction("get_polls");
+    this.sendAction("get_weather");
   }
 
   handleActionResponse(resp) {
     if (!resp.success) {
-      this.showToast(`Error: ${resp.error || 'Acción fallida'}`, 'danger');
+      this.showToast(`Error: ${resp.error || "Acción fallida"}`, "danger");
       return;
     }
 
     const data = resp.data;
     if (!data) return;
 
-    if (resp.action === 'get_snapshot') {
+    if (resp.action === "get_snapshot") {
       // 1. Mensajes: Reconciliación no destructiva
       if (data.recent_messages && Array.isArray(data.recent_messages)) {
         if (this.messages.length === 0) {
@@ -383,7 +417,8 @@ class MeshDashboard {
             const item = m.data ? { ...m.data, ts: m.ts } : m;
             const exists = this.messages.some(old => 
               (old.id && item.id && old.id === item.id) ||
-              (old.ts === item.ts && old.text === item.text && old.from === item.from)
+              (old.ts === item.ts && old.text === item.text && old.from === item.from) ||
+              (old.is_optimistic && old.text === item.text && String(old.channel ?? 0) === String(item.channel ?? 0))
             );
             if (!exists) {
               this.messages.push(item);
@@ -391,7 +426,7 @@ class MeshDashboard {
             }
           });
           if (added) {
-            this.messages.sort((a, b) => (a.ts || '').localeCompare(b.ts || ''));
+            this.messages.sort((a, b) => (a.ts || "").localeCompare(b.ts || ""));
             this.renderMessages();
           }
         }
@@ -419,7 +454,7 @@ class MeshDashboard {
       // 5. Traces
       if (data.traces && Array.isArray(data.traces)) {
         if (this.tracesGrid) {
-          this.tracesGrid.innerHTML = '';
+          this.tracesGrid.innerHTML = "";
           data.traces.forEach(tr => this.renderTraceResult(tr, tr.updated_at || tr.created_at));
         }
       }
@@ -430,13 +465,13 @@ class MeshDashboard {
         this.localNode = data.local_node;
         if (this.lblLocalNode) this.lblLocalNode.textContent = this.localNode.short_name || this.localNode.my_node_id;
       }
-    } else if (resp.action === 'get_polls') {
+    } else if (resp.action === "get_polls") {
       this.renderPolls(data.polls || []);
-    } else if (resp.action === 'get_weather') {
+    } else if (resp.action === "get_weather") {
       this.renderWeather(data);
-    } else if (resp.action === 'get_commands_audit') {
+    } else if (resp.action === "get_commands_audit") {
       this.renderAuditData(data);
-    } else if (resp.action === 'set_node_favorite') {
+    } else if (resp.action === "set_node_favorite") {
       if (data.node_id && this.nodesMap.has(data.node_id)) {
         this.nodesMap.get(data.node_id).is_favorite = data.is_favorite;
         this.renderNodesTable();
@@ -449,25 +484,25 @@ class MeshDashboard {
   // ==========================================================================
   renderChannelFiltersAndDestinations() {
     // 1. Renderizar chips de filtro de chat
-    const filterWrap = document.getElementById('chat-filters-wrap');
+    const filterWrap = document.getElementById("chat-filters-wrap");
     if (filterWrap && this.channels) {
       let chipsHtml = `<span style="font-size: 0.8rem; color: var(--text-muted); margin-right: 4px;">Filtrar:</span>`;
-      chipsHtml += `<button class="filter-chip ${this.currentChannelFilter === 'all' ? 'active' : ''}" data-ch="all">Todos</button>`;
+      chipsHtml += `<button class="filter-chip ${this.currentChannelFilter === "all" ? "active" : ""}" data-ch="all">Todos</button>`;
 
       for (const [chNum, chObj] of Object.entries(this.channels)) {
         const name = chObj.name || `Canal ${chNum}`;
-        const active = String(this.currentChannelFilter) === String(chNum) ? 'active' : '';
+        const active = String(this.currentChannelFilter) === String(chNum) ? "active" : "";
         chipsHtml += `<button class="filter-chip ${active}" data-ch="${chNum}">Ch ${chNum} (${name})</button>`;
       }
 
-      chipsHtml += `<button class="filter-chip ${this.currentChannelFilter === 'direct' ? 'active' : ''}" data-ch="direct">Privados / Directos</button>`;
+      chipsHtml += `<button class="filter-chip ${this.currentChannelFilter === "direct" ? "active" : ""}" data-ch="direct">Privados / Directos</button>`;
       filterWrap.innerHTML = chipsHtml;
 
       // Re-enlazar eventos
-      filterWrap.querySelectorAll('.filter-chip').forEach(btn => {
-        btn.addEventListener('click', () => {
-          filterWrap.querySelectorAll('.filter-chip').forEach(b => b.classList.remove('active'));
-          btn.classList.add('active');
+      filterWrap.querySelectorAll(".filter-chip").forEach(btn => {
+        btn.addEventListener("click", () => {
+          filterWrap.querySelectorAll(".filter-chip").forEach(b => b.classList.remove("active"));
+          btn.classList.add("active");
           this.currentChannelFilter = btn.dataset.ch;
           this.renderMessages();
         });
@@ -477,7 +512,7 @@ class MeshDashboard {
     // 2. Renderizar opciones del selector de destino en el formulario
     if (this.chatDest && this.channels) {
       const currentVal = this.chatDest.value;
-      let optsHtml = '';
+      let optsHtml = "";
 
       optsHtml += `<optgroup label="Canales Públicos">`;
       for (const [chNum, chObj] of Object.entries(this.channels)) {
@@ -503,18 +538,43 @@ class MeshDashboard {
   }
 
   // ==========================================================================
-  // Renderizado: Live Chat (Sin Parpadeos)
+  // Renderizado: Live Chat (Sin Parpadeos y Sin Duplicados)
   // ==========================================================================
   addMessage(msg, ts) {
     const timestamp = ts || new Date().toISOString();
+    
+    // Si viene un mensaje saliente/confirmado del bot, comprobar si reconcilia un mensaje optimista
+    const isBotSender = (msg.from === this.localNode?.my_node_id || msg.from_name === "Bot (Local)" || msg.is_outgoing);
+    
+    if (isBotSender) {
+      const pendingIdx = this.messages.findIndex(old => 
+        old.is_optimistic && 
+        old.text === msg.text && 
+        String(old.channel ?? 0) === String(msg.channel ?? 0)
+      );
+      if (pendingIdx !== -1) {
+        // Actualizar el optimista en lugar de duplicar
+        this.messages[pendingIdx] = {
+          ...this.messages[pendingIdx],
+          ...msg,
+          ts: timestamp,
+          is_optimistic: false,
+          is_outgoing: true,
+          from_name: "Bot (Local)",
+        };
+        this.renderMessages();
+        return;
+      }
+    }
+
     const exists = this.messages.some(old => 
       (old.local_id && msg.local_id && old.local_id === msg.local_id) ||
-      (old.text === msg.text && old.from === msg.from && Math.abs(new Date(old.ts) - new Date(timestamp)) < 2000)
+      (old.text === msg.text && old.from === msg.from && Math.abs(new Date(old.ts || 0) - new Date(timestamp)) < 2500)
     );
 
     if (!exists) {
       this.messages.push({ ...msg, ts: timestamp });
-      if (this.messages.length > 100) this.messages.shift();
+      if (this.messages.length > 150) this.messages.shift();
       this.renderMessages();
     }
   }
@@ -523,8 +583,8 @@ class MeshDashboard {
     if (!this.chatFeed) return;
 
     const filtered = this.messages.filter(m => {
-      if (this.currentChannelFilter === 'all') return true;
-      if (this.currentChannelFilter === 'direct') return !!m.is_direct;
+      if (this.currentChannelFilter === "all") return true;
+      if (this.currentChannelFilter === "direct") return !!m.is_direct;
       return String(m.channel ?? 0) === String(this.currentChannelFilter) && !m.is_direct;
     });
 
@@ -539,8 +599,11 @@ class MeshDashboard {
     }
 
     this.chatFeed.innerHTML = filtered.map(m => {
-      const senderName = m.from_name || m.from_short_name || m.from || 'Desconocido';
-      const timeStr = m.ts ? m.ts.replace('T', ' ').substring(11, 19) : '--:--';
+      // Si no tiene nombre largo ni corto, mostrar siempre su ID hexadecimal
+      let senderName = m.from_name || m.from_short_name || m.from || m.node_id || "Desconocido";
+      if (senderName === "Desconocido" && m.from) senderName = m.from;
+
+      const timeStr = m.ts ? m.ts.replace("T", " ").substring(11, 19) : "--:--";
       const isDirect = m.is_direct;
       const chNum = m.channel ?? 0;
       const chName = (this.channels && this.channels[chNum]?.name) ? `Ch ${chNum} (${this.channels[chNum].name})` : `Canal ${chNum}`;
@@ -548,38 +611,38 @@ class MeshDashboard {
       const channelBadge = isDirect 
         ? `<span class="badge badge-direct">Directo</span>`
         : `<span class="badge badge-ch0">${this.escapeHtml(chName)}</span>`;
-      const mqttBadge = m.via_mqtt ? `<span class="badge badge-mqtt">MQTT</span>` : '';
-      const outBadge = m.is_outgoing ? `<span class="badge" style="background: var(--success-bg); color: var(--success);">Enviado</span>` : '';
+      const mqttBadge = m.via_mqtt ? `<span class="badge badge-mqtt">MQTT</span>` : "";
+      const outBadge = m.is_outgoing ? `<span class="badge" style="background: var(--success-bg); color: var(--success);">Enviado</span>` : "";
       
       // Claridad de SNR: Directo vs Último Salto
-      let snrText = '';
+      let snrText = "";
       if (m.snr !== undefined && m.snr !== null) {
         const isDirSignal = (m.hops === 0 || isDirect);
-        const snrLabel = isDirSignal ? 'SNR Directo' : `SNR Último Salto`;
+        const snrLabel = isDirSignal ? "SNR Directo" : `SNR Último Salto`;
         snrText = `${snrLabel}: ${Number(m.snr).toFixed(1)}dB`;
       }
-      const hopsText = (m.hops !== undefined && m.hops !== null && m.hops > 0) ? `${m.hops} ${m.hops === 1 ? 'salto' : 'saltos'}` : '';
+      const hopsText = (m.hops !== undefined && m.hops !== null && m.hops > 0) ? `${m.hops} ${m.hops === 1 ? "salto" : "saltos"}` : "";
 
       return `
-        <div class="msg-card" style="${m.is_outgoing ? 'border-left: 3px solid var(--primary);' : ''}">
+        <div class="msg-card" style="${m.is_outgoing ? "border-left: 3px solid var(--primary);" : ""}">
           <div class="msg-header">
             <div style="display: flex; align-items: center; gap: 8px;">
               ${channelBadge}
               ${mqttBadge}
               ${outBadge}
               <span class="msg-sender">${this.escapeHtml(senderName)}</span>
-              <span style="font-size: 0.75rem; color: var(--text-dim);">${this.escapeHtml(m.from || '')}</span>
+              <span style="font-size: 0.75rem; color: var(--text-dim); font-family: monospace;">${this.escapeHtml(m.from || "")}</span>
             </div>
             <span class="msg-meta">${timeStr}</span>
           </div>
-          <div class="msg-body">${this.escapeHtml(m.text || '')}</div>
+          <div class="msg-body">${this.escapeHtml(m.text || "")}</div>
           <div class="msg-footer">
-            ${snrText ? `<span>${snrText}</span>` : ''}
-            ${hopsText ? `<span>• ${hopsText}</span>` : ''}
+            ${snrText ? `<span>${snrText}</span>` : ""}
+            ${hopsText ? `<span>• ${hopsText}</span>` : ""}
           </div>
         </div>
       `;
-    }).join('');
+    }).join("");
 
     this.chatFeed.scrollTop = this.chatFeed.scrollHeight;
   }
@@ -589,39 +652,40 @@ class MeshDashboard {
     if (!text) return;
 
     const destValue = this.chatDest.value;
-    let dest = '^all';
+    let dest = "^all";
     let channel = 0;
 
-    if (destValue.startsWith('^all:')) {
-      channel = parseInt(destValue.split(':')[1], 10) || 0;
-      dest = '^all';
+    if (destValue.startsWith("^all:")) {
+      channel = parseInt(destValue.split(":")[1], 10) || 0;
+      dest = "^all";
     } else {
       dest = destValue;
     }
 
-    const localId = 'out_' + Date.now();
+    const localId = "out_" + Date.now();
 
-    this.sendAction('send_message', {
+    this.sendAction("send_message", {
       text: text,
       dest: dest,
       channel: channel,
     });
 
-    // Añadir al feed local con ID único
+    // Añadir optimista al feed local
     this.addMessage({
       local_id: localId,
-      from: this.localNode?.my_node_id || 'local',
-      from_name: this.localNode?.short_name || 'Tú (Web)',
-      from_short_name: 'WEB',
+      is_optimistic: true,
+      from: this.localNode?.my_node_id || "local",
+      from_name: this.localNode?.short_name || "Bot (Local)",
+      from_short_name: "BOT",
       to: dest,
       channel: channel,
       text: text,
-      is_direct: (dest !== '^all'),
+      is_direct: (dest !== "^all"),
       is_outgoing: true,
     });
 
-    this.chatText.value = '';
-    this.showToast('Mensaje enviado a la cola de emisión LoRa');
+    this.chatText.value = "";
+    this.showToast("Mensaje encolado para transmisión");
   }
 
   // ==========================================================================
@@ -637,10 +701,18 @@ class MeshDashboard {
     }
 
     this.routersGrid.innerHTML = routers.map(r => {
-      const isOnline = (r.status === 'online') || (r.last_seen_sec !== undefined && r.last_seen_sec !== null && r.last_seen_sec < 86400);
-      const snr = r.snr !== undefined && r.snr !== null ? `${Number(r.snr).toFixed(1)} dB` : '--';
+      const isOnline = (r.status === "online") || (r.last_seen_sec !== undefined && r.last_seen_sec !== null && r.last_seen_sec < 86400);
       
-      let lastSeen = 'sin señal';
+      // SNR enriquecido vía trace / base RAU0 vs directo
+      let snrDisplay = "--";
+      if (r.trace_snr_text) {
+        const hopsLabel = r.trace_hops === 0 ? "Directo" : `${r.trace_hops} ${r.trace_hops === 1 ? "salto" : "saltos"}`;
+        snrDisplay = `<strong>${this.escapeHtml(r.trace_snr_text)}</strong> <span style="font-size: 0.75rem; color: var(--primary);">(${hopsLabel})</span>`;
+      } else if (r.snr !== undefined && r.snr !== null) {
+        snrDisplay = `${Number(r.snr).toFixed(1)} dB <span style="font-size: 0.75rem; color: var(--text-dim);">(RF Directo)</span>`;
+      }
+      
+      let lastSeen = "sin señal";
       if (r.last_seen_sec !== undefined && r.last_seen_sec !== null) {
         const s = r.last_seen_sec;
         if (s < 60) lastSeen = `hace ${s}s`;
@@ -655,17 +727,17 @@ class MeshDashboard {
         <div class="card">
           <div class="card-header">
             <span>${this.escapeHtml(r.name || routerId)}</span>
-            <span class="badge" style="background: ${isOnline ? 'var(--success-bg)' : 'var(--danger-bg)'}; color: ${isOnline ? 'var(--success)' : 'var(--danger)'};">
-              ${isOnline ? 'ONLINE' : 'OFFLINE'}
+            <span class="badge" style="background: ${isOnline ? "var(--success-bg)" : "var(--danger-bg)"}; color: ${isOnline ? "var(--success)" : "var(--danger)"};">
+              ${isOnline ? "ONLINE" : "OFFLINE"}
             </span>
           </div>
           <div class="card-row">
             <span>ID Hex:</span>
-            <span>${this.escapeHtml(routerId)}</span>
+            <span style="font-family: monospace;">${this.escapeHtml(routerId)}</span>
           </div>
           <div class="card-row">
-            <span>SNR:</span>
-            <span>${snr}</span>
+            <span>Señal (Trace/Base):</span>
+            <span>${snrDisplay}</span>
           </div>
           <div class="card-row">
             <span>Última señal:</span>
@@ -676,16 +748,21 @@ class MeshDashboard {
           </button>
         </div>
       `;
-    }).join('');
+    }).join("");
   }
 
   requestTraceTo(nodeId) {
-    this.sendAction('request_trace', { dest: nodeId });
+    this.sendAction("request_trace", { dest: nodeId });
     this.showToast(`Traceroute encolado hacia ${nodeId}`);
   }
 
+  requestNodeInfo(nodeId) {
+    this.sendAction("request_node_info", { node_id: nodeId });
+    this.showToast(`Petición NodeInfo enviada a ${nodeId}`);
+  }
+
   // ==========================================================================
-  // Renderizado: Nodos (Filtro por Rol y Ordenación Bidireccional)
+  // Renderizado: Nodos (Filtro por Rol, Primera Vez y Solicitud de NodeInfo)
   // ==========================================================================
   renderNodesTable() {
     if (!this.nodesTbody) return;
@@ -696,42 +773,47 @@ class MeshDashboard {
     // 1. Filtro texto (busca por nombre largo, nombre corto o ID)
     if (this.searchQuery) {
       nodes = nodes.filter(n => {
-        const id = (n.id || '').toLowerCase();
-        const name = (n.name || '').toLowerCase();
-        const short = (n.short_name || '').toLowerCase();
+        const id = (n.id || "").toLowerCase();
+        const name = (n.name || "").toLowerCase();
+        const short = (n.short_name || "").toLowerCase();
         return id.includes(this.searchQuery) || name.includes(this.searchQuery) || short.includes(this.searchQuery);
       });
     }
 
     // 2. Filtro por Rol
-    if (this.currentRoleFilter && this.currentRoleFilter !== 'all') {
-      nodes = nodes.filter(n => (n.role_name || '').toUpperCase() === this.currentRoleFilter.toUpperCase());
+    if (this.currentRoleFilter && this.currentRoleFilter !== "all") {
+      nodes = nodes.filter(n => (n.role_name || "").toUpperCase() === this.currentRoleFilter.toUpperCase());
     }
 
     // 3. Filtro categoría
-    if (this.currentNodeFilter === 'rf') {
+    if (this.currentNodeFilter === "rf") {
       nodes = nodes.filter(n => !n.via_mqtt);
-    } else if (this.currentNodeFilter === 'fav') {
+    } else if (this.currentNodeFilter === "fav") {
       nodes = nodes.filter(n => n.is_favorite);
     }
 
     // 4. Ordenación Multidimensional
     const field = this.sortField;
-    const dir = this.sortDirection === 'asc' ? 1 : -1;
+    const dir = this.sortDirection === "asc" ? 1 : -1;
 
     nodes.sort((a, b) => {
       let valA = a[field];
       let valB = b[field];
 
-      if (field === 'is_favorite') {
+      if (field === "is_favorite") {
         valA = valA ? 1 : 0;
         valB = valB ? 1 : 0;
-      } else if (field === 'battery' || field === 'snr' || field === 'hops' || field === 'last_heard' || field === 'uptime') {
+      } else if (field === "battery" || field === "snr" || field === "hops" || field === "uptime") {
         valA = (valA !== undefined && valA !== null) ? Number(valA) : -999999;
         valB = (valB !== undefined && valB !== null) ? Number(valB) : -999999;
+      } else if (field === "last_heard" || field === "created_at") {
+        const tA = this.parseDateTimestamp(valA || a.updated_at);
+        const tB = this.parseDateTimestamp(valB || b.updated_at);
+        valA = tA;
+        valB = tB;
       } else {
-        valA = (valA || '').toString().toLowerCase();
-        valB = (valB || '').toString().toLowerCase();
+        valA = (valA || "").toString().toLowerCase();
+        valB = (valB || "").toString().toLowerCase();
       }
 
       if (valA < valB) return -1 * dir;
@@ -742,7 +824,7 @@ class MeshDashboard {
     if (nodes.length === 0) {
       this.nodesTbody.innerHTML = `
         <tr>
-          <td colspan="10" style="text-align: center; color: var(--text-dim); padding: 20px;">
+          <td colspan="11" style="text-align: center; color: var(--text-dim); padding: 20px;">
             No se encontraron nodos con los filtros aplicados.
           </td>
         </tr>`;
@@ -753,9 +835,9 @@ class MeshDashboard {
       const isFav = !!n.is_favorite;
       
       // Formateo de Batería y Voltaje
-      let battery = '--';
+      let battery = "--";
       if (n.battery !== undefined && n.battery !== null) {
-        if (n.battery > 100) battery = '⚡ 100%';
+        if (n.battery > 100) battery = "⚡ 100%";
         else battery = `${n.battery}%`;
         if (n.voltage !== undefined && n.voltage !== null) {
           battery += ` <span style="color: var(--text-dim); font-size: 0.75rem;">(${Number(n.voltage).toFixed(2)}V)</span>`;
@@ -764,52 +846,94 @@ class MeshDashboard {
         battery = `${Number(n.voltage).toFixed(2)}V`;
       }
 
-      const snr = n.snr !== undefined && n.snr !== null ? `${Number(n.snr).toFixed(1)} dB` : '--';
-      const hops = n.hops !== undefined && n.hops !== null ? n.hops : '--';
+      const snr = n.snr !== undefined && n.snr !== null ? `${Number(n.snr).toFixed(1)} dB` : "--";
+      const hops = n.hops !== undefined && n.hops !== null ? n.hops : "--";
       const nodeId = n.id || n.node_id;
 
-      // Última señal
-      let lastHeardStr = '--';
-      if (n.last_heard) {
-        try {
-          const dt = new Date(n.last_heard * 1000);
-          lastHeardStr = dt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + ' ' + dt.toLocaleDateString([], { month: 'numeric', day: 'numeric' });
-        } catch (e) {
-          lastHeardStr = '--';
-        }
-      }
+      // Última señal inteligente (last_heard o updated_at)
+      const lastHeardStr = this.formatRelativeOrDate(n.last_heard || n.updated_at);
+
+      // Primera vez visto (created_at)
+      const createdAtStr = this.formatDateOnly(n.created_at || n.updated_at);
 
       return `
         <tr>
           <td>
-            <button class="star-btn ${isFav ? 'fav' : ''}" onclick="window.dashboard.toggleFavorite('${nodeId}', ${!isFav})">
+            <button class="star-btn ${isFav ? "fav" : ""}" onclick="window.dashboard.toggleFavorite('${nodeId}', ${!isFav})">
               ★
             </button>
           </td>
           <td>
-            <strong>${this.escapeHtml(n.name || 'Sin nombre')}</strong>
+            <strong>${this.escapeHtml(n.name || "Sin nombre")}</strong>
           </td>
           <td style="font-weight: 600; color: var(--primary); font-family: monospace;">
-            ${this.escapeHtml(n.short_name || '--')}
+            ${this.escapeHtml(n.short_name || "--")}
           </td>
-          <td style="font-family: monospace; font-size: 0.85rem;">${this.escapeHtml(nodeId || '')}</td>
-          <td><span class="badge" style="background: var(--primary-bg); color: var(--primary);">${this.escapeHtml(n.role_name || 'CLIENT')}</span></td>
+          <td style="font-family: monospace; font-size: 0.85rem;">${this.escapeHtml(nodeId || "")}</td>
+          <td><span class="badge" style="background: var(--primary-bg); color: var(--primary);">${this.escapeHtml(n.role_name || "CLIENT")}</span></td>
           <td>${hops}</td>
           <td>${battery}</td>
           <td>${snr}</td>
           <td style="font-size: 0.8rem; color: var(--text-muted);">${lastHeardStr}</td>
+          <td style="font-size: 0.8rem; color: var(--text-dim);">${createdAtStr}</td>
           <td>
-            <button class="btn-secondary" style="padding: 3px 8px; font-size: 0.75rem;" onclick="window.dashboard.requestTraceTo('${nodeId}')">
-              Trace
-            </button>
+            <div style="display: flex; gap: 4px;">
+              <button class="btn-secondary" style="padding: 3px 6px; font-size: 0.75rem;" title="Lanzar Traceroute" onclick="window.dashboard.requestTraceTo('${nodeId}')">
+                Trace
+              </button>
+              <button class="btn-secondary" style="padding: 3px 6px; font-size: 0.75rem;" title="Pedir NodeInfo por LoRa" onclick="window.dashboard.requestNodeInfo('${nodeId}')">
+                ℹ️ Info
+              </button>
+            </div>
           </td>
         </tr>
       `;
-    }).join('');
+    }).join("");
   }
 
   toggleFavorite(nodeId, makeFav) {
-    this.sendAction('set_node_favorite', { node_id: nodeId, is_favorite: makeFav });
+    this.sendAction("set_node_favorite", { node_id: nodeId, is_favorite: makeFav });
+  }
+
+  parseDateTimestamp(val) {
+    if (!val) return 0;
+    if (typeof val === "number") return val > 10000000000 ? val : val * 1000;
+    if (typeof val === "string") {
+      if (/^\d+$/.test(val)) {
+        const num = parseInt(val, 10);
+        return num > 10000000000 ? num : num * 1000;
+      }
+      const parsed = Date.parse(val);
+      return isNaN(parsed) ? 0 : parsed;
+    }
+    return 0;
+  }
+
+  formatRelativeOrDate(val) {
+    const ms = this.parseDateTimestamp(val);
+    if (!ms) return "--";
+    const d = new Date(ms);
+    const now = new Date();
+    const isToday = d.toDateString() === now.toDateString();
+    
+    if (isToday) {
+      return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+    } else {
+      const day = String(d.getDate()).padStart(2, "0");
+      const month = String(d.getMonth() + 1).padStart(2, "0");
+      const time = d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+      return `${day}/${month} ${time}`;
+    }
+  }
+
+  formatDateOnly(val) {
+    const ms = this.parseDateTimestamp(val);
+    if (!ms) return "--";
+    const d = new Date(ms);
+    const day = String(d.getDate()).padStart(2, "0");
+    const month = String(d.getMonth() + 1).padStart(2, "0");
+    const year = d.getFullYear();
+    return `${day}/${month}/${year}`;
   }
 
   // ==========================================================================
@@ -818,15 +942,15 @@ class MeshDashboard {
   renderTraceResult(trace, ts) {
     if (!this.tracesGrid) return;
 
-    const timeStr = ts ? ts.replace('T', ' ').substring(0, 19) : new Date().toLocaleString();
+    const timeStr = ts ? ts.replace("T", " ").substring(0, 19) : new Date().toLocaleString();
     const hopsFwd = trace.hops_forward || [];
     
-    let fwdStr = '';
+    let fwdStr = "";
     if (hopsFwd.length > 0) {
-      fwdStr = hopsFwd.map(h => `${this.escapeHtml(h.name || h.id)} (${h.snr !== undefined && h.snr !== null ? h.snr + 'dB' : ''})`).join(' ➔ ');
+      fwdStr = hopsFwd.map(h => `${this.escapeHtml(h.name || h.id)} (${h.snr !== undefined && h.snr !== null ? h.snr + "dB" : ""})`).join(" ➔ ");
     } else {
       // Directo con señal si está disponible
-      const directSnr = trace.snr !== undefined && trace.snr !== null ? ` (SNR: ${Number(trace.snr).toFixed(1)} dB)` : '';
+      const directSnr = trace.snr !== undefined && trace.snr !== null ? ` (SNR: ${Number(trace.snr).toFixed(1)} dB)` : "";
       fwdStr = `Directo / Sin repetidores intermedios${directSnr}`;
     }
 
@@ -834,8 +958,8 @@ class MeshDashboard {
       <div class="card" style="border-left: 4px solid var(--primary);">
         <div class="card-header">
           <span>Destino: ${this.escapeHtml(trace.to_name || trace.to)}</span>
-          <span class="badge" style="background: ${trace.success ? 'var(--success-bg)' : 'var(--danger-bg)'}; color: ${trace.success ? 'var(--success)' : 'var(--danger)'};">
-            ${trace.success ? 'ÉXITO' : 'FALLIDO'}
+          <span class="badge" style="background: ${trace.success ? "var(--success-bg)" : "var(--danger-bg)"}; color: ${trace.success ? "var(--success)" : "var(--danger)"};">
+            ${trace.success ? "ÉXITO" : "FALLIDO"}
           </span>
         </div>
         <div class="card-row">
@@ -851,14 +975,14 @@ class MeshDashboard {
         ${trace.raw_text ? `
           <div style="font-size: 0.75rem; color: var(--text-dim); margin-top: 4px;">
             ${this.escapeHtml(trace.raw_text)}
-          </div>` : ''}
+          </div>` : ""}
       </div>
     `;
 
-    if (this.tracesGrid.innerHTML.includes('No hay traceroutes')) {
+    if (this.tracesGrid.innerHTML.includes("No hay traceroutes")) {
       this.tracesGrid.innerHTML = cardHtml;
     } else {
-      this.tracesGrid.insertAdjacentHTML('afterbegin', cardHtml);
+      this.tracesGrid.insertAdjacentHTML("afterbegin", cardHtml);
     }
   }
 
@@ -871,17 +995,19 @@ class MeshDashboard {
     const ranking = data.ranking || [];
 
     // 1. Tarjetas de Resumen
-    if (this.auditTotalCmds) this.auditTotalCmds.textContent = summary.total_24h ?? '--';
+    if (this.auditTotalCmds) this.auditTotalCmds.textContent = summary.total ?? "--";
     if (this.auditTotalPeriod) {
-      this.auditTotalPeriod.textContent = this.auditHours ? `en las últimas ${this.auditHours}h` : 'histórico total';
+      if (this.auditHours === 1) this.auditTotalPeriod.textContent = "en la última hora";
+      else if (this.auditHours) this.auditTotalPeriod.textContent = `en las últimas ${this.auditHours}h`;
+      else this.auditTotalPeriod.textContent = "histórico total";
     }
-    if (this.auditUniqueNodes) this.auditUniqueNodes.textContent = summary.unique_nodes_24h ?? '--';
-    if (this.auditTopCommand) this.auditTopCommand.textContent = summary.top_command_24h ? `/${summary.top_command_24h}` : 'N/D';
-    if (this.auditTopCommandCount) this.auditTopCommandCount.textContent = summary.top_command_count ? `${summary.top_command_count} peticiones` : '--';
-    if (this.auditTopUser) this.auditTopUser.textContent = summary.top_user_24h || 'N/D';
-    if (this.auditTopUserCount) this.auditTopUserCount.textContent = summary.top_user_count ? `${summary.top_user_count} comandos` : '--';
+    if (this.auditUniqueNodes) this.auditUniqueNodes.textContent = summary.unique_nodes ?? "--";
+    if (this.auditTopCommand) this.auditTopCommand.textContent = summary.top_command ? `/${summary.top_command}` : "N/D";
+    if (this.auditTopCommandCount) this.auditTopCommandCount.textContent = summary.top_command_count ? `${summary.top_command_count} peticiones` : "--";
+    if (this.auditTopUser) this.auditTopUser.textContent = summary.top_user || "N/D";
+    if (this.auditTopUserCount) this.auditTopUserCount.textContent = summary.top_user_count ? `${summary.top_user_count} comandos` : "--";
 
-    // 2. Ranking de Nodos
+    // 2. Ranking de Nodos (Top 20)
     if (this.auditRankingTbody) {
       if (ranking.length === 0) {
         this.auditRankingTbody.innerHTML = `
@@ -890,29 +1016,41 @@ class MeshDashboard {
       } else {
         this.auditRankingTbody.innerHTML = ranking.map((r, idx) => {
           const isHeavy = r.count > 20;
-          const warningBadge = isHeavy ? `<span class="badge" style="background: var(--danger-bg); color: var(--danger); margin-left: 4px;">Uso Alto</span>` : '';
-          const name = r.name || r.short_name || 'Desconocido';
-          const lastTime = r.last_command_at ? r.last_command_at.replace('T', ' ').substring(11, 19) : '--:--';
+          const warningBadge = isHeavy ? `<span class="badge" style="background: var(--danger-bg); color: var(--danger); margin-left: 4px;">Uso Alto</span>` : "";
+          const name = r.name || r.short_name || r.node_id || "Desconocido";
+          
+          // Formateo de fecha en ranking: si es >24h o total, mostrar fecha completa
+          let lastTime = "--:--";
+          if (r.last_command_at) {
+            if (this.auditHours === 1 || this.auditHours === 24) {
+              lastTime = r.last_command_at.replace("T", " ").substring(11, 19);
+            } else {
+              lastTime = r.last_command_at.replace("T", " ").substring(0, 16);
+            }
+          }
 
           return `
             <tr>
               <td style="font-weight: 700; color: var(--text-dim);">${idx + 1}</td>
               <td>
                 <strong>${this.escapeHtml(name)}</strong>
-                ${r.short_name ? `<span style="font-size: 0.75rem; color: var(--primary); margin-left: 4px;">[${this.escapeHtml(r.short_name)}]</span>` : ''}
+                ${r.short_name ? `<span style="font-size: 0.75rem; color: var(--primary); margin-left: 4px;">[${this.escapeHtml(r.short_name)}]</span>` : ""}
                 ${warningBadge}
               </td>
-              <td style="font-family: monospace; font-size: 0.85rem;">${this.escapeHtml(r.node_id || '')}</td>
+              <td style="font-family: monospace; font-size: 0.85rem;">${this.escapeHtml(r.node_id || "")}</td>
               <td><span class="badge" style="background: var(--primary-bg); color: var(--primary); font-weight: 700;">${r.count}</span></td>
-              <td><code style="color: var(--warning);">/${this.escapeHtml(r.last_command || '')}</code></td>
+              <td><code style="color: var(--warning);">/${this.escapeHtml(r.last_command || "")}</code></td>
               <td style="font-size: 0.8rem; color: var(--text-muted);">${lastTime}</td>
             </tr>
           `;
-        }).join('');
+        }).join("");
       }
     }
 
-    // 3. Registro Cronológico
+    // 3. Registro Cronológico y Paginación
+    if (this.lblAuditPage) {
+      this.lblAuditPage.textContent = `Página ${this.auditPage}`;
+    }
     this.renderAuditLogs();
   }
 
@@ -922,10 +1060,10 @@ class MeshDashboard {
 
     if (this.auditSearchQuery) {
       logs = logs.filter(l => {
-        const cmd = (l.command || '').toLowerCase();
-        const nid = (l.node_id || '').toLowerCase();
-        const name = (l.name || '').toLowerCase();
-        const sname = (l.short_name || '').toLowerCase();
+        const cmd = (l.command || "").toLowerCase();
+        const nid = (l.node_id || "").toLowerCase();
+        const name = (l.name || "").toLowerCase();
+        const sname = (l.short_name || "").toLowerCase();
         return cmd.includes(this.auditSearchQuery) || nid.includes(this.auditSearchQuery) || name.includes(this.auditSearchQuery) || sname.includes(this.auditSearchQuery);
       });
     }
@@ -938,21 +1076,21 @@ class MeshDashboard {
     }
 
     this.auditLogsTbody.innerHTML = logs.map(l => {
-      const timeStr = l.created_at ? l.created_at.replace('T', ' ').substring(0, 19) : '--';
-      const sender = l.short_name || l.name || l.node_id || 'N/D';
+      const timeStr = l.created_at ? l.created_at.replace("T", " ").substring(0, 19) : "--";
+      const sender = l.short_name || l.name || l.node_id || "N/D";
 
       return `
         <tr>
           <td style="font-size: 0.8rem; color: var(--text-muted);">${timeStr}</td>
           <td>
             <strong>${this.escapeHtml(sender)}</strong>
-            <div style="font-size: 0.75rem; color: var(--text-dim); font-family: monospace;">${this.escapeHtml(l.node_id || '')}</div>
+            <div style="font-size: 0.75rem; color: var(--text-dim); font-family: monospace;">${this.escapeHtml(l.node_id || "")}</div>
           </td>
-          <td><span class="badge" style="background: var(--primary-bg); color: var(--primary);">/${this.escapeHtml(l.command || '')}</span></td>
-          <td style="font-size: 0.85rem; color: var(--text-muted);">${this.escapeHtml(l.message || l.parameters || '--')}</td>
+          <td><span class="badge" style="background: var(--primary-bg); color: var(--primary);">/${this.escapeHtml(l.command || "")}</span></td>
+          <td style="font-size: 0.85rem; color: var(--text-muted);">${this.escapeHtml(l.message || l.parameters || "--")}</td>
         </tr>
       `;
-    }).join('');
+    }).join("");
   }
 
   // ==========================================================================
@@ -986,7 +1124,7 @@ class MeshDashboard {
             </div>
           </div>
         `;
-      }).join('');
+      }).join("");
 
       return `
         <div class="card">
@@ -999,17 +1137,17 @@ class MeshDashboard {
           </div>
           ${optsHtml}
           <div style="font-size: 0.75rem; color: var(--text-dim); margin-top: 10px;">
-            Creada por ${this.escapeHtml(p.owner_node_id || 'N/D')}
+            Creada por ${this.escapeHtml(p.owner_node_id || "N/D")}
           </div>
         </div>
       `;
-    }).join('');
+    }).join("");
   }
 
   renderWeather(weather) {
     if (!this.weatherContent) return;
     if (!weather || Object.keys(weather).length === 0) {
-      this.weatherContent.textContent = 'No hay datos meteorológicos recientes en la base de datos.';
+      this.weatherContent.textContent = "No hay datos meteorológicos recientes en la base de datos.";
       return;
     }
 
@@ -1017,7 +1155,7 @@ class MeshDashboard {
       this.weatherProvince.textContent = `AEMET · ${weather.province}`;
     }
 
-    this.weatherContent.textContent = weather.summary || weather.data_raw || 'Predicción disponible.';
+    this.weatherContent.textContent = weather.summary || weather.data_raw || "Predicción disponible.";
   }
 
   // ==========================================================================
@@ -1030,44 +1168,44 @@ class MeshDashboard {
 
     const req = {
       action: action,
-      req_id: 'req_' + Math.random().toString(36).substring(2, 9),
+      req_id: "req_" + Math.random().toString(36).substring(2, 9),
       params: params,
     };
 
     this.ws.send(JSON.stringify(req));
   }
 
-  showToast(message, type = 'info') {
+  showToast(message, type = "info") {
     if (!this.toastContainer) return;
 
-    const toast = document.createElement('div');
-    toast.className = 'toast';
-    if (type === 'danger') toast.style.borderLeftColor = 'var(--danger)';
-    if (type === 'warning') toast.style.borderLeftColor = 'var(--warning)';
+    const toast = document.createElement("div");
+    toast.className = "toast";
+    if (type === "danger") toast.style.borderLeftColor = "var(--danger)";
+    if (type === "warning") toast.style.borderLeftColor = "var(--warning)";
     toast.textContent = message;
 
     this.toastContainer.appendChild(toast);
 
     setTimeout(() => {
-      toast.style.opacity = '0';
-      toast.style.transform = 'translateY(10px)';
-      toast.style.transition = 'all 0.3s ease';
+      toast.style.opacity = "0";
+      toast.style.transform = "translateY(10px)";
+      toast.style.transition = "all 0.3s ease";
       setTimeout(() => toast.remove(), 300);
     }, 3000);
   }
 
   escapeHtml(str) {
-    if (!str) return '';
+    if (!str) return "";
     return String(str)
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&#039;');
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#039;");
   }
 }
 
 // Inicialización global al cargar DOM
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener("DOMContentLoaded", () => {
   window.dashboard = new MeshDashboard();
 });

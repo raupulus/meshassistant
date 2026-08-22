@@ -57,6 +57,7 @@ Todo callback **registra el comando** con `Database().log_command(...)` (en
 | `/help [cmd]` | `Commands/help.py` | No | ✅ | Lista comandos (omite alias `hidden`) o muestra `info` de uno. |
 | `/about` | `Commands/about.py` | No | ✅ | Texto fijo del proyecto. |
 | `/ping` | `Commands/ping.py` | Sí | ✅ | Guarda ping en BD; responde saltos o "via MQTT". |
+| `/test` | `Commands/ping.py` | Sí | ✅ | Alias directo de `/ping`. |
 | `/chiste [add\|help …]` | `Commands/chiste.py` | Sí | ✅ | Aleatorio, alta (`need_approve`+`need_upload`) o ayuda. |
 | `/maremoto` | `Commands/maremoto.py` | Sí | ✅ | Años/meses/días desde 1/11/1755. |
 | `/weather` | `Commands/weather.py` | No | ✅ | Tiempo actual desde BD (`aemet_weather`, cron AEMET). |

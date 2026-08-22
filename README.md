@@ -254,7 +254,7 @@ comando declara en `data.py` si responde también **en grupo/canal** (`in_group`
 |---|---|---|---|
 | `/help [cmd]` | No | Ayuda general o detalle de un comando | ✅ |
 | `/about` | No | Información del proyecto | ✅ |
-| `/ping` | Sí | Devuelve saltos/SNR/MQTT y guarda el ping | ✅ |
+| `/ping` (`/test`) | Sí | Devuelve saltos/SNR/MQTT y guarda el ping (alias /test) | ✅ |
 | `/routers` (`/repetidores`) | Sí | Estado de routers (SNR exterior de trace, saltos, tiempo y offline 24h) | ✅ |
 | `/chiste [add …]` | Sí | Chiste aleatorio o alta de uno nuevo | ✅ |
 | `/maremoto` | Sí | Tiempo desde el último maremoto en Chipiona | ✅ |

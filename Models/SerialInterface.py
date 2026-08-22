@@ -394,6 +394,34 @@ class SerialInterface:
             log_p(f"↩️ Respondiendo en el canal {channel}")
             return self.send(msg, dest="^all", channel=channel)
 
+    def request_node_info(self, destination_id: str) -> bool:
+        """Solicita NodeInfo a un nodo remoto a través de la radio Meshtastic."""
+        if not self.interface:
+            log_p("No se puede solicitar NodeInfo: interfaz serie no inicializada", level="WARN")
+            return False
+
+        log_p(f"Solicitando NodeInfo al nodo {destination_id}...")
+        try:
+            dest_val = destination_id
+            if hasattr(self.interface, 'sendNodeInfo'):
+                self.interface.sendNodeInfo(destinationId=dest_val)
+                return True
+            elif hasattr(self.interface, 'requestNodeInfo'):
+                self.interface.requestNodeInfo(destinationId=dest_val)
+                return True
+            elif hasattr(self.interface, 'sendData'):
+                # Enviar petición a puerto NODEINFO_APP si los helpers directos no existen
+                from meshtastic import portnums_pb2
+                port = portnums_pb2.PortNum.NODEINFO_APP if hasattr(portnums_pb2, 'PortNum') else 4
+                self.interface.sendData(b"", destinationId=dest_val, portNum=port, wantAck=True)
+                return True
+            else:
+                log_p(f"Métodos de requestNodeInfo no disponibles en la versión actual de meshtastic", level="DEBUG")
+                return False
+        except (Exception, SystemExit) as e:
+            log_p(f"Error al solicitar NodeInfo a {destination_id}: {e}", level="WARN")
+            return False
+
     def on_receive_nodeinfo (self, packet, interface):
         """
         TODO: Revisar si entra en este evento, parece que no

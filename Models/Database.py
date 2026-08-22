@@ -464,8 +464,8 @@ class Database:
         now = datetime.now().isoformat(timespec="seconds")
         with closing(self._connect()) as conn:
             conn.execute(
-                'INSERT OR IGNORE INTO nodes (node_id, updated_at) VALUES (?, ?)',
-                (node_id, now),
+                'INSERT OR IGNORE INTO nodes (node_id, created_at, updated_at) VALUES (?, ?, ?)',
+                (node_id, now, now),
             )
             conn.commit()
 
@@ -1558,7 +1558,7 @@ class Database:
         with closing(self._connect()) as conn:
             sql = """
                 SELECT node_id AS id, node_id, name, num, short_name, mac_addr, hw_model, role,
-                       is_favorite, snr, rssi, hops, uptime, via_mqtt, battery, voltage, last_heard, updated_at
+                       is_favorite, snr, rssi, hops, uptime, via_mqtt, battery, voltage, last_heard, created_at, updated_at
                 FROM nodes
             """
             params: List[Any] = []
@@ -1654,11 +1654,13 @@ class Database:
     # ---------- AUDITORÍA DE COMANDOS ----------
     def get_commands_audit(
         self,
-        limit: int = 50,
+        limit: int = 100,
+        offset: int = 0,
+        hours: Optional[int] = None,
         node_id: Optional[str] = None,
         command: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
-        """Historial cronológico detallado de comandos ejecutados."""
+        """Historial cronológico detallado de comandos ejecutados con soporte de paginación."""
         with closing(self._connect()) as conn:
             sql = """
                 SELECT c.id, c.node_id, c.command, c.message, c.parameters, c.created_at,
@@ -1668,6 +1670,10 @@ class Database:
             """
             conds = []
             params = []
+            if hours is not None:
+                threshold = (datetime.now() - timedelta(hours=hours)).isoformat(timespec='seconds')
+                conds.append("c.created_at >= ?")
+                params.append(threshold)
             if node_id:
                 conds.append("c.node_id = ?")
                 params.append(node_id)
@@ -1676,14 +1682,15 @@ class Database:
                 params.append(command)
             if conds:
                 sql += " WHERE " + " AND ".join(conds)
-            sql += " ORDER BY c.id DESC LIMIT ?"
+            sql += " ORDER BY c.id DESC LIMIT ? OFFSET ?"
             params.append(int(limit))
+            params.append(int(offset))
 
             cur = conn.execute(sql, tuple(params))
             return [dict(r) for r in cur.fetchall()]
 
-    def get_top_command_users(self, limit: int = 10, hours: Optional[int] = 24) -> List[Dict[str, Any]]:
-        """Ranking de nodos con más comandos ejecutados en las últimas N horas (o histórico)."""
+    def get_top_command_users(self, limit: int = 20, hours: Optional[int] = 24) -> List[Dict[str, Any]]:
+        """Ranking de nodos con más comandos ejecutados (Top 20 por defecto)."""
         with closing(self._connect()) as conn:
             sql = """
                 SELECT c.node_id, COUNT(*) AS count,
@@ -1704,51 +1711,57 @@ class Database:
             cur = conn.execute(sql, tuple(params))
             return [dict(r) for r in cur.fetchall()]
 
-    def get_commands_audit_summary(self, hours: int = 24) -> Dict[str, Any]:
+    def get_commands_audit_summary(self, hours: Optional[int] = 24) -> Dict[str, Any]:
         """Resumen estadístico de uso de comandos para tarjetas de dashboard."""
         out = {
-            "total_24h": 0,
-            "unique_nodes_24h": 0,
-            "top_command_24h": "N/D",
+            "total": 0,
+            "unique_nodes": 0,
+            "top_command": "N/D",
             "top_command_count": 0,
-            "top_user_24h": "N/D",
+            "top_user": "N/D",
             "top_user_count": 0,
         }
         with closing(self._connect()) as conn:
-            threshold = (datetime.now() - timedelta(hours=hours)).isoformat(timespec='seconds')
+            params = []
+            where_sql = ""
+            if hours is not None:
+                threshold = (datetime.now() - timedelta(hours=hours)).isoformat(timespec='seconds')
+                where_sql = "WHERE created_at >= ?"
+                params.append(threshold)
             
-            # Total 24h y nodos únicos
+            # Total y nodos únicos
             row = conn.execute(
-                "SELECT COUNT(*) AS total, COUNT(DISTINCT node_id) AS unique_nodes FROM commands_sent WHERE created_at >= ?",
-                (threshold,),
+                f"SELECT COUNT(*) AS total, COUNT(DISTINCT node_id) AS unique_nodes FROM commands_sent {where_sql}",
+                tuple(params),
             ).fetchone()
             if row:
-                out["total_24h"] = int(row["total"] or 0)
-                out["unique_nodes_24h"] = int(row["unique_nodes"] or 0)
+                out["total"] = int(row["total"] or 0)
+                out["unique_nodes"] = int(row["unique_nodes"] or 0)
 
-            # Comando top 24h
+            # Comando top
             row = conn.execute(
-                "SELECT command, COUNT(*) AS c FROM commands_sent WHERE created_at >= ? GROUP BY command ORDER BY c DESC LIMIT 1",
-                (threshold,),
+                f"SELECT command, COUNT(*) AS c FROM commands_sent {where_sql} GROUP BY command ORDER BY c DESC LIMIT 1",
+                tuple(params),
             ).fetchone()
             if row:
-                out["top_command_24h"] = str(row["command"] or "N/D")
+                out["top_command"] = str(row["command"] or "N/D")
                 out["top_command_count"] = int(row["c"] or 0)
 
-            # Nodo top 24h
+            # Nodo top
+            where_join = f"WHERE c.created_at >= ?" if hours is not None else ""
             row = conn.execute(
-                """
+                f"""
                 SELECT c.node_id, n.short_name, n.name, COUNT(*) AS cnt
                 FROM commands_sent c
                 LEFT JOIN nodes n ON n.node_id = c.node_id
-                WHERE c.created_at >= ?
+                {where_join}
                 GROUP BY c.node_id ORDER BY cnt DESC LIMIT 1
                 """,
-                (threshold,),
+                tuple(params),
             ).fetchone()
             if row:
                 disp_name = row["short_name"] or row["name"] or row["node_id"] or "N/D"
-                out["top_user_24h"] = str(disp_name)
+                out["top_user"] = str(disp_name)
                 out["top_user_count"] = int(row["cnt"] or 0)
 
         return out

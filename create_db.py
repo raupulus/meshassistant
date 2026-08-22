@@ -241,12 +241,17 @@ def _execute_schema(conn: sqlite3.Connection) -> None:
     if not _has_column('nodes', 'voltage'):
         conn.execute('ALTER TABLE nodes ADD COLUMN voltage REAL NULL')
         conn.commit()
+    if not _has_column('nodes', 'created_at'):
+        conn.execute('ALTER TABLE nodes ADD COLUMN created_at TEXT NULL')
+        conn.execute('UPDATE nodes SET created_at = updated_at WHERE created_at IS NULL')
+        conn.commit()
 
     # Create indexes if not exist
     cur.execute('CREATE INDEX IF NOT EXISTS idx_chistes_need_upload ON chistes(need_upload)')
     cur.execute('CREATE INDEX IF NOT EXISTS idx_chistes_need_approve ON chistes(need_approve)')
     cur.execute('CREATE UNIQUE INDEX IF NOT EXISTS idx_chistes_chiste_id ON chistes(chiste_id)')
     cur.execute('CREATE INDEX IF NOT EXISTS idx_nodes_role ON nodes(role)')
+    cur.execute('CREATE INDEX IF NOT EXISTS idx_commands_sent_created ON commands_sent(created_at, node_id)')
     # Índices para optimizar cola y consultas de traces
     cur.execute('CREATE INDEX IF NOT EXISTS idx_traces_status_created ON traces(status, created_at)')
     cur.execute('CREATE INDEX IF NOT EXISTS idx_traces_to_updated ON traces("to", updated_at)')

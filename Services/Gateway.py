@@ -186,6 +186,18 @@ class GatewayService:
                                 diff_sec = None
                         r['last_seen_sec'] = diff_sec
                         r['status'] = 'online' if (diff_sec is not None and diff_sec < 86400 and not r.get('offline')) else 'offline'
+                        
+                        # Enriquecer con información de trace real más reciente vía base RAU0
+                        if nid:
+                            try:
+                                t_info = self.db.get_latest_trace_route_info(nid, base_identifiers=['RAU0'])
+                                if t_info:
+                                    r['trace_hops'] = t_info.get('hops')
+                                    r['trace_snr_text'] = t_info.get('snr_text')
+                                    r['trace_intermediates'] = t_info.get('intermediates', [])
+                            except Exception:
+                                pass
+
                         enriched_routers.append(r)
                     
                     snapshot_data["routers"] = enriched_routers
@@ -205,6 +217,13 @@ class GatewayService:
                     raise ValueError("Parámetro 'dest' obligatorio")
                 trace_id = self.db.enqueue_trace(str(dest))
                 response["data"] = {"trace_id": trace_id, "status": "queued"}
+
+            elif action == "request_node_info":
+                node_id = params.get("node_id") or params.get("dest")
+                if not node_id:
+                    raise ValueError("Parámetro 'node_id' obligatorio")
+                outbox_id = self.db.enqueue_outbox("__REQ_NODEINFO__", dest=str(node_id), channel=0)
+                response["data"] = {"queued": True, "outbox_id": outbox_id, "node_id": str(node_id)}
 
             elif action == "get_polls":
                 polls = self.db.encuesta_list_active()
@@ -258,14 +277,18 @@ class GatewayService:
                 }
 
             elif action == "get_commands_audit":
-                hours = params.get("hours", 24)
-                limit = params.get("limit", 50)
+                h_param = params.get("hours", 24)
+                hours = None if (h_param in (None, 'all', 'None', 0)) else int(h_param)
+                limit = int(params.get("limit", 100))
+                offset = int(params.get("offset", 0))
                 node_id = params.get("node_id")
                 cmd = params.get("command")
                 response["data"] = {
-                    "ranking": self.db.get_top_command_users(limit=15, hours=hours),
-                    "recent_logs": self.db.get_commands_audit(limit=limit, node_id=node_id, command=cmd),
-                    "summary": self.db.get_commands_audit_summary(hours=hours if hours else 24),
+                    "ranking": self.db.get_top_command_users(limit=20, hours=hours),
+                    "recent_logs": self.db.get_commands_audit(limit=limit, offset=offset, hours=hours, node_id=node_id, command=cmd),
+                    "summary": self.db.get_commands_audit_summary(hours=hours),
+                    "offset": offset,
+                    "limit": limit,
                 }
 
             elif action == "restart_serial":
