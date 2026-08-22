@@ -255,6 +255,10 @@ def _execute_schema(conn: sqlite3.Connection) -> None:
     # Índices para optimizar cola y consultas de traces
     cur.execute('CREATE INDEX IF NOT EXISTS idx_traces_status_created ON traces(status, created_at)')
     cur.execute('CREATE INDEX IF NOT EXISTS idx_traces_to_updated ON traces("to", updated_at)')
+    
+    # Limpieza de registros corruptos/vacíos
+    conn.execute("DELETE FROM nodes WHERE node_id IS NULL OR trim(node_id) = '' OR node_id IN ('None', 'null', 'Desconocido')")
+    conn.execute("DELETE FROM commands_sent WHERE node_id IS NULL OR trim(node_id) = '' OR command IS NULL OR trim(command) IN ('', '/', '!')")
     conn.commit()
 
     # Migración idempotente para adaptar la tabla traces existente

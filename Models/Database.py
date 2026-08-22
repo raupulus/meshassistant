@@ -460,23 +460,27 @@ class Database:
         return found_nodes
 
     def create_node_if_not_exists(self, node_id: str, data: Optional[Dict[str, Any]] = None) -> None:
-        """Crea un nodo si no existe. Ignora si ya existe."""
+        """Crea un nodo si no existe. Ignora si ya existe o si el ID es inválido."""
+        if not node_id or str(node_id).strip() in ("", "None", "null", "Desconocido", "none"):
+            return
+        clean_id = str(node_id).strip()
         now = datetime.now().isoformat(timespec="seconds")
         with closing(self._connect()) as conn:
             conn.execute(
                 'INSERT OR IGNORE INTO nodes (node_id, created_at, updated_at) VALUES (?, ?, ?)',
-                (node_id, now, now),
+                (clean_id, now, now),
             )
             conn.commit()
 
         # Si se pasa data, realizar una actualización inicial
         if data:
-            self.update_node(node_id, data)
+            self.update_node(clean_id, data)
 
     def update_node(self, node_id: str, data: Dict[str, Any]) -> None:
         """Actualiza un nodo por node_id con las claves proporcionadas en data."""
-        if not data:
+        if not node_id or str(node_id).strip() in ("", "None", "null", "Desconocido", "none") or not data:
             return
+        clean_id = str(node_id).strip()
 
         allowed = {
             "name",
@@ -514,7 +518,7 @@ class Database:
             return
 
         values.append(datetime.now().isoformat(timespec="seconds"))
-        values.append(node_id)
+        values.append(clean_id)
 
         set_clause = ", ".join(fields + ["updated_at = ?"])  # siempre actualizar updated_at
 
@@ -613,9 +617,20 @@ class Database:
                     # El último elemento es siempre nuestro nodo local receptor (Bot)
                     clean_path = parsed[:-1]
                     reversed_path = clean_path[::-1]
-                    # reversed_path[0] es la base/antena, reversed_path[-1] es el destino
+                    def resolve_names(n_list):
+                        out_names = []
+                        for n_id in n_list:
+                            nr = conn.execute("SELECT short_name, name FROM nodes WHERE UPPER(node_id) = UPPER(?) OR UPPER(short_name) = UPPER(?) LIMIT 1", (n_id, n_id)).fetchone()
+                            if nr and nr["short_name"]:
+                                out_names.append(nr["short_name"])
+                            elif nr and nr["name"]:
+                                out_names.append(nr["name"])
+                            else:
+                                out_names.append(n_id)
+                        return out_names
+
                     snrs = [item[1] for item in reversed_path if item[1] is not None]
-                    intermediate_nodes = [item[0] for item in reversed_path[1:-1]]
+                    intermediate_nodes = resolve_names([item[0] for item in reversed_path[1:-1]])
                     hops = len(intermediate_nodes)
                     snr_text = ", ".join(f"{s:.1f}dB" for s in snrs) if snrs else None
                     return {
@@ -642,7 +657,7 @@ class Database:
                     clean_path = parsed[1:]
                     # Tramo exterior: desde la base hasta el destino
                     snrs = [item[1] for item in clean_path[1:] if item[1] is not None]
-                    intermediate_nodes = [item[0] for item in clean_path[1:-1]]
+                    intermediate_nodes = resolve_names([item[0] for item in clean_path[1:-1]])
                     hops = len(intermediate_nodes)
                     snr_text = ", ".join(f"{s:.1f}dB" for s in snrs) if snrs else None
                     return {
@@ -1233,11 +1248,15 @@ class Database:
         - message: texto posterior al comando y parámetros
         - parameters: reservado para uso futuro (se almacena tal cual)
         """
+        if not command or str(command).strip() in ("", "/", "!", "None", "null"):
+            return 0
+        clean_node_id = str(node_id).strip() if (node_id and str(node_id).strip() not in ("", "None", "null", "Desconocido")) else None
+        clean_cmd = str(command).strip().lstrip("/!").lower()
         when_str = datetime.now().isoformat(timespec='seconds')
         with closing(self._connect()) as conn:
             cur = conn.execute(
                 'INSERT INTO commands_sent (node_id, command, parameters, message, created_at) VALUES (?, ?, ?, ?, ?)',
-                (node_id, command, parameters, message, when_str),
+                (clean_node_id, clean_cmd, parameters, message, when_str),
             )
             conn.commit()
             return int(cur.lastrowid)
@@ -1560,10 +1579,11 @@ class Database:
                 SELECT node_id AS id, node_id, name, num, short_name, mac_addr, hw_model, role,
                        is_favorite, snr, rssi, hops, uptime, via_mqtt, battery, voltage, last_heard, created_at, updated_at
                 FROM nodes
+                WHERE node_id IS NOT NULL AND trim(node_id) != '' AND node_id NOT IN ('None', 'null', 'Desconocido')
             """
             params: List[Any] = []
             if only_rf:
-                sql += " WHERE COALESCE(via_mqtt, 0) = 0"
+                sql += " AND COALESCE(via_mqtt, 0) = 0"
             sql += " ORDER BY is_favorite DESC, COALESCE(last_heard, 0) DESC, updated_at DESC LIMIT ?"
             params.append(int(limit))
             cur = conn.execute(sql, tuple(params))
@@ -1621,15 +1641,23 @@ class Database:
 
     # ---------- OUTBOX (COLA DE MENSAJES SALIENTES) ----------
     def enqueue_outbox(self, text: str, dest: str = '^all', channel: int = 0) -> int:
-        """Encola un mensaje para ser enviado a la malla por el proceso de radio (main.py)."""
-        when_str = datetime.now().isoformat(timespec='seconds')
+        """Encola un mensaje para ser enviado a la malla por el proceso de radio (main.py). Deduplica si ya está pendiente."""
+        now_str = datetime.now().isoformat(timespec='seconds')
         with closing(self._connect()) as conn:
             cur = conn.execute(
+                "SELECT id FROM outbox WHERE text = ? AND dest = ? AND channel = ? AND status = 'pending' ORDER BY id ASC LIMIT 1",
+                (text, str(dest), int(channel)),
+            )
+            row = cur.fetchone()
+            if row:
+                return int(row['id'])
+
+            cur2 = conn.execute(
                 "INSERT INTO outbox (text, dest, channel, status, created_at) VALUES (?, ?, ?, 'pending', ?)",
-                (text, str(dest), int(channel), when_str),
+                (text, str(dest), int(channel), now_str),
             )
             conn.commit()
-            return int(cur.lastrowid)
+            return int(cur2.lastrowid)
 
     def get_next_pending_outbox(self) -> Optional[Dict[str, Any]]:
         """Obtiene el siguiente mensaje pendiente de envío."""

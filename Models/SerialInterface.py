@@ -740,8 +740,18 @@ class SerialInterface:
 
             # Instancio cada nodo y lo almaceno en un diccionario
             for node_num, node_info in node_list.items():
-                user = node_info.get('user', { })
-                id = user.get('id', 'Desconocido')
+                user = node_info.get('user', {})
+                id = user.get('id')
+                if not id and node_num:
+                    try:
+                        id = f"!{int(node_num):08x}"
+                    except Exception:
+                        id = None
+                
+                if not id or str(id).strip() in ("", "None", "null", "Desconocido"):
+                    continue
+
+                id = str(id).strip()
                 newNodeInfo = Node(id)
 
                 newNodeInfo.update_metadata({
@@ -753,9 +763,6 @@ class SerialInterface:
                     "role": user.get('role', None),
 
                     "snr": node_info.get('snr', None),
-                    #"rssi": packet.get('rxRssi', None),
-                    #"hop_limit": packet.get('hopLimit', None),
-                    #"hop_start": packet.get('hopStart', None),
                     "last_heard": node_info.get('lastHeard', None),
                     "hops": node_info.get('hopsAway', None),
                     "is_favorite": node_info.get('isFavorite', None),
@@ -774,9 +781,18 @@ class SerialInterface:
             # Verifico si el paquete contiene un mensaje de texto
             if 'decoded' in packet and 'text' in packet['decoded']:
                 msg = packet['decoded']['text']
-                from_id = packet.get('fromId', 'Desconocido')
-                to_id = packet.get('toId', 'Desconocido')
-                to_num = packet.get('to', 'N/A')
+                from_id = packet.get('fromId')
+                if not from_id and packet.get('from'):
+                    try:
+                        from_id = f"!{int(packet['from']):08x}"
+                    except Exception:
+                        from_id = None
+                
+                if not from_id or str(from_id).strip() in ("", "None", "null", "Desconocido"):
+                    from_id = None
+
+                to_id = packet.get('toId', '^all')
+                to_num = packet.get('to', 0xFFFFFFFF)
 
                 if to_id == '^all' or to_num == 0xFFFFFFFF:
                     is_direct = False
@@ -784,27 +800,22 @@ class SerialInterface:
                     is_direct = True
 
                 # Pedir info del nodo que envía
-                fromNodeInfo = self.node_dict.get(from_id, None)
+                fromNodeInfo = self.node_dict.get(from_id, None) if from_id else None
 
-                if not fromNodeInfo:
+                if from_id and not fromNodeInfo:
                     fromNodeInfo = Node(from_id)
                     self.node_dict[from_id] = fromNodeInfo
 
-                fromNodeInfo.update_metadata({
-                    #"name": user.get('longName', None),
-                    "num": packet.get('from', None),
-                    #"short_name": user.get('shortName', None),
-                    #"mac_addr": user.get('macaddr', None),
-                    #"hw_model": user.get('hwModel', None),
-
-                    "snr": packet.get('rxSnr', None),
-                    "rssi": packet.get('rxRssi', None),
-                    "hop_limit": packet.get('hopLimit', None),
-                    "hop_start": packet.get('hopStart', None),
-
-                    "is_direct": is_direct,
-                    "via_mqtt": packet.get('viaMqtt', False),
-                })
+                if fromNodeInfo:
+                    fromNodeInfo.update_metadata({
+                        "num": packet.get('from', None),
+                        "snr": packet.get('rxSnr', None),
+                        "rssi": packet.get('rxRssi', None),
+                        "hop_limit": packet.get('hopLimit', None),
+                        "hop_start": packet.get('hopStart', None),
+                        "is_direct": is_direct,
+                        "via_mqtt": packet.get('viaMqtt', False),
+                    })
 
 
                 metadata = {

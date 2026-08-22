@@ -344,7 +344,7 @@ class MeshDashboard {
         this.addMessage(data, ts);
         break;
       case "node_updated":
-        if (data.id) {
+        if (data.id && String(data.id).trim() && data.id !== "None" && data.id !== "Desconocido") {
           const prev = this.nodesMap.get(data.id) || {};
           this.nodesMap.set(data.id, { ...prev, ...data });
           this.renderNodesTable();
@@ -445,7 +445,9 @@ class MeshDashboard {
       if (data.nodes && Array.isArray(data.nodes)) {
         data.nodes.forEach(n => {
           const id = n.id || n.node_id;
-          if (id) this.nodesMap.set(id, { ...(this.nodesMap.get(id) || {}), ...n });
+          if (id && String(id).trim() && id !== "None" && id !== "null" && id !== "Desconocido") {
+            this.nodesMap.set(id, { ...(this.nodesMap.get(id) || {}), ...n });
+          }
         });
         this.renderNodesTable();
         this.renderChannelFiltersAndDestinations();
@@ -543,7 +545,7 @@ class MeshDashboard {
   addMessage(msg, ts) {
     const timestamp = ts || new Date().toISOString();
     
-    // Si viene un mensaje saliente/confirmado del bot, comprobar si reconcilia un mensaje optimista
+    // Si viene un mensaje saliente/confirmado del bot, reconciliar optimista
     const isBotSender = (msg.from === this.localNode?.my_node_id || msg.from_name === "Bot (Local)" || msg.is_outgoing);
     
     if (isBotSender) {
@@ -553,7 +555,6 @@ class MeshDashboard {
         String(old.channel ?? 0) === String(msg.channel ?? 0)
       );
       if (pendingIdx !== -1) {
-        // Actualizar el optimista en lugar de duplicar
         this.messages[pendingIdx] = {
           ...this.messages[pendingIdx],
           ...msg,
@@ -689,7 +690,7 @@ class MeshDashboard {
   }
 
   // ==========================================================================
-  // Renderizado: Routers
+  // Renderizado: Routers (Ordenación: Online/Directos/SNR y Ruta Completa)
   // ==========================================================================
   renderRouters(routers) {
     if (!this.routersGrid) return;
@@ -700,18 +701,62 @@ class MeshDashboard {
       return;
     }
 
-    this.routersGrid.innerHTML = routers.map(r => {
+    // Ordenación estratégica:
+    // 1. ONLINE primero, OFFLINE al final
+    // 2. En ONLINE: Directos primero (menor saltos), luego mayor SNR
+    const sortedRouters = [...routers].sort((a, b) => {
+      const isOnlineA = (a.status === "online") || (a.last_seen_sec !== undefined && a.last_seen_sec !== null && a.last_seen_sec < 86400);
+      const isOnlineB = (b.status === "online") || (b.last_seen_sec !== undefined && b.last_seen_sec !== null && b.last_seen_sec < 86400);
+
+      if (isOnlineA !== isOnlineB) return isOnlineB ? 1 : -1;
+
+      // Ambos online:
+      const hopsA = a.trace_hops !== undefined ? a.trace_hops : (a.hops !== undefined ? a.hops : 99);
+      const hopsB = b.trace_hops !== undefined ? b.trace_hops : (b.hops !== undefined ? b.hops : 99);
+
+      if (hopsA !== hopsB) return hopsA - hopsB;
+
+      // A igual saltos, mayor SNR primero
+      const snrA = a.snr !== undefined && a.snr !== null ? Number(a.snr) : -99;
+      const snrB = b.snr !== undefined && b.snr !== null ? Number(b.snr) : -99;
+      return snrB - snrA;
+    });
+
+    this.routersGrid.innerHTML = sortedRouters.map(r => {
       const isOnline = (r.status === "online") || (r.last_seen_sec !== undefined && r.last_seen_sec !== null && r.last_seen_sec < 86400);
       
-      // SNR enriquecido vía trace / base RAU0 vs directo
-      let snrDisplay = "--";
-      if (r.trace_snr_text) {
-        const hopsLabel = r.trace_hops === 0 ? "Directo" : `${r.trace_hops} ${r.trace_hops === 1 ? "salto" : "saltos"}`;
-        snrDisplay = `<strong>${this.escapeHtml(r.trace_snr_text)}</strong> <span style="font-size: 0.75rem; color: var(--primary);">(${hopsLabel})</span>`;
-      } else if (r.snr !== undefined && r.snr !== null) {
-        snrDisplay = `${Number(r.snr).toFixed(1)} dB <span style="font-size: 0.75rem; color: var(--text-dim);">(RF Directo)</span>`;
-      }
+      // Construir indicador de Enlace y Ruta
+      let routeBadge = "";
+      let signalDetails = "";
       
+      if (r.trace_hops !== undefined && r.trace_hops !== null) {
+        if (r.trace_hops === 0) {
+          routeBadge = `<span class="badge" style="background: var(--success-bg); color: var(--success);">Directo a Base (RAU0)</span>`;
+          signalDetails = `<strong>${this.escapeHtml(r.trace_snr_text || "")}</strong>`;
+        } else {
+          routeBadge = `<span class="badge" style="background: var(--primary-bg); color: var(--primary);">${r.trace_hops} ${r.trace_hops === 1 ? "salto" : "saltos"}</span>`;
+          const inters = (r.trace_intermediates && r.trace_intermediates.length > 0) ? r.trace_intermediates.join(" ➔ ") : "";
+          const routeStr = inters ? `RAU0 ➔ ${inters} ➔ ${r.name || r.id}` : `RAU0 ➔ ${r.name || r.id}`;
+          signalDetails = `<div><strong>${this.escapeHtml(r.trace_snr_text || "")}</strong></div><div style="font-size: 0.75rem; color: var(--text-dim); margin-top: 2px;">Ruta: ${this.escapeHtml(routeStr)}</div>`;
+        }
+      } else if (r.snr !== undefined && r.snr !== null) {
+        const isDir = (r.hops === 0);
+        routeBadge = `<span class="badge badge-ch0">${isDir ? "Directo (RF)" : r.hops + " saltos (RF)"}</span>`;
+        signalDetails = `<strong>${Number(r.snr).toFixed(1)} dB</strong>`;
+      } else {
+        signalDetails = "--";
+      }
+
+      // Batería si está disponible
+      let batteryStr = "";
+      if (r.battery !== undefined && r.battery !== null) {
+        const bVal = r.battery > 100 ? "⚡ 100%" : `${r.battery}%`;
+        const vVal = (r.voltage !== undefined && r.voltage !== null) ? ` (${Number(r.voltage).toFixed(2)}V)` : "";
+        batteryStr = `<div class="card-row"><span>Batería:</span><span style="color: var(--success); font-weight: 600;">${bVal}${vVal}</span></div>`;
+      } else if (r.voltage !== undefined && r.voltage !== null) {
+        batteryStr = `<div class="card-row"><span>Voltaje:</span><span>${Number(r.voltage).toFixed(2)}V</span></div>`;
+      }
+
       let lastSeen = "sin señal";
       if (r.last_seen_sec !== undefined && r.last_seen_sec !== null) {
         const s = r.last_seen_sec;
@@ -727,23 +772,27 @@ class MeshDashboard {
         <div class="card">
           <div class="card-header">
             <span>${this.escapeHtml(r.name || routerId)}</span>
-            <span class="badge" style="background: ${isOnline ? "var(--success-bg)" : "var(--danger-bg)"}; color: ${isOnline ? "var(--success)" : "var(--danger)"};">
-              ${isOnline ? "ONLINE" : "OFFLINE"}
-            </span>
+            <div style="display: flex; gap: 4px; align-items: center;">
+              ${routeBadge}
+              <span class="badge" style="background: ${isOnline ? "var(--success-bg)" : "var(--danger-bg)"}; color: ${isOnline ? "var(--success)" : "var(--danger)"};">
+                ${isOnline ? "ONLINE" : "OFFLINE"}
+              </span>
+            </div>
           </div>
           <div class="card-row">
             <span>ID Hex:</span>
             <span style="font-family: monospace;">${this.escapeHtml(routerId)}</span>
           </div>
           <div class="card-row">
-            <span>Señal (Trace/Base):</span>
-            <span>${snrDisplay}</span>
+            <span>Calidad / Ruta:</span>
+            <span>${signalDetails}</span>
           </div>
+          ${batteryStr}
           <div class="card-row">
             <span>Última señal:</span>
             <span>${lastSeen}</span>
           </div>
-          <button class="btn-secondary" style="margin-top: 6px; width: 100%; font-weight: 600;" onclick="window.dashboard.requestTraceTo('${routerId}')">
+          <button class="btn-secondary" style="margin-top: 6px; width: 100%; font-weight: 600;" onclick="window.dashboard.requestTraceTo('${routerId}', this)">
             📍 Lanzar Traceroute
           </button>
         </div>
@@ -751,12 +800,22 @@ class MeshDashboard {
     }).join("");
   }
 
-  requestTraceTo(nodeId) {
+  requestTraceTo(nodeId, btn) {
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = "Encolando...";
+      setTimeout(() => { btn.disabled = false; btn.textContent = "📍 Lanzar Traceroute"; }, 3000);
+    }
     this.sendAction("request_trace", { dest: nodeId });
     this.showToast(`Traceroute encolado hacia ${nodeId}`);
   }
 
-  requestNodeInfo(nodeId) {
+  requestNodeInfo(nodeId, btn) {
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = "Pidiendo...";
+      setTimeout(() => { btn.disabled = false; btn.textContent = "ℹ️ Info"; }, 3000);
+    }
     this.sendAction("request_node_info", { node_id: nodeId });
     this.showToast(`Petición NodeInfo enviada a ${nodeId}`);
   }
@@ -767,7 +826,10 @@ class MeshDashboard {
   renderNodesTable() {
     if (!this.nodesTbody) return;
 
-    let nodes = Array.from(this.nodesMap.values());
+    let nodes = Array.from(this.nodesMap.values()).filter(n => {
+      const id = n.id || n.node_id;
+      return id && String(id).trim() && id !== "None" && id !== "null" && id !== "Desconocido";
+    });
     if (this.countNodes) this.countNodes.textContent = nodes.length;
 
     // 1. Filtro texto (busca por nombre largo, nombre corto o ID)
@@ -878,10 +940,10 @@ class MeshDashboard {
           <td style="font-size: 0.8rem; color: var(--text-dim);">${createdAtStr}</td>
           <td>
             <div style="display: flex; gap: 4px;">
-              <button class="btn-secondary" style="padding: 3px 6px; font-size: 0.75rem;" title="Lanzar Traceroute" onclick="window.dashboard.requestTraceTo('${nodeId}')">
+              <button class="btn-secondary" style="padding: 3px 6px; font-size: 0.75rem;" title="Lanzar Traceroute" onclick="window.dashboard.requestTraceTo('${nodeId}', this)">
                 Trace
               </button>
-              <button class="btn-secondary" style="padding: 3px 6px; font-size: 0.75rem;" title="Pedir NodeInfo por LoRa" onclick="window.dashboard.requestNodeInfo('${nodeId}')">
+              <button class="btn-secondary" style="padding: 3px 6px; font-size: 0.75rem;" title="Pedir NodeInfo por LoRa" onclick="window.dashboard.requestNodeInfo('${nodeId}', this)">
                 ℹ️ Info
               </button>
             </div>
@@ -937,7 +999,7 @@ class MeshDashboard {
   }
 
   // ==========================================================================
-  // Renderizado: Traceroutes
+  // Renderizado: Traceroutes (Manejo correcto de Fallidos)
   // ==========================================================================
   renderTraceResult(trace, ts) {
     if (!this.tracesGrid) return;
@@ -946,12 +1008,15 @@ class MeshDashboard {
     const hopsFwd = trace.hops_forward || [];
     
     let fwdStr = "";
-    if (hopsFwd.length > 0) {
-      fwdStr = hopsFwd.map(h => `${this.escapeHtml(h.name || h.id)} (${h.snr !== undefined && h.snr !== null ? h.snr + "dB" : ""})`).join(" ➔ ");
+    if (trace.success) {
+      if (hopsFwd.length > 0) {
+        fwdStr = hopsFwd.map(h => `${this.escapeHtml(h.name || h.id)} (${h.snr !== undefined && h.snr !== null ? h.snr + "dB" : ""})`).join(" ➔ ");
+      } else {
+        const directSnr = trace.snr !== undefined && trace.snr !== null ? ` (SNR: ${Number(trace.snr).toFixed(1)} dB)` : "";
+        fwdStr = `Directo / Sin repetidores intermedios${directSnr}`;
+      }
     } else {
-      // Directo con señal si está disponible
-      const directSnr = trace.snr !== undefined && trace.snr !== null ? ` (SNR: ${Number(trace.snr).toFixed(1)} dB)` : "";
-      fwdStr = `Directo / Sin repetidores intermedios${directSnr}`;
+      fwdStr = `<span style="color: var(--danger);">⚠️ Sin respuesta del nodo destino (Timeout / Sin cobertura)</span>`;
     }
 
     const cardHtml = `
