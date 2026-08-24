@@ -106,7 +106,7 @@ class GatewayService:
         raw_json = json.dumps(event_obj, ensure_ascii=False)
         disconnected = set()
 
-        for ws in self.connected_clients:
+        for ws in list(self.connected_clients):
             try:
                 await ws.send(raw_json)
             except websockets.exceptions.ConnectionClosed:
