@@ -51,7 +51,7 @@ db = Database(db_path="...")    # ruta explícita (tests)
 |---|---|
 | `get_node(node_id)` | Devuelve la fila como dict o `None`. |
 | `get_node_by_identifier(identifier)` | Busca un nodo por `node_id`, `short_name` o `name`. |
-| `get_router_nodes(configured_identifiers=None, max_hops=2)` | Devuelve routers configurados y auto-detectados por rol (`ROUTER`/`ROUTER_LATE`/`REPEATER`) filtrados por `max_hops`. |
+| `get_router_nodes(configured_identifiers=None, max_hops=2, require_successful_trace_for_auto=True)` | Devuelve routers configurados siempre, y auto-detectados por rol (`ROUTER`/`ROUTER_LATE`/`REPEATER`) solo si han respondido con éxito un traceroute previo. |
 | `create_node_if_not_exists(node_id, data=None)` | `INSERT OR IGNORE` + update opcional. |
 | `update_node(node_id, data)` | Update con lista blanca de columnas (`role`, `hops`, `snr`, etc.); castea `is_favorite`/`via_mqtt` a 0/1; actualiza `updated_at`. |
 

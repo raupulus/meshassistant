@@ -26,6 +26,9 @@ La aplicación web está estructurada como una SPA (Single Page Application) rea
 
 ## 3. Pestaña 2 · Routers y Repetidores
 
+- **Criterio de Inclusión y Monitorización:**
+  - **Routers configurados manualmente (`env.ROUTER_NODES`):** Se muestran y vigilan **siempre** (tanto si están online como offline, hayan respondido o no).
+  - **Routers auto-detectados (`role=ROUTER/REPEATER`):** Solo se incluyen si **han respondido con éxito un traceroute** en algún momento (`traces.status = 'done'`), evitando nodos fantasma que llegaron por rebote casual sin cobertura real.
 - **Ordenación Jerárquica:**
   1. Repetidores `ONLINE` arriba y `OFFLINE` abajo.
   2. Enlaces directos ordenados por mejor SNR exterior; seguidos de los nodos con saltos ordenados por menor número de repetidores intermedios.

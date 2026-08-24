@@ -94,7 +94,7 @@ class TestPingRouters(unittest.TestCase):
             "hops": 1,
         })
 
-        # 2. Nodo con rol REPEATER real
+        # 2. Nodo con rol REPEATER real con trace exitoso
         db.create_node_if_not_exists("!testrouter2")
         db.update_node("!testrouter2", {
             "name": "Repetidor Monte",
@@ -103,8 +103,20 @@ class TestPingRouters(unittest.TestCase):
             "snr": 11.0,
             "hops": 0,
         })
+        tr_id = db.enqueue_trace("!testrouter2")
+        db.mark_trace_done_with_route(tr_id, True, text="Route ok", to_name="Repetidor Monte", to_name_short="RMON")
 
-        # 3. Nodo cliente falso que pone "Router" en su nombre pero role es CLIENT (0)
+        # 3. Nodo con rol ROUTER auto-detectado pero SIN trace exitoso
+        db.create_node_if_not_exists("!testrouternotrace")
+        db.update_node("!testrouternotrace", {
+            "name": "Router Sin Cobertura",
+            "short_name": "RNOTRACE",
+            "role": 2,
+            "snr": 10.0,
+            "hops": 1,
+        })
+
+        # 4. Nodo cliente falso que pone "Router" en su nombre pero role es CLIENT (0)
         db.create_node_if_not_exists("!fakeclient")
         db.update_node("!fakeclient", {
             "name": "Router Falso de Tercero",
@@ -117,8 +129,9 @@ class TestPingRouters(unittest.TestCase):
         routers = db.get_router_nodes(["RCER"])
         router_shorts = [r.get("short_name") for r in routers]
 
-        self.assertIn("RCER", router_shorts)
-        self.assertIn("RMON", router_shorts)
+        self.assertIn("RCER", router_shorts, "Router manual configurado debe estar siempre")
+        self.assertIn("RMON", router_shorts, "Router auto-detectado con trace exitoso debe incluirse")
+        self.assertNotIn("RNOTRACE", router_shorts, "Router auto-detectado sin trace exitoso debe excluirse")
         self.assertNotIn("FAKE", router_shorts, "Nodos con 'router' en el nombre pero sin role de router deben ser ignorados")
 
     def test_routers_callback_formatting(self):

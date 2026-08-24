@@ -405,24 +405,24 @@ class Database:
         self,
         configured_identifiers: Optional[List[str]] = None,
         max_hops: Optional[int] = 2,
+        require_successful_trace_for_auto: bool = True,
     ) -> List[Dict[str, Any]]:
         """Obtiene nodos routers explícitos (configurados) y auto-detectados por role.
 
-        Filtra aquellos cuya distancia supere max_hops (respecto a este nodo/bot).
+        - Los configurados explícitamente en configured_identifiers se devuelven SIEMPRE.
+        - Los auto-detectados por role (ROUTER, ROUTER_LATE, REPEATER) solo se devuelven
+          si han respondido con éxito a un traceroute en algún momento (status = 'done')
+          cuando require_successful_trace_for_auto es True.
         """
         found_nodes: List[Dict[str, Any]] = []
         seen_ids = set()
 
-        # 1. Buscar los configurados explícitamente
+        # 1. Buscar los configurados explícitamente (se vigilan y devuelven siempre)
         if configured_identifiers:
             for ident in configured_identifiers:
                 node = self.get_node_by_identifier(ident)
                 if node:
                     nid = node.get('node_id')
-                    raw_hops = node.get('hops')
-                    if max_hops is not None and raw_hops is not None and raw_hops > max_hops:
-                        # Supera los saltos máximos configurados para routers cercanos
-                        continue
                     if nid and nid not in seen_ids:
                         seen_ids.add(nid)
                         found_nodes.append(node)
@@ -430,21 +430,32 @@ class Database:
                     # Nodo configurado pero no registrado aún
                     found_nodes.append({'identifier': ident, 'offline': True})
 
-        # 2. Auto-detectar nodos con role ROUTER, ROUTER_LATE o REPEATER (según protocolo Meshtastic)
+        # 2. Auto-detectar nodos con role ROUTER, ROUTER_LATE o REPEATER
         with closing(self._connect()) as conn:
             query = """
                 SELECT node_id, name, num, short_name, mac_addr, hw_model, role, is_favorite,
-                       snr, rssi, public_key, hops, hop_start, uptime, via_mqtt,
-                       last_heard, updated_at
+                       snr, rssi, public_key, hops, hop_start, uptime, via_mqtt, battery, voltage,
+                       last_heard, created_at, updated_at
                 FROM nodes
                 WHERE (
                     role IN (2, 4, 9)
                  OR UPPER(COALESCE(role, '')) IN ('ROUTER', 'ROUTER_LATE', 'REPEATER')
                 )
+                AND COALESCE(via_mqtt, 0) = 0
             """
             params: List[Any] = []
+
+            if require_successful_trace_for_auto:
+                query += """
+                AND EXISTS (
+                    SELECT 1 FROM traces t
+                    WHERE (t."to" = nodes.node_id OR UPPER(COALESCE(t.to_name_short, '')) = UPPER(nodes.short_name) OR UPPER(COALESCE(t.to_name, '')) = UPPER(nodes.name))
+                      AND t.status = 'done'
+                )
+                """
+
             if max_hops is not None:
-                query += " AND (hops IS NULL OR hops <= ?) AND COALESCE(via_mqtt, 0) = 0"
+                query += " AND (hops IS NULL OR hops <= ?)"
                 params.append(int(max_hops))
 
             query += " ORDER BY updated_at DESC LIMIT 30"
