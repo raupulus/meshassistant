@@ -118,13 +118,18 @@ class MeshDashboard {
       });
     }
 
-    // Filtro de Nodos (Todos / RF / Favs)
+    // Filtro de Nodos (Todos / Batería / RF / Favs)
     document.querySelectorAll(".filter-nodes").forEach(btn => {
       btn.addEventListener("click", () => {
         document.querySelectorAll(".filter-nodes").forEach(b => b.classList.remove("active"));
         btn.classList.add("active");
         this.currentNodeFilter = btn.dataset.filter;
         this.nodesPage = 1;
+        if (this.currentNodeFilter === "battery") {
+          this.sortField = "battery";
+          this.sortDirection = "asc"; // Mostrar primero las baterías más bajas
+          this.updateSortHeaders();
+        }
         this.renderNodesTable();
       });
     });
@@ -902,6 +907,8 @@ class MeshDashboard {
       nodes = nodes.filter(n => !n.via_mqtt);
     } else if (this.currentNodeFilter === "fav") {
       nodes = nodes.filter(n => n.is_favorite);
+    } else if (this.currentNodeFilter === "battery") {
+      nodes = nodes.filter(n => (n.battery !== undefined && n.battery !== null) || (n.voltage !== undefined && n.voltage !== null));
     }
 
     // 4. Ordenación Multidimensional
@@ -915,9 +922,24 @@ class MeshDashboard {
       if (field === "is_favorite") {
         valA = valA ? 1 : 0;
         valB = valB ? 1 : 0;
-      } else if (field === "battery" || field === "snr" || field === "hops" || field === "uptime") {
-        valA = (valA !== undefined && valA !== null) ? Number(valA) : -999999;
-        valB = (valB !== undefined && valB !== null) ? Number(valB) : -999999;
+      } else if (field === "battery") {
+        const hasA = (a.battery !== undefined && a.battery !== null) || (a.voltage !== undefined && a.voltage !== null);
+        const hasB = (b.battery !== undefined && b.battery !== null) || (b.voltage !== undefined && b.voltage !== null);
+        if (hasA !== hasB) {
+          // El que no tiene telemetría de batería va siempre al final
+          return hasA ? -1 : 1;
+        }
+        valA = (a.battery !== undefined && a.battery !== null) ? Number(a.battery) : ((a.voltage !== undefined && a.voltage !== null) ? Number(a.voltage) : 0);
+        valB = (b.battery !== undefined && b.battery !== null) ? Number(b.battery) : ((b.voltage !== undefined && b.voltage !== null) ? Number(b.voltage) : 0);
+      } else if (field === "snr" || field === "hops" || field === "uptime") {
+        const hasA = valA !== undefined && valA !== null;
+        const hasB = valB !== undefined && valB !== null;
+        if (hasA !== hasB) {
+          // Los valores sin dato van siempre al final
+          return hasA ? -1 : 1;
+        }
+        valA = hasA ? Number(valA) : 0;
+        valB = hasB ? Number(valB) : 0;
       } else if (field === "last_heard" || field === "created_at") {
         const tA = this.parseDateTimestamp(valA || a.updated_at);
         const tB = this.parseDateTimestamp(valB || b.updated_at);

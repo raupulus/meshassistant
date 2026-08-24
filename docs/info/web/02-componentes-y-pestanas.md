@@ -40,7 +40,13 @@ La aplicación web está estructurada como una SPA (Single Page Application) rea
 ## 4. Pestaña 3 · Nodos de la Red
 
 - **Buscador en Vivo y Filtro por Rol:** Filtrado instantáneo por texto (nombre, alias, ID) y selector de roles (`CLIENT`, `ROUTER`, `REPEATER`, `TRACKER`, `SENSOR`, etc.).
-- **Ordenación Multidimensional:** Posibilidad de ordenar por favoritos, rol, nombre, alias, saltos, batería, SNR, última señal o primera vez visto.
+- **Filtros Rápidos:**
+  - `Todos`: Censo íntegro de la red.
+  - `Con Batería 🔋`: Muestra exclusivamente los nodos con telemetría de batería/voltaje reportada, activando por defecto la ordenación ascendente para identificar nodos con batería baja (ideal para monitorizar repetidores solares en días nublados).
+  - `Solo RF`: Excluye tráfico que llega por pasarelas MQTT.
+  - `Favoritos ⭐`: Nodos destacados persistidos en SQLite.
+- **Paginación Ágil:** Selector de 50, 100, 250 por página o "Ver todos", manteniendo el censo completo en memoria.
+- **Ordenación Multidimensional Inteligente:** Posibilidad de ordenar por favoritos, rol, nombre, alias, saltos, batería, SNR, última señal o primera vez visto, manteniendo siempre los nodos con dato real arriba y los nulos al final.
 - **Detalle de Columnas:**
   - **Primera Vez:** Fecha en que el nodo fue descubierto por primera vez (`DD/MM/YYYY`).
   - **Última Señal:** Formateo dinámico (`HH:MM:SS` para hoy / `DD/MM HH:MM` para días previos).
