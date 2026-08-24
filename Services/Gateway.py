@@ -153,7 +153,7 @@ class GatewayService:
                     snapshot_data["channel_metrics"] = self.last_channel_metrics
 
                 if "nodes" in include:
-                    snapshot_data["nodes"] = self.db.get_all_nodes(limit=300)
+                    snapshot_data["nodes"] = self.db.get_all_nodes(limit=None)
                     snapshot_data["nodes_summary"] = self.db.nodes_overview()
                 if "traces" in include:
                     snapshot_data["traces"] = self.db.get_recent_traces(limit=10)

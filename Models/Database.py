@@ -1572,7 +1572,7 @@ class Database:
             avg = row['avg'] if row and row['avg'] is not None else None
             return {'avg': float(avg) if avg is not None else None, 'count': int(row['c']) if row else 0}
 
-    def get_all_nodes(self, limit: int = 500, only_rf: bool = False) -> List[Dict[str, Any]]:
+    def get_all_nodes(self, limit: Optional[int] = None, only_rf: bool = False) -> List[Dict[str, Any]]:
         """Devuelve la lista de nodos ordenados por favoritos y actividad reciente."""
         with closing(self._connect()) as conn:
             sql = """
@@ -1584,8 +1584,10 @@ class Database:
             params: List[Any] = []
             if only_rf:
                 sql += " AND COALESCE(via_mqtt, 0) = 0"
-            sql += " ORDER BY is_favorite DESC, COALESCE(last_heard, 0) DESC, updated_at DESC LIMIT ?"
-            params.append(int(limit))
+            sql += " ORDER BY is_favorite DESC, COALESCE(last_heard, 0) DESC, updated_at DESC"
+            if limit is not None:
+                sql += " LIMIT ?"
+                params.append(int(limit))
             cur = conn.execute(sql, tuple(params))
             
             roles_map = {

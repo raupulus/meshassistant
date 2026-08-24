@@ -17,6 +17,8 @@ class MeshDashboard {
     this.sortField = "is_favorite";
     this.sortDirection = "desc";
     this.searchQuery = "";
+    this.nodesPage = 1;
+    this.nodesPageSize = 100;
     this.localNode = null;
     this.auditHours = 24;
     this.auditLimit = 100;
@@ -52,6 +54,11 @@ class MeshDashboard {
     this.chatDest = document.getElementById("chat-dest");
     this.routersGrid = document.getElementById("routers-grid");
     this.nodesTbody = document.getElementById("nodes-tbody");
+    this.lblNodesCountInfo = document.getElementById("lbl-nodes-count-info");
+    this.lblNodesPage = document.getElementById("lbl-nodes-page");
+    this.btnNodesPrev = document.getElementById("btn-nodes-prev");
+    this.btnNodesNext = document.getElementById("btn-nodes-next");
+    this.nodesPageSizeSelect = document.getElementById("nodes-page-size");
     this.tracesGrid = document.getElementById("traces-grid");
     this.pollsContainer = document.getElementById("polls-container");
     this.weatherContent = document.getElementById("weather-content");
@@ -96,6 +103,7 @@ class MeshDashboard {
     if (searchInput) {
       searchInput.addEventListener("input", (e) => {
         this.searchQuery = e.target.value.toLowerCase().trim();
+        this.nodesPage = 1;
         this.renderNodesTable();
       });
     }
@@ -105,6 +113,7 @@ class MeshDashboard {
     if (roleFilter) {
       roleFilter.addEventListener("change", (e) => {
         this.currentRoleFilter = e.target.value;
+        this.nodesPage = 1;
         this.renderNodesTable();
       });
     }
@@ -115,6 +124,7 @@ class MeshDashboard {
         document.querySelectorAll(".filter-nodes").forEach(b => b.classList.remove("active"));
         btn.classList.add("active");
         this.currentNodeFilter = btn.dataset.filter;
+        this.nodesPage = 1;
         this.renderNodesTable();
       });
     });
@@ -130,10 +140,36 @@ class MeshDashboard {
           this.sortField = field;
           this.sortDirection = (field === "is_favorite" || field === "battery" || field === "snr" || field === "last_heard" || field === "created_at") ? "desc" : "asc";
         }
+        this.nodesPage = 1;
         this.updateSortHeaders();
         this.renderNodesTable();
       });
     });
+
+    // Paginación de Nodos
+    if (this.nodesPageSizeSelect) {
+      this.nodesPageSizeSelect.addEventListener("change", (e) => {
+        this.nodesPageSize = e.target.value === "all" ? "all" : parseInt(e.target.value, 10);
+        this.nodesPage = 1;
+        this.renderNodesTable();
+      });
+    }
+
+    if (this.btnNodesPrev) {
+      this.btnNodesPrev.addEventListener("click", () => {
+        if (this.nodesPage > 1) {
+          this.nodesPage--;
+          this.renderNodesTable();
+        }
+      });
+    }
+
+    if (this.btnNodesNext) {
+      this.btnNodesNext.addEventListener("click", () => {
+        this.nodesPage++;
+        this.renderNodesTable();
+      });
+    }
 
     // Refrescar Routers
     const btnRefreshRouters = document.getElementById("btn-refresh-routers");
@@ -904,10 +940,39 @@ class MeshDashboard {
             No se encontraron nodos con los filtros aplicados.
           </td>
         </tr>`;
+      if (this.lblNodesCountInfo) this.lblNodesCountInfo.textContent = "Mostrando 0 de 0 nodos";
+      if (this.lblNodesPage) this.lblNodesPage.textContent = "Página 1";
+      if (this.btnNodesPrev) this.btnNodesPrev.disabled = true;
+      if (this.btnNodesNext) this.btnNodesNext.disabled = true;
       return;
     }
 
-    this.nodesTbody.innerHTML = nodes.map(n => {
+    const totalFiltered = nodes.length;
+    let pageNodes = nodes;
+
+    if (this.nodesPageSize === "all") {
+      pageNodes = nodes;
+      if (this.lblNodesCountInfo) this.lblNodesCountInfo.textContent = `Mostrando todos (${totalFiltered} nodos)`;
+      if (this.lblNodesPage) this.lblNodesPage.textContent = "Página 1 de 1";
+      if (this.btnNodesPrev) this.btnNodesPrev.disabled = true;
+      if (this.btnNodesNext) this.btnNodesNext.disabled = true;
+    } else {
+      const pageSize = Number(this.nodesPageSize) || 100;
+      const totalPages = Math.max(1, Math.ceil(totalFiltered / pageSize));
+      if (this.nodesPage > totalPages) this.nodesPage = totalPages;
+      if (this.nodesPage < 1) this.nodesPage = 1;
+
+      const startIdx = (this.nodesPage - 1) * pageSize;
+      const endIdx = Math.min(startIdx + pageSize, totalFiltered);
+      pageNodes = nodes.slice(startIdx, endIdx);
+
+      if (this.lblNodesCountInfo) this.lblNodesCountInfo.textContent = `Mostrando ${startIdx + 1}-${endIdx} de ${totalFiltered} nodos`;
+      if (this.lblNodesPage) this.lblNodesPage.textContent = `Página ${this.nodesPage} de ${totalPages}`;
+      if (this.btnNodesPrev) this.btnNodesPrev.disabled = this.nodesPage <= 1;
+      if (this.btnNodesNext) this.btnNodesNext.disabled = this.nodesPage >= totalPages;
+    }
+
+    this.nodesTbody.innerHTML = pageNodes.map(n => {
       const isFav = !!n.is_favorite;
       
       // Formateo de Batería y Voltaje

@@ -170,6 +170,24 @@
           </tbody>
         </table>
       </div>
+
+      <!-- Barra de Paginación de Nodos -->
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 12px; flex-wrap: wrap; gap: 10px;">
+        <div style="font-size: 0.85rem; color: var(--text-muted);" id="lbl-nodes-count-info">
+          Mostrando 0 de 0 nodos
+        </div>
+        <div style="display: flex; gap: 8px; align-items: center;">
+          <select id="nodes-page-size" class="select-custom" style="padding: 4px 8px; font-size: 0.8rem;">
+            <option value="50">50 por pág</option>
+            <option value="100" selected>100 por pág</option>
+            <option value="250">250 por pág</option>
+            <option value="all">Ver todos</option>
+          </select>
+          <button class="btn-secondary" id="btn-nodes-prev" style="padding: 4px 10px; font-size: 0.85rem;">◀ Anterior</button>
+          <span id="lbl-nodes-page" style="font-size: 0.85rem; color: var(--text-dim);">Página 1</span>
+          <button class="btn-secondary" id="btn-nodes-next" style="padding: 4px 10px; font-size: 0.85rem;">Siguiente ▶</button>
+        </div>
+      </div>
     </section>
 
     <!-- Pestaña 4: Traceroutes -->
