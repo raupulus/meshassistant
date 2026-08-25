@@ -22,9 +22,9 @@ def loop():
         aemet = Aemet()
 
         while True:
-            # Reconexión ordenada si el nodo se cayó. Se hace aquí (hilo principal),
-            # nunca en el callback on_connection_lost (hilo 'publishing').
-            if interface.reconnect_if_needed():
+            # Reconexión ordenada si el nodo se cayó o aún no está conectado.
+            if interface.interface is None or interface._needs_reconnect:
+                interface.reconnect_if_needed()
                 sleep(2)
                 continue
 
