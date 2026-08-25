@@ -56,14 +56,17 @@ class SerialInterface:
     def connect(self):
         # Evitar suscripciones acumuladas si se reconecta.
         self._unsubscribe()
-        self.interface = serial_interface.SerialInterface(devPath=self.serial_port)
-        self._needs_reconnect = False
-        log_p( f"Conectado al dispositivo Meshtastic en puerto {self.serial_port}")
-        log_p(f"Suscribiendo a eventos\n")
-
-        self._subscribe()
-
-        log_p(f"Esperando mensajes...\n")
+        try:
+            self.interface = serial_interface.SerialInterface(devPath=self.serial_port)
+            self._needs_reconnect = False
+            log_p(f"Conectado al dispositivo Meshtastic en puerto {self.serial_port}")
+            log_p(f"Suscribiendo a eventos\n")
+            self._subscribe()
+            log_p(f"Esperando mensajes...\n")
+        except Exception as e:
+            log_p(f"Error al conectar con Meshtastic en {self.serial_port}: {e}", level="WARN")
+            self._needs_reconnect = True
+            self.interface = None
 
 
     def on_connection_closed(self, interface):
