@@ -97,15 +97,25 @@ class SerialInterface:
         if not os.path.exists(self.serial_port):
             log_p(f"Dispositivo {self.serial_port} aún no presente; reintentaré.",
                   level="WARN")
+            import time
+            time.sleep(5)
             return False
 
         try:
             self.connect()
-            log_p("Reconexión completada", level="WARN")
-            return True
+            if self.interface is not None:
+                log_p("Reconexión completada con éxito", level="WARN")
+                return True
+            else:
+                self._needs_reconnect = True
+                import time
+                time.sleep(5)
+                return False
         except Exception as e:
             log_p(f"Fallo al reconectar: {e}", level="WARN")
             self._needs_reconnect = True
+            import time
+            time.sleep(5)
             return False
 
     def on_receive_position(self, packet, interface):
