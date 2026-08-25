@@ -597,6 +597,10 @@ class SerialInterface:
             except Exception:
                 pass
 
+        def _is_timeout_error(err: Exception) -> bool:
+            msg = str(err).lower()
+            return "timed out" in msg or "timeout" in msg
+
         try:
             # Intentar variantes en orden de máxima compatibilidad (posicionales primero)
             tried: list[str] = []
@@ -608,6 +612,8 @@ class SerialInterface:
                     send_fn(dest=target_id, hopLimit=3, channelIndex=0)
                     called = True
                 except (TypeError, SystemExit, Exception) as e:
+                    if _is_timeout_error(e):
+                        raise TimeoutError(f"Timed out waiting for traceroute to {target_id}") from e
                     tried.append(str(e))
 
             # 2) Posicional estándar (target_id, 3, 0)
@@ -616,6 +622,8 @@ class SerialInterface:
                     send_fn(target_id, 3, 0)
                     called = True
                 except (TypeError, SystemExit, Exception) as e:
+                    if _is_timeout_error(e):
+                        raise TimeoutError(f"Timed out waiting for traceroute to {target_id}") from e
                     tried.append(str(e))
 
             # 3) Posicional con callback
@@ -624,6 +632,8 @@ class SerialInterface:
                     send_fn(target_id, 3, 0, _on_response)
                     called = True
                 except (TypeError, SystemExit, Exception) as e:
+                    if _is_timeout_error(e):
+                        raise TimeoutError(f"Timed out waiting for traceroute to {target_id}") from e
                     tried.append(str(e))
 
             # 4) Posicional con callback como segundo argumento
@@ -632,6 +642,8 @@ class SerialInterface:
                     send_fn(target_id, _on_response)
                     called = True
                 except (TypeError, SystemExit, Exception) as e:
+                    if _is_timeout_error(e):
+                        raise TimeoutError(f"Timed out waiting for traceroute to {target_id}") from e
                     tried.append(str(e))
 
             # 5) Posicional solo id
@@ -640,6 +652,8 @@ class SerialInterface:
                     send_fn(target_id)
                     called = True
                 except (TypeError, SystemExit, Exception) as e:
+                    if _is_timeout_error(e):
+                        raise TimeoutError(f"Timed out waiting for traceroute to {target_id}") from e
                     tried.append(str(e))
 
             # 6) Keywords alternativas
@@ -648,11 +662,15 @@ class SerialInterface:
                     send_fn(destinationId=target_id, onResponse=_on_response)
                     called = True
                 except (TypeError, SystemExit, Exception) as e:
+                    if _is_timeout_error(e):
+                        raise TimeoutError(f"Timed out waiting for traceroute to {target_id}") from e
                     tried.append(str(e))
                     try:
                         send_fn(id=target_id, onResponse=_on_response)
                         called = True
                     except (TypeError, SystemExit, Exception) as e2:
+                        if _is_timeout_error(e2):
+                            raise TimeoutError(f"Timed out waiting for traceroute to {target_id}") from e2
                         tried.append(str(e2))
 
             # 7) Último recurso: keyword mínima sin callback
@@ -661,6 +679,8 @@ class SerialInterface:
                     send_fn(destinationId=target_id)
                     called = True
                 except (Exception, SystemExit) as e:
+                    if _is_timeout_error(e):
+                        raise TimeoutError(f"Timed out waiting for traceroute to {target_id}") from e
                     tried.append(str(e))
 
             if not called:
