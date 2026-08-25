@@ -57,10 +57,15 @@ reply_to_message(msg, metadata)     # responde según el mensaje original
 1. Extrae `text`, `fromId`, `toId`, `to`.
 2. Determina `is_direct` (`toId != '^all'` y `to != 0xFFFFFFFF`).
 3. Obtiene/crea el `Node` emisor en `node_dict` y actualiza sus metadatos
-   (snr, rssi, hop_limit, hop_start, via_mqtt).
-4. Construye `metadata` (ver contrato en [07-comandos.md](07-comandos.md)).
-5. `functions.search_command(msg)` → si hay comando válido y procede
-   (`is_direct` o `in_group`), invoca `command_dict[cmd]['callback'](...)`.
+   (snr, rssi, hop_limit, hop_start, via_mqtt) y telemetría en base de datos.
+4. Emite el evento en tiempo real `message_rx` a la pasarela WebSocket / Gateway.
+5. `functions.search_command(msg)` → busca un comando registrado.
+6. **Filtro de saltos (Hops):** Si el mensaje es por RF (`via_mqtt=False`), calcula los saltos
+   del emisor (`hopStart - hopLimit`). Si superan `local_hop_limit + 1` (donde `local_hop_limit`
+   se lee dinámicamente del firmware local), se omite la ejecución de la respuesta para ahorrar
+   ancho de banda en la malla, registrándolo en el log.
+7. Si procede (`is_direct` o `in_group`), invoca `command_dict[cmd]['callback'](...)` y
+   registra el comando en `commands_sent`.
 
 ## Carga de nodos — `get_nodes`
 

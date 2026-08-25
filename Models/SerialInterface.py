@@ -546,6 +546,40 @@ class SerialInterface:
         except Exception:
             pass
 
+    def get_local_hop_limit(self) -> int:
+        """Obtiene el límite de saltos (hop_limit) configurado en el firmware del nodo local.
+
+        Si no se puede leer dinámicamente, recurre a env.MESH_DEFAULT_HOP_LIMIT (3 por defecto).
+        """
+        try:
+            if self.interface:
+                # 1. Intentar desde localNode.localConfig.lora.hop_limit
+                local_node = getattr(self.interface, 'localNode', None)
+                if local_node:
+                    cfg = getattr(local_node, 'localConfig', None)
+                    lora = getattr(cfg, 'lora', None) if cfg else None
+                    if lora and getattr(lora, 'hop_limit', None):
+                        hl = int(lora.hop_limit)
+                        if hl > 0:
+                            return hl
+
+                # 2. Intentar desde getNode('^local')
+                get_node_fn = getattr(self.interface, 'getNode', None)
+                if callable(get_node_fn):
+                    node_obj = get_node_fn('^local')
+                    if node_obj:
+                        cfg = getattr(node_obj, 'localConfig', None)
+                        lora = getattr(cfg, 'lora', None) if cfg else None
+                        if lora and getattr(lora, 'hop_limit', None):
+                            hl = int(lora.hop_limit)
+                            if hl > 0:
+                                return hl
+        except Exception:
+            pass
+
+        import env
+        return int(getattr(env, 'MESH_DEFAULT_HOP_LIMIT', 3) or 3)
+
     def traceroute(self, node_id: str, timeout: float = 10.0):
         """Ejecuta un TraceRoute real usando Meshtastic `sendTraceRoute` y capta la salida textual.
 
@@ -919,12 +953,35 @@ class SerialInterface:
                 # Busco comando y argumentos en el mensaje
                 command, cmd_args = search_command(msg)
 
-                # Si el mensaje recibido es un comando, ejecutarlo
+                # Si el mensaje recibido es un comando, evaluar si se ejecuta la respuesta
                 if command:
                     # Directo responde siempre, en grupo solo a ciertos comandos
-                    if not is_direct and not self.command_dict[command][
-                        'in_group']:
+                    if not is_direct and not self.command_dict[command]['in_group']:
                         return
+
+                    # Filtro de saltos (Hops): si el paquete vino por RF (no MQTT), comprobar distancia
+                    if not fromNodeInfo.via_mqtt:
+                        sender_hops = None
+                        h_start = packet.get('hopStart')
+                        h_limit = packet.get('hopLimit')
+                        if h_start is not None and h_limit is not None:
+                            try:
+                                sender_hops = max(0, int(h_start) - int(h_limit))
+                            except Exception:
+                                sender_hops = None
+                        elif fromNodeInfo.hops is not None:
+                            sender_hops = int(fromNodeInfo.hops)
+
+                        if sender_hops is not None:
+                            local_hop_limit = self.get_local_hop_limit()
+                            max_allowed_hops = local_hop_limit + 1
+                            if sender_hops > max_allowed_hops:
+                                log_p(
+                                    f"[comando] Omitida respuesta a '{command}' de {from_id} por exceso de saltos "
+                                    f"({sender_hops} saltos > máx permitido {max_allowed_hops} [local {local_hop_limit}+1])",
+                                    level="INFO",
+                                )
+                                return
 
                     self.command_dict[command]["callback"](self,
                                                            cmd_args, msg,

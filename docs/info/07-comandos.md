@@ -24,7 +24,9 @@ Los comandos se declaran en `commands_dict`. Cada entrada:
 ```
 comando válido?
   └─ sí → ¿es directo?  o  ¿commands_dict[cmd]['in_group'] es True?
-            └─ sí → callback(interface, args, msg, metadata)
+            └─ sí → ¿via_mqtt?  o  ¿hops <= local_hop_limit + 1?
+                      └─ sí → callback(interface, args, msg, metadata)
+                      └─ no → se omite respuesta (ahorro de AirTime en la malla)
             └─ no → se ignora (no responde en canal)
 ```
 
