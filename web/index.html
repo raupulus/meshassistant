@@ -138,6 +138,16 @@
             <option value="CLIENT_MUTE">CLIENT_MUTE</option>
             <option value="CLIENT_HIDDEN">CLIENT_HIDDEN</option>
           </select>
+
+          <select id="nodes-time-filter" class="select-custom" style="max-width: 205px;">
+            <option value="all">Última señal: Todos</option>
+            <option value="24h">Vistos hoy (≤ 24h)</option>
+            <option value="7d">Vistos ≤ 1 semana</option>
+            <option value="30d">Vistos ≤ 1 mes</option>
+            <option value="off_24h">Apagados &gt; 1 día</option>
+            <option value="off_7d">Apagados &gt; 1 semana</option>
+            <option value="off_30d">Apagados &gt; 1 mes</option>
+          </select>
         </div>
         <div style="display: flex; gap: 8px; flex-wrap: wrap;">
           <button class="btn-secondary filter-nodes active" data-filter="all">Todos</button>

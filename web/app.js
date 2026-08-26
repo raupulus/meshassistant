@@ -14,6 +14,7 @@ class MeshDashboard {
     this.currentChannelFilter = "all";
     this.currentNodeFilter = "all";
     this.currentRoleFilter = "all";
+    this.currentTimeFilter = "all";
     this.sortField = "is_favorite";
     this.sortDirection = "desc";
     this.searchQuery = "";
@@ -114,6 +115,25 @@ class MeshDashboard {
       roleFilter.addEventListener("change", (e) => {
         this.currentRoleFilter = e.target.value;
         this.nodesPage = 1;
+        this.renderNodesTable();
+      });
+    }
+
+    // Filtro por Última Señal en Nodos (1 día / 1 semana / 1 mes / inactivos / todos)
+    const timeFilter = document.getElementById("nodes-time-filter");
+    if (timeFilter) {
+      timeFilter.addEventListener("change", (e) => {
+        this.currentTimeFilter = e.target.value;
+        this.nodesPage = 1;
+        if (this.currentTimeFilter.startsWith("off_")) {
+          this.sortField = "last_heard";
+          this.sortDirection = "asc"; // Los que llevan más tiempo apagados primero
+          this.updateSortHeaders();
+        } else if (this.currentTimeFilter !== "all") {
+          this.sortField = "last_heard";
+          this.sortDirection = "desc"; // Los más recientes primero
+          this.updateSortHeaders();
+        }
         this.renderNodesTable();
       });
     }
@@ -902,7 +922,33 @@ class MeshDashboard {
       nodes = nodes.filter(n => (n.role_name || "").toUpperCase() === this.currentRoleFilter.toUpperCase());
     }
 
-    // 3. Filtro categoría
+    // 3. Filtro por Última Señal (Tiempo)
+    if (this.currentTimeFilter && this.currentTimeFilter !== "all") {
+      const nowMs = Date.now();
+      const ONE_DAY = 24 * 3600 * 1000;
+      const ONE_WEEK = 7 * ONE_DAY;
+      const ONE_MONTH = 30 * ONE_DAY;
+
+      nodes = nodes.filter(n => {
+        const ms = this.parseDateTimestamp(n.last_heard || n.updated_at);
+        if (this.currentTimeFilter === "24h") {
+          return ms > 0 && (nowMs - ms) <= ONE_DAY;
+        } else if (this.currentTimeFilter === "7d") {
+          return ms > 0 && (nowMs - ms) <= ONE_WEEK;
+        } else if (this.currentTimeFilter === "30d") {
+          return ms > 0 && (nowMs - ms) <= ONE_MONTH;
+        } else if (this.currentTimeFilter === "off_24h") {
+          return ms === 0 || (nowMs - ms) > ONE_DAY;
+        } else if (this.currentTimeFilter === "off_7d") {
+          return ms === 0 || (nowMs - ms) > ONE_WEEK;
+        } else if (this.currentTimeFilter === "off_30d") {
+          return ms === 0 || (nowMs - ms) > ONE_MONTH;
+        }
+        return true;
+      });
+    }
+
+    // 4. Filtro categoría
     if (this.currentNodeFilter === "rf") {
       nodes = nodes.filter(n => !n.via_mqtt);
     } else if (this.currentNodeFilter === "fav") {
@@ -911,7 +957,7 @@ class MeshDashboard {
       nodes = nodes.filter(n => (n.battery !== undefined && n.battery !== null) || (n.voltage !== undefined && n.voltage !== null));
     }
 
-    // 4. Ordenación Multidimensional
+    // 5. Ordenación Multidimensional
     const field = this.sortField;
     const dir = this.sortDirection === "asc" ? 1 : -1;
 
@@ -941,8 +987,14 @@ class MeshDashboard {
         valA = hasA ? Number(valA) : 0;
         valB = hasB ? Number(valB) : 0;
       } else if (field === "last_heard" || field === "created_at") {
-        const tA = this.parseDateTimestamp(valA || a.updated_at);
-        const tB = this.parseDateTimestamp(valB || b.updated_at);
+        const tA = this.parseDateTimestamp(valA || (field === "last_heard" ? a.updated_at : 0));
+        const tB = this.parseDateTimestamp(valB || (field === "last_heard" ? b.updated_at : 0));
+        const hasA = tA > 0;
+        const hasB = tB > 0;
+        if (hasA !== hasB) {
+          // Nodos sin fecha registrada van siempre al final
+          return hasA ? -1 : 1;
+        }
         valA = tA;
         valB = tB;
       } else {

@@ -42,7 +42,17 @@ La aplicación web está estructurada como una SPA (Single Page Application) rea
 
 ## 4. Pestaña 3 · Nodos de la Red
 
-- **Buscador en Vivo y Filtro por Rol:** Filtrado instantáneo por texto (nombre, alias, ID) y selector de roles (`CLIENT`, `ROUTER`, `REPEATER`, `TRACKER`, `SENSOR`, etc.).
+- **Buscador en Vivo y Filtros de Cabecera:**
+  - **Texto:** Búsqueda instantánea por nombre, alias o ID hexadecimal.
+  - **Rol:** Selector de roles (`CLIENT`, `ROUTER`, `REPEATER`, `TRACKER`, `SENSOR`, etc.).
+  - **Última Señal (Tiempo):** Selector desplegable junto al de roles para filtrar por ventanas de actividad o inactividad:
+    - `Última señal: Todos` (sin límite temporal).
+    - `Vistos hoy (≤ 24h)`: Nodos que han emitido en las últimas 24 horas.
+    - `Vistos ≤ 1 semana`: Nodos activos en los últimos 7 días.
+    - `Vistos ≤ 1 mes`: Nodos activos en los últimos 30 días.
+    - `Apagados > 1 día`: Nodos sin señal hace más de 24 horas (ordena por defecto los más antiguos arriba).
+    - `Apagados > 1 semana`: Nodos inactivos durante más de 7 días.
+    - `Apagados > 1 mes`: Nodos desaparecidos hace más de 30 días.
 - **Filtros Rápidos:**
   - `Todos`: Censo íntegro de la red.
   - `Con Batería 🔋`: Muestra exclusivamente los nodos con telemetría de batería/voltaje reportada, activando por defecto la ordenación ascendente para identificar nodos con batería baja (ideal para monitorizar repetidores solares en días nublados).
