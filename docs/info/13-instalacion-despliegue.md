@@ -346,3 +346,6 @@ Todos están en `.gitignore`.
 ```bash
 sqlite3 /home/pi/meshbotassistant/database.sql ".backup /home/pi/backup.sql"
 ```
+
+- **Banner SSH interactivo:** En `/etc/profile.d/99-meshassistant.sh`, muestra automáticamente al hacer login por SSH la URL activa del dashboard (`http://<IP>:8680/`).
+
