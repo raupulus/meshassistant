@@ -159,7 +159,8 @@ def ia_callback(interface, args, msg, metadata):
         channel_info = channels.get(channel_idx, {})
         channel_name = (channel_info.get('name') or '').lower()
 
-        allowed_channels = getattr(env, 'IA_CHANNELS', ['raupulus', 6])
+        default_channels = ['cadiz', 'chipiona', 'bots', 'raupulus', 'frikidevs', 2, 3, 4, 6, 7]
+        allowed_channels = getattr(env, 'IA_CHANNELS', default_channels)
         allowed = []
         for ch in (allowed_channels or []):
             if isinstance(ch, int):
@@ -178,7 +179,7 @@ def ia_callback(interface, args, msg, metadata):
 
     # 1. Ayuda o información del comando (respuesta inmediata)
     if not args or (len(args) == 1 and args[0].lower() in ['help', 'ayuda', 'info']):
-        ayuda = "Uso: !ia <pregunta de emergencia> (ej: !ia picadura de medusa) o !ia reset para nueva conversación."
+        ayuda = "Asistente IA: Usa !ia <pregunta>. Para resetear memoria usa !ia reset o !ia nueva. Canales: Cadiz, Chipiona, bots, raupulus, Frikidevs y privado."
         interface.reply_to_message(ayuda, metadata)
         return
 

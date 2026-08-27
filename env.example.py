@@ -17,7 +17,7 @@ CHISTES_API_ENABLED = False
 CHISTES_API_KEY = ''
 CHISTES_URL_UPLOAD = 'https://tuweb/chiste/add'
 CHISTES_URL_DOWNLOAD = 'https://tuweb/chiste/get'
-CHISTES_EXCLUDE_GROUPS = [3]
+CHISTES_EXCLUDE_GROUPS = [5]  # Excluye canal 'sos' (índice 5)
 
 ## Aemet, habilitado solo si tiene API key
 AEMET_API_KEY = ''
@@ -80,4 +80,4 @@ IA_API_URL = 'http://172.18.1.121:8870'          # URL de la API del Asistente d
 IA_API_TOKEN = ''                                # Bearer token precompartido (API_AUTH_TOKEN)
 IA_TIMEOUT = 120                                 # Timeout en segundos para la inferencia del LLM
 IA_MAX_QUEUE = 10                                # Máximo de consultas de IA encoladas concurrentemente
-IA_CHANNELS = ['raupulus']                       # Canales permitidos en grupo (responde siempre en privado)
+IA_CHANNELS = ['Cadiz', 'Chipiona', 'bots', 'raupulus', 'Frikidevs']  # Canales permitidos en grupo (además de privado)

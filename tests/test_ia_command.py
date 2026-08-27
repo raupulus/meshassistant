@@ -36,13 +36,13 @@ class TestIaCommand(unittest.TestCase):
         # Sin argumentos
         ia_module.ia_callback(self.interface, [], "/ia", self.metadata)
         self.assertEqual(len(self.interface.replies), 1)
-        self.assertIn("Uso: !ia", self.interface.replies[0]["text"])
+        self.assertIn("!ia", self.interface.replies[0]["text"])
 
         # Con argumento help
         self.interface.replies.clear()
         ia_module.ia_callback(self.interface, ["help"], "/ia help", self.metadata)
         self.assertEqual(len(self.interface.replies), 1)
-        self.assertIn("Uso: !ia", self.interface.replies[0]["text"])
+        self.assertIn("!ia", self.interface.replies[0]["text"])
 
     def test_ia_disabled(self):
         orig_enabled = getattr(env, "IA_API_ENABLED", True)

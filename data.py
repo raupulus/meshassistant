@@ -179,25 +179,25 @@ channels = {
         "name": "SFNarrow",
     },
     1: {
-        "name": "Iberia",
+        "name": "Andalucia",
     },
     2: {
-        "name": "Andalucia"
+        "name": "Cadiz",
     },
     3: {
-        "name": "Cadiz"
+        "name": "Chipiona",
     },
     4: {
-        "name": "Chipiona"
+        "name": "bots",
     },
     5: {
-        "name": "TEST"
+        "name": "sos",
     },
     6: {
-        "name": "raupulus"
+        "name": "raupulus",
     },
     7: {
-        "name": "Frikidevs"
+        "name": "Frikidevs",
     }
 }
 
