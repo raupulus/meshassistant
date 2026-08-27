@@ -77,7 +77,7 @@ Todo callback **registra el comando** con `Database().log_command(...)` (en
 | `/bola8` (`/8ball`) | `Commands/bola8.py` | Sí | ✅ | Bola 8 mágica; `8ball` es alias `hidden`. |
 | `/routers` (`/repetidores`) | `Commands/routers.py` | Sí | ✅ | Estado de routers/repetidores configurados (actividad, SNR, hops). |
 | `/uptime` | `Commands/uptime.py` | No | ✅ | Tiempo encendido del bot (`format_uptime`). |
-| `/ia` | `Commands/ia.py` | Sí | 🟡 | "funcionalidad en desarrollo". |
+| `/ia [pregunta\|reset]` | `Commands/ia.py` | Sí | ✅ | Asistente de Emergencias RAG (RPi 5) con cola secuencial y memoria por nodo. |
 
 ## Referencia de los comandos nuevos
 
@@ -163,6 +163,15 @@ Ejemplo de creación: `/encuesta nueva ¿Quedada el sábado? | Sí | No | Tal ve
 
 > El token `dias=N` (o `dias:N`) puede ir en cualquier punto del texto: se extrae
 > antes de separar la pregunta y las opciones por `|`.
+
+### Asistente de Emergencias IA (RAG en Raspberry Pi 5)
+
+- **`/ia <pregunta>`** o **`!ia <pregunta>`** — Consulta al asistente RAG de emergencias.
+  - **Cola Secuencial FIFO:** El bot procesa 1 sola inferencia a la vez hacia la API de la Pi 5. Si llegan peticiones simultáneas, se encolan automáticamente en un hilo independiente sin bloquear la recepción de la radio Meshtastic.
+  - **Memoria por Nodo:** Cada emisor (`from_id`) mantiene su propio contexto conversacional multi-turno durante 1 hora.
+  - **`/ia reset`** (o `/ia nueva`) — Limpia el historial de la conversación para ese nodo en el servidor.
+  - **Mensajes LoRa:** Las respuestas vienen limitadas a $\le 230$ bytes UTF-8 por mensaje (máximo 3 partes) y se transmiten con pausas defensivas de 2.5s entre partes.
+  - **Tolerancia a Fallos:** Si la API no responde o da timeout, responde por radio: `"Servidor IA de @raupulus no disponible en este momento."`
 
 ## Añadir un comando nuevo
 

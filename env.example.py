@@ -73,3 +73,10 @@ GATEWAY_WS_HOST = '0.0.0.0'                      # Escucha en red local
 GATEWAY_WS_PORT = 8680                           # Puerto WebSocket (868 MHz)
 GATEWAY_EVENTS_SOCKET = '/tmp/meshassistant_events.sock'  # Socket Unix DGRAM
 GATEWAY_API_TOKEN = ''                           # Opcional: token de autenticación en handshake
+
+## API de Inteligencia Artificial (Asistente de Emergencias RAG en RPi 5)
+IA_API_ENABLED = True                            # Si es True, activa el comando /ia
+IA_API_URL = 'http://172.18.1.121:8870'          # URL de la API del Asistente de Emergencias
+IA_API_TOKEN = ''                                # Bearer token precompartido (API_AUTH_TOKEN)
+IA_TIMEOUT = 120                                 # Timeout en segundos para la inferencia del LLM
+IA_MAX_QUEUE = 10                                # Máximo de consultas de IA encoladas concurrentemente
