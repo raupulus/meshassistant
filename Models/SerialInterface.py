@@ -289,7 +289,7 @@ class SerialInterface:
         self.disconnect()
         self.connect()
 
-    def send (self, msg, dest=None, channel=0):
+    def send (self, msg, dest=None, channel=0, reply_id=None):
         """
         Envía un mensaje a un destino específico o al canal público
 
@@ -300,23 +300,10 @@ class SerialInterface:
                 - int: ID numérico del nodo (mensaje directo)
                 - str: ID en formato "!xxxxxxxx" (mensaje directo)
             channel (int): Número del canal (0-7). Por defecto 0 (canal primario)
+            reply_id (int|None): ID del paquete original al que se responde (in-reply-to)
 
         Returns:
             bool: True si se envió correctamente, False en caso contrario
-
-        Ejemplos:
-            # Mensaje al canal público
-            self.send("Hola a todos")
-            self.send("Hola a todos", dest="^all")
-
-            # Mensaje directo por ID numérico
-            self.send("Hola privado", dest=123456789)
-
-            # Mensaje directo por ID en formato string
-            self.send("Hola privado", dest="!75e1ec00")
-
-            # Mensaje a un canal específico
-            self.send("Hola canal 1", channel=1)
         """
         if not self.interface:
             log_p("❌ Error: No hay interfaz conectada")
@@ -327,10 +314,21 @@ class SerialInterface:
             if dest is None or dest == "^all":
                 log_p(
                     f"📢 Enviando mensaje al canal público (canal {channel}): {msg}")
-                self.interface.sendText(
-                    text=msg,
-                    channelIndex=channel
-                )
+                kwargs = {
+                    'text': msg,
+                    'channelIndex': channel,
+                }
+                if reply_id is not None:
+                    try:
+                        kwargs['replyId'] = int(reply_id)
+                    except (ValueError, TypeError):
+                        pass
+                try:
+                    self.interface.sendText(**kwargs)
+                except TypeError:
+                    kwargs.pop('replyId', None)
+                    self.interface.sendText(**kwargs)
+
                 log_p("✅ Mensaje enviado al canal público")
                 return True
 
@@ -348,11 +346,22 @@ class SerialInterface:
                 log_p(
                     f"💬 Enviando mensaje directo a {node_name} ({dest_str}): {msg}")
 
-                self.interface.sendText(
-                    text=msg,
-                    destinationId=dest_str,
-                    channelIndex=channel
-                )
+                kwargs = {
+                    'text': msg,
+                    'destinationId': dest_str,
+                    'channelIndex': channel,
+                }
+                if reply_id is not None:
+                    try:
+                        kwargs['replyId'] = int(reply_id)
+                    except (ValueError, TypeError):
+                        pass
+                try:
+                    self.interface.sendText(**kwargs)
+                except TypeError:
+                    kwargs.pop('replyId', None)
+                    self.interface.sendText(**kwargs)
+
                 log_p(f"✅ Mensaje directo enviado a {node_name}")
                 return True
 
@@ -398,8 +407,10 @@ class SerialInterface:
         Returns:
             bool: True si se envió correctamente
         """
+        metadata = metadata or {}
         is_direct = metadata.get('is_direct', False)
         channel = metadata.get('channel', 0)
+        reply_id = metadata.get('reply_id') or metadata.get('id')
 
         if is_direct:
             # Responder en privado al remitente
@@ -409,11 +420,11 @@ class SerialInterface:
             else:
                 from_id = str(node_from or '')
             log_p(f"Respondiendo en privado al nodo {from_id}")
-            return self.send(msg, dest=from_id)
+            return self.send(msg, dest=from_id, channel=channel, reply_id=reply_id)
         else:
             # Responder en el mismo canal
             log_p(f"↩️ Respondiendo en el canal {channel}")
-            return self.send(msg, dest="^all", channel=channel)
+            return self.send(msg, dest="^all", channel=channel, reply_id=reply_id)
 
     def request_node_info(self, destination_id: str) -> bool:
         """Solicita NodeInfo a un nodo remoto a través de la radio Meshtastic."""
@@ -919,6 +930,8 @@ class SerialInterface:
 
 
                 metadata = {
+                    "id": packet.get('id'),
+                    "reply_id": packet.get('id'),
                     "node_from": fromNodeInfo.get_metadata(),
                     "node_to": {
                         "id": to_id,
