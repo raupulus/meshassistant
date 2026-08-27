@@ -150,6 +150,32 @@ def ia_callback(interface, args, msg, metadata):
     node_from = metadata.get('node_from') if isinstance(metadata.get('node_from'), dict) else {}
     from_id = node_from.get('id') or (metadata.get('node_from') if isinstance(metadata.get('node_from'), str) else None) or 'desconocido'
 
+    # 0. Filtro de canal: /ia solo responde en privado y en los canales configurados en IA_CHANNELS
+    is_direct = metadata.get('is_direct', False)
+    channel_idx = metadata.get('channel', 0)
+
+    if not is_direct:
+        from data import channels
+        channel_info = channels.get(channel_idx, {})
+        channel_name = (channel_info.get('name') or '').lower()
+
+        allowed_channels = getattr(env, 'IA_CHANNELS', ['raupulus', 6])
+        allowed = []
+        for ch in (allowed_channels or []):
+            if isinstance(ch, int):
+                allowed.append(ch)
+            elif isinstance(ch, str):
+                allowed.append(ch.lower())
+
+        is_allowed = (channel_idx in allowed) or (channel_name in allowed)
+        if not is_allowed:
+            log_p(
+                f"[IA] Comando ignorado en canal {channel_idx} ('{channel_name}'): "
+                f"solo permitido en privado y canales autorizados ({allowed_channels})",
+                level="INFO"
+            )
+            return
+
     # 1. Ayuda o información del comando (respuesta inmediata)
     if not args or (len(args) == 1 and args[0].lower() in ['help', 'ayuda', 'info']):
         ayuda = "Uso: !ia <pregunta de emergencia> (ej: !ia picadura de medusa) o !ia reset para nueva conversación."

@@ -80,3 +80,4 @@ IA_API_URL = 'http://172.18.1.121:8870'          # URL de la API del Asistente d
 IA_API_TOKEN = ''                                # Bearer token precompartido (API_AUTH_TOKEN)
 IA_TIMEOUT = 120                                 # Timeout en segundos para la inferencia del LLM
 IA_MAX_QUEUE = 10                                # Máximo de consultas de IA encoladas concurrentemente
+IA_CHANNELS = ['raupulus']                       # Canales permitidos en grupo (responde siempre en privado)

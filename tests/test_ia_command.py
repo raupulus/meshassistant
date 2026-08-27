@@ -153,6 +153,43 @@ class TestIaCommand(unittest.TestCase):
         finally:
             env.IA_API_ENABLED = orig_enabled
 
+    def test_ia_channel_filtering(self):
+        orig_enabled = getattr(env, "IA_API_ENABLED", True)
+        orig_channels = getattr(env, "IA_CHANNELS", ['raupulus'])
+        env.IA_API_ENABLED = True
+        env.IA_CHANNELS = ['raupulus']
+        try:
+            # 1. En canal público no autorizado (canal 0: SFNarrow) -> NO debe responder
+            meta_ch0 = {
+                "node_from": {"id": "!user0", "short_name": "U0"},
+                "channel": 0,
+                "is_direct": False,
+            }
+            ia_module.ia_callback(self.interface, ["help"], "/ia help", meta_ch0)
+            self.assertEqual(len(self.interface.replies), 0, "No debe responder en canal 0 no autorizado")
+
+            # 2. En canal público autorizado (canal 6: raupulus) -> SÍ debe responder
+            meta_ch6 = {
+                "node_from": {"id": "!user6", "short_name": "U6"},
+                "channel": 6,
+                "is_direct": False,
+            }
+            ia_module.ia_callback(self.interface, ["help"], "/ia help", meta_ch6)
+            self.assertEqual(len(self.interface.replies), 1, "Debe responder en canal 6 autorizado")
+
+            # 3. En mensaje directo privado (is_direct = True) en cualquier canal -> SÍ debe responder
+            self.interface.replies.clear()
+            meta_direct = {
+                "node_from": {"id": "!user_dm", "short_name": "UDM"},
+                "channel": 0,
+                "is_direct": True,
+            }
+            ia_module.ia_callback(self.interface, ["help"], "/ia help", meta_direct)
+            self.assertEqual(len(self.interface.replies), 1, "Debe responder siempre en privado")
+        finally:
+            env.IA_API_ENABLED = orig_enabled
+            env.IA_CHANNELS = orig_channels
+
 
 if __name__ == "__main__":
     unittest.main()
