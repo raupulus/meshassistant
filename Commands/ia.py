@@ -82,15 +82,21 @@ def _execute_ia_task(task: dict):
 
     # 2. Caso Consulta RAG de Emergencia
     consulta = task.get("consulta", "")
-    ubicacion = getattr(env, 'LOCATION_NAME', 'Cádiz')
 
     payload = {
         "consulta": consulta,
         "id_conversacion": f"meshtastic:{from_id}",
         "cliente": f"meshtastic:{from_id}",
-        "ubicacion": ubicacion,
         "reset_conversacion": False,
     }
+
+    lat = getattr(env, 'LOCATION_LAT', None)
+    lon = getattr(env, 'LOCATION_LON', None)
+    if lat is not None and lon is not None:
+        try:
+            payload["ubicacion"] = {"lat": float(lat), "lon": float(lon)}
+        except (ValueError, TypeError):
+            pass
 
     try:
         url = f"{api_url}/v1/consulta"
