@@ -111,7 +111,7 @@ class TestIaCommand(unittest.TestCase):
             self.assertEqual(self.interface.replies[0]["text"], "Parte 1: Medidas iniciales para la picadura.")
             self.assertEqual(self.interface.replies[1]["text"], "Parte 2: Aplicar calor local. Info orientativa. Llama al 112.")
             # Debe haber dormido entre partes
-            mock_sleep.assert_called_with(2.5)
+            mock_sleep.assert_called_with(3.0)
         finally:
             env.IA_API_ENABLED = orig_enabled
 

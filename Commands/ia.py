@@ -111,11 +111,21 @@ def _execute_ia_task(task: dict):
                 modelo = data.get("modelo", "")
                 log_p(f"[IA] Respuesta recibida ({tiempo_ms}ms, modelo: {modelo}, {len(mensajes)} partes)")
 
-                # Transmisión secuencial respetando el contrato LoRa
-                for i, parte in enumerate(mensajes):
+                # Transmisión secuencial respetando el contrato LoRa (<= MESH_MAX_BYTES)
+                from functions import split_messages, MESH_MAX_BYTES
+
+                partes_finales: list[str] = []
+                for msg_raw in mensajes:
+                    subpartes = split_messages(msg_raw, max_bytes=MESH_MAX_BYTES)
+                    partes_finales.extend(subpartes)
+
+                # Máximo 3 partes por respuesta
+                partes_finales = partes_finales[:3]
+
+                for i, parte in enumerate(partes_finales):
                     if i > 0:
-                        # Pausa defensiva de 2.5s entre mensajes para no saturar la malla
-                        time.sleep(2.5)
+                        # Pausa defensiva de 3.0s entre mensajes para no saturar la malla
+                        time.sleep(3.0)
                     interface.reply_to_message(parte, metadata)
                 return
             else:
