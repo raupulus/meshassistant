@@ -88,3 +88,32 @@ La aplicación web está estructurada como una SPA (Single Page Application) rea
 
 - **Encuestas Comunitarias:** Muestra encuestas activas, porcentaje de votos y desglose de opciones.
 - **Meteorología Oficial AEMET:** Visualización de la última predicción meteorológica descargada por el bot para la provincia configurada.
+
+---
+
+## 8. Pestaña 7 · Mensajes Programados
+
+- **Gestión de Automatizaciones:** Programación de difusiones periódicas o diferidas (boletines, recordatorios).
+- **Control de Estado:** Activación/desactivación instantánea, edición y eliminación.
+
+---
+
+## 9. Pestaña 8 · Seguridad & Vigilancia de Malla
+
+- **Nodos Auto-reportados por Mala Praxis:** Tabla en tiempo real con incidencias detectadas por `MeshWatcher`:
+  - Infracción con badge e icono (`🔀 Saltos Excesivos ≥6`, `⚡ Telemetría Rápida <30m`, `📍 GPS Rápido <30m`, `👥 NodeInfo Rápido <30m`, `🌡️ Clima Rápido <30m`, `🛑 Spam Comandos`).
+  - Contador de reincidencias y fecha relativa de última detección.
+  - Botón **`🚫 Ignorar en Bot` / `✅ Atender`**: Descarta todo paquete del nodo en memoria sin procesar ni responder.
+  - Botón **`🔒 Bloquear Radio` / `🔓 Desbloquear`**: Marca para exclusión en firmware.
+  - Selector de filtro por tipo de infracción.
+- **Lista Negra de Bloqueos:** Histórico y bloqueos manuales activos con tiempo de expiración.
+- **Auditoría Anti-Abuso:** Registro detallado de disparos automáticos del limitador de tasa de comandos.
+
+---
+
+## 10. Navegación y Diseño Adaptativo
+
+- **Barra Lateral Izquierda:**
+  - **Pantallas > 900px:** Barra fija de `120px` de ancho con icono y texto en salto de línea natural (`overflow-wrap: break-word`).
+  - **Pantallas ≤ 900px:** Modo compacto automático de `58px` con solo iconos visibles y badges flotantes.
+

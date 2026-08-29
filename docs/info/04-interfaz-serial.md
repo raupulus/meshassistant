@@ -38,33 +38,36 @@ entre intentos. Esto da **tolerancia a reinicios** del nodo.
 ## Envío de mensajes
 
 ```python
-send(msg, dest=None, channel=0)     # broadcast (^all) o directo según dest
-send_direct(msg, node_id)           # atajo a directo
-send_to_channel(msg, channel=0)     # atajo a canal/broadcast
-reply_to_message(msg, metadata)     # responde según el mensaje original
+send(msg, dest=None, channel=0, reply_id=None)  # broadcast (^all) o directo con in-reply-to
+send_direct(msg, node_id)                      # atajo a directo
+send_to_channel(msg, channel=0)                # atajo a canal/broadcast
+reply_to_message(msg, metadata)                # responde citando el mensaje original (replyId)
 ```
 
 - `dest=None` o `"^all"` → broadcast en `channel`.
 - `dest=int|str` → mensaje directo (`destinationId`).
-- `reply_to_message` decide directo vs. canal leyendo `metadata['is_direct']` y
-  `metadata['channel']`.
+- `reply_id` → ID del paquete original para citar la respuesta nativamente en la app de Meshtastic (`replyId`).
+- `reply_to_message` decide directo vs. canal leyendo `metadata['is_direct']`, `metadata['channel']` y propaga `metadata['reply_id']`.
 - Devuelve `bool` (éxito/fallo) y nunca lanza: errores capturados y logueados.
 
-> Límite Meshtastic: **~200 caracteres** por mensaje. Trocea textos largos.
+> Límite Meshtastic: **~200 caracteres** por mensaje. Trocea textos largos con `split_messages()`.
 
 ## Recepción de texto — `on_receive_text`
 
-1. Extrae `text`, `fromId`, `toId`, `to`.
-2. Determina `is_direct` (`toId != '^all'` y `to != 0xFFFFFFFF`).
-3. Obtiene/crea el `Node` emisor en `node_dict` y actualiza sus metadatos
+1. Extrae `text`, `fromId`, `toId`, `to` y el `id` del paquete original.
+2. **Inspección de Vigilancia (`MeshWatcher`):**
+   - Si el nodo emisor está en la lista de **ignorados en el bot**, descarta inmediatamente el paquete (0 CPU, 0 escrituras, 0 radio).
+   - Comprueba si el paquete nació con saltos excesivos (`hopStart >= 6`) y lo auto-reporta si procede.
+3. Determina `is_direct` (`toId != '^all'` y `to != 0xFFFFFFFF`).
+4. Obtiene/crea el `Node` emisor en `node_dict` y actualiza sus metadatos
    (snr, rssi, hop_limit, hop_start, via_mqtt) y telemetría en base de datos.
-4. Emite el evento en tiempo real `message_rx` a la pasarela WebSocket / Gateway.
-5. `functions.search_command(msg)` → busca un comando registrado.
-6. **Filtro de saltos (Hops):** Si el mensaje es por RF (`via_mqtt=False`), calcula los saltos
+5. Emite el evento en tiempo real `message_rx` a la pasarela WebSocket / Gateway.
+6. `functions.search_command(msg)` → busca un comando registrado.
+7. **Filtro de saltos (Hops):** Si el mensaje es por RF (`via_mqtt=False`), calcula los saltos
    del emisor (`hopStart - hopLimit`). Si superan `local_hop_limit + 1` (donde `local_hop_limit`
    se lee dinámicamente del firmware local), se omite la ejecución de la respuesta para ahorrar
    ancho de banda en la malla, registrándolo en el log.
-7. Si procede (`is_direct` o `in_group`), invoca `command_dict[cmd]['callback'](...)` y
+8. Si procede (`is_direct` o `in_group`), invoca `command_dict[cmd]['callback'](...)` y
    registra el comando en `commands_sent`.
 
 ## Carga de nodos — `get_nodes`

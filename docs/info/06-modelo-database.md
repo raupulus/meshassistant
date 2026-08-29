@@ -92,6 +92,19 @@ db = Database(db_path="...")    # ruta explícita (tests)
 | `get_latest_trace_route_info(identifier, base_identifiers=['RAU0'])` | Devuelve saltos exteriores, lista de repetidores intermedios (`intermediates`) y SNR exterior de la ruta. |
 | `get_recent_traces(limit=15)` | Devuelve los últimos traceroutes con saltos estructurados. |
 
+### Seguridad, Anti-Abuso y Vigilancia
+| Método | Descripción |
+|---|---|
+| `record_auto_reported_node(node_id, reason_code, reason_desc, details=None, short_name=None, name=None)` | Inserta o actualiza una incidencia por infracción consolidando por `(node_id, reason_code)` e incrementando `event_count`. |
+| `get_auto_reported_nodes(limit=100, offset=0, reason_code=None)` | Lista los nodos auto-reportados con filtrado opcional por tipo de infracción. |
+| `count_auto_reported_nodes()` | Devuelve el total de incidencias de auto-reportes registradas. |
+| `set_node_bot_ignored(node_id, is_ignored=True)` | Marca/desmarca si un nodo debe ser ignorado por completo en memoria y base de datos. |
+| `get_ignored_node_ids()` | Devuelve el conjunto `set[str]` de identificadores de nodos ignorados. |
+| `set_node_fw_blocked(node_id, is_blocked=True)` | Marca el nodo para bloqueo a nivel de firmware/radio. |
+| `is_node_blocked(node_id)` | Comprueba si un nodo está bloqueado en la lista negra (manual o auto activo). |
+| `block_node(...)` / `unblock_node(...)` | Bloquea o reactiva un nodo en la lista negra. |
+| `log_abuse(...)` / `get_abuse_logs(...)` | Registra y consulta la auditoría de saturación de comandos. |
+
 ### Cola (pendiente)
 | Método | Descripción |
 |---|---|

@@ -159,6 +159,54 @@ Permite a procesos externos (como la API WebSocket del Gateway) encolar mensajes
 
 Índice: `idx_outbox_status_created ON outbox(status, created_at)`.
 
+### `auto_reported_nodes` — nodos auto-reportados por mala praxis (vigilancia)
+Registra incidencias de nodos que saturan o dañan la red LoRa (saltos excesivos iniciales ≥6, telemetrías frecuentes <30m, spam de comandos). Permite que un mismo nodo tenga múltiples motivos de incidencia.
+
+| Columna | Tipo | Notas |
+|---|---|---|
+| `id` | INTEGER PK | Identificador único del auto-reporte. |
+| `node_id` | TEXT NOT NULL | ID del nodo (`!xxxxxxxx`). |
+| `short_name` | TEXT NULL | Alias corto del nodo. |
+| `name` | TEXT NULL | Nombre largo del nodo. |
+| `reason_code` | TEXT NOT NULL | Código (`EXCESSIVE_HOPS`, `FAST_TELEMETRY`, `FAST_POSITION`, `FAST_NODEINFO`, `FAST_ENVIRONMENTAL`, `COMMAND_SPAM`). |
+| `reason_desc` | TEXT NOT NULL | Descripción en lenguaje natural en español. |
+| `event_count` | INTEGER | Número de reincidencias detectadas (por defecto 1). |
+| `first_detected_at` | TEXT | Fecha y hora de la primera infracción (ISO 8601). |
+| `last_detected_at` | TEXT | Fecha y hora de la última infracción (ISO 8601). |
+| `last_details` | TEXT NULL | Metadatos JSON (intervalo medido, saltos, etc.). |
+| `is_ignored_bot` | INTEGER | 1 si el bot lo ignora completamente en memoria y BD. |
+| `is_blocked_fw` | INTEGER | 1 si se solicitó bloqueo en firmware/radio. |
+| `updated_at` | TEXT | Fecha de última actualización. |
+
+Restricción: `UNIQUE(node_id, reason_code)`.
+Índices: `idx_auto_reported_node ON auto_reported_nodes(node_id)`, `idx_auto_reported_last ON auto_reported_nodes(last_detected_at DESC)`.
+
+### `blocked_nodes` — lista negra de nodos bloqueados
+Gestiona bloqueos automáticos (por saturación) o manuales permanentes.
+
+| Columna | Tipo | Notas |
+|---|---|---|
+| `id` | INTEGER PK | |
+| `node_id` | TEXT UNIQUE | Nodo bloqueado. |
+| `node_name` | TEXT NULL | Nombre del nodo. |
+| `block_type` | TEXT | `auto` \| `manual`. |
+| `reason` | TEXT NULL | Motivo del bloqueo. |
+| `created_at` | TEXT | Momento del bloqueo. |
+| `expires_at` | TEXT NULL | Fecha de expiración (NULL = permanente). |
+| `active` | INTEGER | 1 = activo, 0 = inactivo. |
+
+### `abuse_logs` — auditoría de bloqueos y saturación
+Histórico de disparos del sistema anti-abuso.
+
+| Columna | Tipo | Notas |
+|---|---|---|
+| `id` | INTEGER PK | |
+| `node_id` | TEXT NOT NULL | Nodo infractor. |
+| `command` | TEXT NULL | Comando intentado. |
+| `action_taken` | TEXT NOT NULL | `autoban_15m`, `autoban_24h`, `manual_block`, `dropped`. |
+| `reason` | TEXT NULL | Motivo detallado. |
+| `created_at` | TEXT | Momento del evento. |
+
 ## Palabras reservadas
 
 `from` y `to` son palabras reservadas de SQL. En todas las queries van **entre

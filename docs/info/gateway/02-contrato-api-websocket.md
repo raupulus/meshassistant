@@ -532,3 +532,103 @@ Emitido en tiempo real cuando llega un mensaje por radio (canal o privado).
   "error": null
 }
 ```
+
+### 3.10. `get_auto_reported_nodes` (Consulta de Nodos Auto-reportados)
+- **Petición:**
+```json
+{
+  "action": "get_auto_reported_nodes",
+  "req_id": "ar_01",
+  "params": {
+    "limit": 100,
+    "offset": 0,
+    "reason_code": "EXCESSIVE_HOPS"
+  }
+}
+```
+- **Respuesta:**
+```json
+{
+  "type": "response",
+  "action": "get_auto_reported_nodes",
+  "req_id": "ar_01",
+  "success": true,
+  "data": {
+    "auto_reported_nodes": [
+      {
+        "id": 1,
+        "node_id": "!1234abcd",
+        "short_name": "BAD1",
+        "name": "Nodo Inundador",
+        "reason_code": "EXCESSIVE_HOPS",
+        "reason_desc": "Configurado con 7 saltos iniciales (máx recomendado 3-5)",
+        "event_count": 5,
+        "first_detected_at": "2026-08-29T09:00:00",
+        "last_detected_at": "2026-08-29T10:30:00",
+        "last_details": "{\"configured_hops\": 7}",
+        "is_ignored_bot": 0,
+        "is_blocked_fw": 0
+      }
+    ],
+    "total": 1
+  },
+  "error": null
+}
+```
+
+### 3.11. `set_node_bot_ignored` (Ignorar o Reactivar Nodo en Bot)
+- **Petición:**
+```json
+{
+  "action": "set_node_bot_ignored",
+  "req_id": "ign_01",
+  "params": {
+    "node_id": "!1234abcd",
+    "is_ignored": true
+  }
+}
+```
+- **Respuesta:**
+```json
+{
+  "type": "response",
+  "action": "set_node_bot_ignored",
+  "req_id": "ign_01",
+  "success": true,
+  "data": {
+    "node_id": "!1234abcd",
+    "is_ignored": true,
+    "success": true
+  },
+  "error": null
+}
+```
+
+### 3.12. `set_node_fw_blocked` (Bloquear o Desbloquear en Radio)
+- **Petición:**
+```json
+{
+  "action": "set_node_fw_blocked",
+  "req_id": "fwb_01",
+  "params": {
+    "node_id": "!1234abcd",
+    "is_blocked": true
+  }
+}
+```
+- **Respuesta:**
+```json
+{
+  "type": "response",
+  "action": "set_node_fw_blocked",
+  "req_id": "fwb_01",
+  "success": true,
+  "data": {
+    "node_id": "!1234abcd",
+    "is_blocked": true,
+    "success": true
+  },
+  "error": null
+}
+```
+
