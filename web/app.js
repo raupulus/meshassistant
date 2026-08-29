@@ -554,6 +554,18 @@ class MeshDashboard {
         this.modalPollReminder.style.display = "none";
       });
     }
+    if (this.modalPollReminder) {
+      this.modalPollReminder.addEventListener("click", (e) => {
+        if (e.target === this.modalPollReminder) {
+          this.modalPollReminder.style.display = "none";
+        }
+      });
+      document.addEventListener("keydown", (e) => {
+        if (e.key === "Escape" && this.modalPollReminder && this.modalPollReminder.style.display !== "none") {
+          this.modalPollReminder.style.display = "none";
+        }
+      });
+    }
     if (this.formPollReminder) {
       this.formPollReminder.addEventListener("submit", (e) => {
         e.preventDefault();
@@ -1096,7 +1108,7 @@ class MeshDashboard {
       let html = "";
       for (const [chNum, chObj] of Object.entries(this.channels)) {
         const name = chObj.name || `Canal ${chNum}`;
-        const isChecked = hasPrev ? prevChecked.includes(String(chNum)) : (String(chNum) !== "0");
+        const isChecked = hasPrev ? prevChecked.includes(String(chNum)) : false;
         html += `
           <label style="font-size: 0.85rem; display: flex; align-items: center; gap: 6px; cursor: pointer; background: var(--bg-input); padding: 5px 10px; border-radius: 6px; border: 1px solid var(--border);">
             <input type="checkbox" name="poll_channel" value="${chNum}" ${isChecked ? "checked" : ""}>
@@ -1116,7 +1128,7 @@ class MeshDashboard {
       let html = "";
       for (const [chNum, chObj] of Object.entries(this.channels)) {
         const name = chObj.name || `Canal ${chNum}`;
-        const isChecked = hasPrev ? prevChecked.includes(String(chNum)) : (String(chNum) !== "0");
+        const isChecked = hasPrev ? prevChecked.includes(String(chNum)) : false;
         html += `
           <label style="font-size: 0.85rem; display: flex; align-items: center; gap: 6px; cursor: pointer; background: var(--bg-input); padding: 5px 10px; border-radius: 6px; border: 1px solid var(--border);">
             <input type="checkbox" name="reminder_ch" value="${chNum}" ${isChecked ? "checked" : ""}>
