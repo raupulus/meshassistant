@@ -225,6 +225,13 @@ class SerialInterface:
                 from_info = self.node_dict.get(from_node_id) if from_node_id else None
                 if MeshWatcher.inspect_packet(packet, from_info):
                     return
+                
+                # Comprobar si es un paquete de traceroute
+                portnum = decoded.get('portnum')
+                if portnum in ("TRACEROUTE_APP", "ROUTING_APP", 7, 6, "traceroute", "routing") or "traceroute" in decoded or "routing" in decoded:
+                    s_name = getattr(from_info, "short_name", None) if from_info else None
+                    l_name = getattr(from_info, "name", None) if from_info else None
+                    MeshWatcher.inspect_traceroute(from_node_id, packet, short_name=s_name, name=l_name)
             except Exception:
                 pass
 

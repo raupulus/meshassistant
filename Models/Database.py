@@ -372,7 +372,7 @@ class Database:
                 """
                 SELECT node_id, name, num, short_name, mac_addr, hw_model, role, is_favorite,
                        snr, rssi, public_key, hops, hop_start, uptime, via_mqtt,
-                       battery, voltage, last_heard, updated_at
+                       battery, voltage, last_heard, traces_detected, updated_at
                 FROM nodes
                 WHERE node_id = ?
                 """,
@@ -390,7 +390,7 @@ class Database:
                 """
                 SELECT node_id, name, num, short_name, mac_addr, hw_model, role, is_favorite,
                        snr, rssi, public_key, hops, hop_start, uptime, via_mqtt,
-                       battery, voltage, last_heard, updated_at
+                       battery, voltage, last_heard, traces_detected, updated_at
                 FROM nodes
                 WHERE UPPER(node_id) = UPPER(?)
                    OR UPPER(short_name) = UPPER(?)
@@ -512,6 +512,7 @@ class Database:
             "battery",
             "voltage",
             "last_heard",
+            "traces_detected",
         }
 
         # Filtrar y preparar valores
@@ -540,6 +541,23 @@ class Database:
                 tuple(values),
             )
             conn.commit()
+
+    def increment_node_traces_detected(self, node_id: str) -> int:
+        """Incrementa en 1 el contador de traceroutes emitidos y detectados por este nodo."""
+        if not node_id or str(node_id).strip() in ("", "None", "null", "Desconocido", "none"):
+            return 0
+        clean_id = str(node_id).strip()
+        self.create_node_if_not_exists(clean_id)
+        when_str = datetime.now().isoformat(timespec="seconds")
+        with closing(self._connect()) as conn:
+            conn.execute(
+                "UPDATE nodes SET traces_detected = COALESCE(traces_detected, 0) + 1, updated_at = ? WHERE node_id = ?",
+                (when_str, clean_id),
+            )
+            conn.commit()
+            cur = conn.execute("SELECT traces_detected FROM nodes WHERE node_id = ?", (clean_id,))
+            row = cur.fetchone()
+            return int(row["traces_detected"]) if row and row["traces_detected"] is not None else 1
 
     # ---------- TASKS CONTROL ----------
     def get_task_last_run(self, name: str) -> Optional[str]:
@@ -1807,7 +1825,7 @@ class Database:
         with closing(self._connect()) as conn:
             sql = """
                 SELECT node_id AS id, node_id, name, num, short_name, mac_addr, hw_model, role,
-                       is_favorite, snr, rssi, hops, uptime, via_mqtt, battery, voltage, last_heard, created_at, updated_at
+                       is_favorite, snr, rssi, hops, uptime, via_mqtt, battery, voltage, last_heard, traces_detected, created_at, updated_at
                 FROM nodes
                 WHERE node_id IS NOT NULL AND trim(node_id) != '' AND node_id NOT IN ('None', 'null', 'Desconocido')
             """

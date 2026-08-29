@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import time
+from collections import deque
 from typing import Any, Dict, Optional, Set
 from functions import log_p
 from Models.Database import Database
@@ -13,6 +14,7 @@ class MeshWatcher:
     para detectar comportamientos perjudiciales con coste computacional casi nulo:
     - Saltos iniciales configurados >= 6 (hopStart / hopLimit).
     - Telemetrías frecuentes (< 30 min por tipo: Batería, Posición, NodeInfo, Sensores).
+    - Abuso de Traceroutes (> 1 / minuto o > 20 / hora).
     - Nodos ignorados / bloqueados en el bot.
     - Exclusión estricta del nodo local (bot propio).
     """
@@ -20,6 +22,8 @@ class MeshWatcher:
     MIN_TELEMETRY_INTERVAL_SEC = 1800  # 30 minutos (1800 segundos)
     ANTIBOUNCE_MIN_SEC = 15           # Ignorar eventos duplicados/ráfagas < 15s
     MAX_RECOMMENDED_HOPS = 5          # Saltos máximos saludables
+    MAX_TRACES_PER_MIN = 1            # Límite saludable: máx 1 trace/minuto
+    MAX_TRACES_PER_HOUR = 20          # Límite saludable: máx 20 traces/hora
 
     PORT_MAP = {
         "TELEMETRY_APP": ("FAST_TELEMETRY", "Telemetría de batería"),
@@ -29,6 +33,7 @@ class MeshWatcher:
     }
 
     _last_telemetry: Dict[str, Dict[str, float]] = {}
+    _trace_history: Dict[str, deque[float]] = {}
     _ignored_nodes: Set[str] = set()
     _local_node_ids: Set[str] = set()
     _local_node_names: Set[str] = set()
@@ -301,3 +306,96 @@ class MeshWatcher:
                 pass
         except Exception as e:
             log_p(f"[Watcher] Error registrando spam de comandos: {e}", level="WARN")
+
+    @classmethod
+    def inspect_traceroute(
+        cls,
+        node_id: str,
+        packet: Optional[Dict[str, Any]] = None,
+        short_name: Optional[str] = None,
+        name: Optional[str] = None,
+    ) -> None:
+        """Contabiliza un traceroute emitido por un nodo y vigila exceso de peticiones."""
+        if not node_id:
+            return
+
+        nid = str(node_id).strip()
+        if cls.is_local_node(nid, name, short_name):
+            return
+
+        # 1. Incrementar contador persistido en BD (+1 en nodes.traces_detected)
+        try:
+            db = Database()
+            db.increment_node_traces_detected(nid)
+            try:
+                from Models.EventBroadcaster import broadcast_event
+                broadcast_event("node_trace_detected", {"node_id": nid})
+            except Exception:
+                pass
+        except Exception as e:
+            log_p(f"[Watcher] Error incrementando contador de traces para {nid}: {e}", level="WARN")
+
+        # 2. Control de saturación en RAM (ventana deslizante de 1 hora)
+        now_ts = time.time()
+        if nid not in cls._trace_history:
+            cls._trace_history[nid] = deque()
+
+        q = cls._trace_history[nid]
+        q.append(now_ts)
+
+        # Limpiar eventos fuera de la ventana de 1 hora (3600 segundos)
+        while q and q[0] < now_ts - 3600.0:
+            q.popleft()
+
+        traces_1m = sum(1 for t in q if t >= now_ts - 60.0)
+        traces_1h = len(q)
+
+        # Regla 1: Ráfaga abusiva (> 1 traceroute en 60 segundos)
+        if traces_1m >= 2:
+            desc = f"Spam de traceroutes: {traces_1m} peticiones en 1 min"
+            try:
+                db = Database()
+                db.record_auto_reported_node(
+                    node_id=nid,
+                    reason_code="EXCESSIVE_TRACES",
+                    reason_desc=desc,
+                    details={"traces_1m": traces_1m, "traces_1h": traces_1h, "limit_1m": cls.MAX_TRACES_PER_MIN},
+                    short_name=short_name,
+                    name=name,
+                )
+                try:
+                    from Models.EventBroadcaster import broadcast_event
+                    broadcast_event("auto_report_event", {
+                        "node_id": nid,
+                        "reason_code": "EXCESSIVE_TRACES",
+                        "short_name": short_name,
+                    })
+                except Exception:
+                    pass
+            except Exception as e:
+                log_p(f"[Watcher] Error registrando spam de traceroutes: {e}", level="WARN")
+
+        # Regla 2: Exceso horario (> 20 traceroutes en 1 hora)
+        elif traces_1h >= 21:
+            desc = f"Exceso de traceroutes: {traces_1h} peticiones en 1 hora"
+            try:
+                db = Database()
+                db.record_auto_reported_node(
+                    node_id=nid,
+                    reason_code="EXCESSIVE_TRACES",
+                    reason_desc=desc,
+                    details={"traces_1m": traces_1m, "traces_1h": traces_1h, "limit_1h": cls.MAX_TRACES_PER_HOUR},
+                    short_name=short_name,
+                    name=name,
+                )
+                try:
+                    from Models.EventBroadcaster import broadcast_event
+                    broadcast_event("auto_report_event", {
+                        "node_id": nid,
+                        "reason_code": "EXCESSIVE_TRACES",
+                        "short_name": short_name,
+                    })
+                except Exception:
+                    pass
+            except Exception as e:
+                log_p(f"[Watcher] Error registrando exceso horario de traceroutes: {e}", level="WARN")

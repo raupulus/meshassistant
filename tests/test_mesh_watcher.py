@@ -174,6 +174,29 @@ class TestMeshWatcher(unittest.TestCase):
         discard = MeshWatcher.inspect_packet(packet)
         self.assertFalse(discard)
 
+    @patch("time.time")
+    def test_traceroute_detection_and_abuse(self, mock_time):
+        mock_time.return_value = 1000.0
+        node_id = "!trace_spammer"
+
+        # 1. Primer traceroute: debe incrementar el contador en nodes a 1 y no generar auto-reporte
+        MeshWatcher.inspect_traceroute(node_id)
+        node_row = self.db.get_node(node_id)
+        self.assertEqual(node_row.get("traces_detected"), 1)
+        self.assertEqual(len(self.db.get_auto_reported_nodes()), 0)
+
+        # 2. Segundo traceroute a los 30 segundos (t=1030s, ráfaga >1/min): debe auto-reportar
+        mock_time.return_value = 1030.0
+        MeshWatcher.inspect_traceroute(node_id)
+        node_row = self.db.get_node(node_id)
+        self.assertEqual(node_row.get("traces_detected"), 2)
+
+        reported = self.db.get_auto_reported_nodes()
+        self.assertEqual(len(reported), 1)
+        self.assertEqual(reported[0]["node_id"], node_id)
+        self.assertEqual(reported[0]["reason_code"], "EXCESSIVE_TRACES")
+        self.assertEqual(reported[0]["reason_desc"], "Spam de traceroutes: 2 peticiones en 1 min")
+
 
 if __name__ == "__main__":
     unittest.main()

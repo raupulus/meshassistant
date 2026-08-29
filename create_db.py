@@ -100,6 +100,7 @@ def _execute_schema(conn: sqlite3.Connection) -> None:
             uptime INTEGER,
             via_mqtt INTEGER,
             last_heard INTEGER,
+            traces_detected INTEGER NOT NULL DEFAULT 0,
             updated_at TEXT
         );
 
@@ -357,6 +358,9 @@ def _execute_schema(conn: sqlite3.Connection) -> None:
         conn.execute('ALTER TABLE nodes ADD COLUMN created_at TEXT NULL')
         conn.execute('UPDATE nodes SET created_at = updated_at WHERE created_at IS NULL')
         conn.commit()
+    if not _has_column('nodes', 'traces_detected'):
+        conn.execute('ALTER TABLE nodes ADD COLUMN traces_detected INTEGER NOT NULL DEFAULT 0')
+        conn.commit()
 
     # Create indexes if not exist
     cur.execute('CREATE INDEX IF NOT EXISTS idx_chistes_need_upload ON chistes(need_upload)')
@@ -368,9 +372,10 @@ def _execute_schema(conn: sqlite3.Connection) -> None:
     cur.execute('CREATE INDEX IF NOT EXISTS idx_traces_status_created ON traces(status, created_at)')
     cur.execute('CREATE INDEX IF NOT EXISTS idx_traces_to_updated ON traces("to", updated_at)')
     
-    # Limpieza de registros corruptos/vacíos
+    # Limpieza de registros corruptos/vacíos y normalización de textos
     conn.execute("DELETE FROM nodes WHERE node_id IS NULL OR trim(node_id) = '' OR node_id IN ('None', 'null', 'Desconocido')")
     conn.execute("DELETE FROM commands_sent WHERE node_id IS NULL OR trim(node_id) = '' OR command IS NULL OR trim(command) IN ('', '/', '!')")
+    conn.execute("UPDATE auto_reported_nodes SET reason_desc = REPLACE(reason_desc, ' (máx recomendado 3-5)', '') WHERE reason_desc LIKE '%(máx recomendado%'")
     conn.commit()
 
     # Migración idempotente para adaptar la tabla traces existente

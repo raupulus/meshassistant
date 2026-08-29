@@ -58,14 +58,21 @@ El módulo [`Models/MeshWatcher.py`](file:///Users/fryntiz/git/meshassistant/Mod
 | **Posición GPS Rápida** | `FAST_POSITION` | `POSITION_APP` < 30 min | Emisión de coordenadas en ciclos cortos. |
 | **NodeInfo Rápido** | `FAST_NODEINFO` | `NODEINFO_APP` < 30 min | Difusión repetitiva de información de usuario/nodo. |
 | **Sensores Ambientales Rápidos** | `FAST_ENVIRONMENTAL` | `ENVIRONMENTAL_MEASUREMENT_APP` < 30 min | Estación climática emitiendo en intervalos agresivos. |
+| **Abuso de Traceroutes** | `EXCESSIVE_TRACES` | > 1 pet / min ó > 20 pet / hora | Emisión descontrolada de traceroutes saturando la red LoRa. |
 | **Spam de Comandos** | `COMMAND_SPAM` | ≥ 10 peticiones / minuto | Ráfaga de comandos hacia el bot. |
 
-### 2.2. Filtro Antirrebote y Exclusión del Nodo Local
+### 2.2. Conteo de Traceroutes y Vigilancia de Abuso
+- **Contador por Nodo (`nodes.traces_detected`):** Cada paquete de traceroute detectado en el aire (`TRACEROUTE_APP` / `ROUTING_APP`) incrementa un contador atómico en la base de datos para saber cuántos traceroutes ha emitido ese nodo históricamente.
+- **Vigilancia en Memoria RAM (Ventana Deslizante):** Se mantienen los timestamps en una cola en memoria (`deque`) descartando registros con más de 1 hora.
+  - **Ráfaga (> 1 por minuto):** Dispara `EXCESSIVE_TRACES` indicando `Spam de traceroutes: X peticiones en 1 min`.
+  - **Exceso horario (> 20 por hora):** Dispara `EXCESSIVE_TRACES` indicando `Exceso de traceroutes: X peticiones en 1 hora`.
+
+### 2.3. Filtro Antirrebote y Exclusión del Nodo Local
 - **Exclusión del Nodo Propio:** El nodo local conectado por UART (`Raupulus PicoBot 2` / ID local) emite telemetría constante por diseño hacia el host serie. Queda **estrictamente excluido** de cualquier regla de vigilancia o bloqueo.
 - **Filtro Antirrebote (< 15 segundos):** Los paquetes repetidos o disparados en ráfagas casi simultáneas por UART (< 15s) se descartan como duplicados del mismo evento, evitando falsos positivos de "0s".
 - **Medición de Intervalos Reales:** Cuando un nodo emite telemetría legítima en menos de 30 minutos, se calcula el tiempo transcurrido exacto y se presenta de forma limpia: `Telemetría recibida en 45s`, `Posición GPS recibida en 5m 20s`, `NodeInfo recibido en 12m`.
 
-### 2.3. Agrupación por Motivo en Base de Datos
+### 2.4. Agrupación por Motivo en Base de Datos
 
 La tabla `auto_reported_nodes` utiliza la restricción `UNIQUE(node_id, reason_code)`:
 - Un mismo nodo físico puede registrar **dos incidencias separadas** si comete dos infracciones distintas (por ejemplo, una por saltos excesivos y otra por telemetría rápida).

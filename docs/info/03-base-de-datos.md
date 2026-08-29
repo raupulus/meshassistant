@@ -45,6 +45,7 @@ con `CREATE TABLE IF NOT EXISTS`. Además realiza **migraciones idempotentes**:
 | `battery` | INTEGER NULL | Nivel de batería reportado (0-100%). |
 | `voltage` | REAL NULL | Voltaje de batería (V). |
 | `last_heard` | INTEGER | Último contacto (epoch). |
+| `traces_detected` | INTEGER | Contador de traceroutes emitidos y detectados en la malla por este nodo. |
 | `created_at` | TEXT | Fecha y hora en que fue descubierto por primera vez. |
 | `updated_at` | TEXT | ISO 8601 de última actualización. |
 
@@ -225,7 +226,7 @@ Registra incidencias de nodos que saturan o dañan la red LoRa (saltos excesivos
 | `node_id` | TEXT NOT NULL | ID del nodo (`!xxxxxxxx`). |
 | `short_name` | TEXT NULL | Alias corto del nodo. |
 | `name` | TEXT NULL | Nombre largo del nodo. |
-| `reason_code` | TEXT NOT NULL | Código (`EXCESSIVE_HOPS`, `FAST_TELEMETRY`, `FAST_POSITION`, `FAST_NODEINFO`, `FAST_ENVIRONMENTAL`, `COMMAND_SPAM`). |
+| `reason_code` | TEXT NOT NULL | Código (`EXCESSIVE_HOPS`, `FAST_TELEMETRY`, `FAST_POSITION`, `FAST_NODEINFO`, `FAST_ENVIRONMENTAL`, `EXCESSIVE_TRACES`, `COMMAND_SPAM`). |
 | `reason_desc` | TEXT NOT NULL | Descripción en lenguaje natural en español. |
 | `event_count` | INTEGER | Número de reincidencias detectadas (por defecto 1). |
 | `first_detected_at` | TEXT | Fecha y hora de la primera infracción (ISO 8601). |

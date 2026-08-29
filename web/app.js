@@ -1348,6 +1348,7 @@ class MeshDashboard {
           </td>
           <td>
             <strong>${this.escapeHtml(n.name || "Sin nombre")}</strong>
+            ${n.traces_detected > 0 ? `<span class="badge" style="background: var(--bg-input); color: var(--text-muted); font-size: 0.7rem; margin-left: 4px;" title="Traceroutes emitidos por este nodo">📍 ${n.traces_detected}</span>` : ""}
           </td>
           <td style="font-weight: 600; color: var(--primary); font-family: monospace;">
             ${this.escapeHtml(n.short_name || "--")}
@@ -1902,6 +1903,7 @@ class MeshDashboard {
       "FAST_POSITION": { icon: "📍", label: "Posición GPS Rápida", bg: "var(--warning-bg)", color: "var(--warning)" },
       "FAST_NODEINFO": { icon: "👥", label: "NodeInfo Rápido", bg: "var(--primary-bg)", color: "var(--primary)" },
       "FAST_ENVIRONMENTAL": { icon: "🌡️", label: "Sensores Clima", bg: "var(--warning-bg)", color: "var(--warning)" },
+      "EXCESSIVE_TRACES": { icon: "📍", label: "Exceso Traceroutes", bg: "var(--danger-bg)", color: "var(--danger)" },
       "COMMAND_SPAM": { icon: "🛑", label: "Spam Comandos", bg: "var(--danger-bg)", color: "var(--danger)" },
     };
 
