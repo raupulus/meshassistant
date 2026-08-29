@@ -1323,6 +1323,23 @@ class Database:
 
             return None
 
+    def aemet_weather_get_all_latest(self) -> List[Dict[str, Any]]:
+        """Obtiene los últimos partes meteorológicos de texto por localidad/provincia."""
+        with closing(self._connect()) as conn:
+            cur = conn.execute(
+                """
+                SELECT w.id, w.scope, w.province, w.province_code, w.city, w.city_code, w.day, w.content, w.created_at
+                FROM aemet_weather w
+                INNER JOIN (
+                    SELECT COALESCE(city_code, province) AS loc_key, MAX(id) AS max_id
+                    FROM aemet_weather
+                    GROUP BY COALESCE(city_code, province)
+                ) latest ON w.id = latest.max_id
+                ORDER BY w.province ASC, w.city ASC
+                """
+            )
+            return [dict(r) for r in cur.fetchall()]
+
     def aemet_get_recent_alerts(self, limit: int = 3, hours: Optional[int] = 48) -> List[Dict[str, Any]]:
         """Devuelve las alertas AEMET más recientes (para el comando /avisos).
 
@@ -1392,6 +1409,31 @@ class Database:
             except Exception:
                 res['data'] = {}
             return res
+
+    def aemet_forecast_daily_get_all_latest(self) -> List[Dict[str, Any]]:
+        """Obtiene la última predicción multi-día para cada localidad guardada."""
+        with closing(self._connect()) as conn:
+            cur = conn.execute(
+                """
+                SELECT f.id, f.city_code, f.city_name, f.province, f.data_json, f.summary_3d, f.summary_7d, f.created_at
+                FROM aemet_forecast_daily f
+                INNER JOIN (
+                    SELECT city_code, MAX(id) AS max_id
+                    FROM aemet_forecast_daily
+                    GROUP BY city_code
+                ) latest ON f.id = latest.max_id
+                ORDER BY f.city_name ASC
+                """
+            )
+            results = []
+            for row in cur.fetchall():
+                res = dict(row)
+                try:
+                    res['data'] = json.loads(res.get('data_json') or '{}')
+                except Exception:
+                    res['data'] = {}
+                results.append(res)
+            return results
 
     def aemet_forecast_hourly_insert(
         self,
@@ -1624,26 +1666,25 @@ class Database:
             return cur.rowcount or 0
 
     def encuesta_create(self, *, owner_node_id: str, question: str,
-                        options: List[str], days: int = 7) -> int:
-        """Crea una encuesta y devuelve su id. days entre 1 y 30.
-
-        NOTA (punto 5 de la revisión): se usa datetime.now() en hora LOCAL naive,
-        igual que el resto del esquema (created_at, tasks_control, etc.). Es una
-        decisión consciente de coherencia: pasar solo las encuestas a UTC las
-        dejaría inconsistentes con las demás tablas, y el único efecto de un
-        cambio de horario (DST) sería un desfase de ±1 h en el cierre de una
-        encuesta que dura días, algo irrelevante para este caso de uso.
-        """
+                        options: List[str], days: int = 7,
+                        starts_at: Optional[str] = None,
+                        ends_at: Optional[str] = None) -> int:
+        """Crea una encuesta y devuelve su id. Soporta duración por días o fechas ISO explícitas."""
         import json
-        days = max(1, min(30, int(days)))
         now = datetime.now()
-        ends = now + timedelta(days=days)
+        created_iso = starts_at if starts_at else now.isoformat(timespec='seconds')
+        if ends_at:
+            ends_iso = ends_at
+        else:
+            days = max(1, min(365, int(days)))
+            ends_iso = (now + timedelta(days=days)).isoformat(timespec='seconds')
+
         with closing(self._connect()) as conn:
             cur = conn.execute(
                 'INSERT INTO encuestas (owner_node_id, question, options, created_at, ends_at, status) '
                 "VALUES (?, ?, ?, ?, ?, 'active')",
                 (owner_node_id, question, json.dumps(options, ensure_ascii=False),
-                 now.isoformat(timespec='seconds'), ends.isoformat(timespec='seconds')),
+                 created_iso, ends_iso),
             )
             conn.commit()
             return int(cur.lastrowid)
@@ -1655,10 +1696,7 @@ class Database:
             d['options'] = json.loads(d.get('options') or '[]')
         except Exception:
             d['options'] = []
-        # Estado EFECTIVO sin persistir (punto 2 de la revisión): si ya venció
-        # ends_at, se presenta como cerrada aunque la BD aún diga 'active'. El
-        # cierre real en BD lo hace el cron con encuesta_expire_due(). Así las
-        # lecturas no escriben.
+        # Estado EFECTIVO sin persistir: si ya venció ends_at, se presenta como cerrada
         try:
             if d.get('status') == 'active' and d.get('ends_at'):
                 if datetime.fromisoformat(d['ends_at']) <= datetime.now():
@@ -1668,10 +1706,7 @@ class Database:
         return d
 
     def encuesta_get(self, encuesta_id: int) -> Optional[Dict[str, Any]]:
-        """Devuelve una encuesta por id (con opciones parseadas) o None.
-
-        Calcula el estado efectivo en memoria; no escribe en BD.
-        """
+        """Devuelve una encuesta por id (con opciones parseadas) o None."""
         with closing(self._connect()) as conn:
             cur = conn.execute(
                 'SELECT id, owner_node_id, question, options, created_at, ends_at, status, closed_at '
@@ -1682,8 +1717,6 @@ class Database:
             return self._row_to_encuesta(row) if row else None
 
     def encuesta_get_active_by_owner(self, owner_node_id: str) -> Optional[Dict[str, Any]]:
-        # Filtra por ends_at en el propio SELECT (sin escribir): una encuesta
-        # vencida pero aún no barrida por el cron NO cuenta como activa.
         now = datetime.now().isoformat(timespec='seconds')
         with closing(self._connect()) as conn:
             cur = conn.execute(
@@ -1697,7 +1730,6 @@ class Database:
             return self._row_to_encuesta(row) if row else None
 
     def encuesta_list_active(self, limit: int = 10) -> List[Dict[str, Any]]:
-        # Solo activas no vencidas; sin escribir en BD (ver punto 2 revisión).
         now = datetime.now().isoformat(timespec='seconds')
         with closing(self._connect()) as conn:
             cur = conn.execute(
@@ -1708,32 +1740,49 @@ class Database:
             )
             return [self._row_to_encuesta(r) for r in cur.fetchall()]
 
-    def encuesta_close(self, encuesta_id: int, owner_node_id: str) -> bool:
-        """Cierra una encuesta. Solo el nodo dueño. Devuelve True si se cerró."""
-        now = datetime.now().isoformat(timespec='seconds')
+    def encuesta_list_all(self, limit: int = 100) -> List[Dict[str, Any]]:
+        """Lista todas las encuestas (activas y cerradas) ordenadas con las activas más recientes primero."""
         with closing(self._connect()) as conn:
             cur = conn.execute(
-                "UPDATE encuestas SET status = 'closed', closed_at = ? "
-                "WHERE id = ? AND owner_node_id = ? AND status = 'active'",
-                (now, encuesta_id, owner_node_id),
+                "SELECT id, owner_node_id, question, options, created_at, ends_at, status, closed_at "
+                "FROM encuestas "
+                "ORDER BY CASE WHEN status = 'active' THEN 0 ELSE 1 END, created_at DESC LIMIT ?",
+                (int(limit),),
             )
+            return [self._row_to_encuesta(r) for r in cur.fetchall()]
+
+    def encuesta_close(self, encuesta_id: int, owner_node_id: Optional[str] = None) -> bool:
+        """Cierra una encuesta. Si owner_node_id es None o 'admin', cierra sin comprobar dueño."""
+        now = datetime.now().isoformat(timespec='seconds')
+        with closing(self._connect()) as conn:
+            if owner_node_id and owner_node_id not in ('admin', 'gateway', 'web'):
+                cur = conn.execute(
+                    "UPDATE encuestas SET status = 'closed', closed_at = ? "
+                    "WHERE id = ? AND owner_node_id = ? AND status = 'active'",
+                    (now, encuesta_id, owner_node_id),
+                )
+            else:
+                cur = conn.execute(
+                    "UPDATE encuestas SET status = 'closed', closed_at = ? "
+                    "WHERE id = ? AND status = 'active'",
+                    (now, encuesta_id),
+                )
             conn.commit()
             return (cur.rowcount or 0) > 0
 
-    def encuesta_delete(self, encuesta_id: int, owner_node_id: str) -> bool:
-        """Borra una encuesta y sus votos. Solo el nodo dueño.
-
-        NOTA (punto 6 de la revisión): los dos DELETE van en la MISMA transacción
-        con un único commit() al final, así que la operación es atómica: si el
-        proceso muriera entre medias, ambos se revierten y no quedan votos
-        huérfanos. Por eso no se añade FOREIGN KEY ... ON DELETE CASCADE (exigiría
-        PRAGMA foreign_keys=ON por conexión y reconstruir la tabla).
-        """
+    def encuesta_delete(self, encuesta_id: int, owner_node_id: Optional[str] = None) -> bool:
+        """Borra una encuesta y sus votos."""
         with closing(self._connect()) as conn:
-            cur = conn.execute(
-                'DELETE FROM encuestas WHERE id = ? AND owner_node_id = ?',
-                (encuesta_id, owner_node_id),
-            )
+            if owner_node_id and owner_node_id not in ('admin', 'gateway', 'web'):
+                cur = conn.execute(
+                    'DELETE FROM encuestas WHERE id = ? AND owner_node_id = ?',
+                    (encuesta_id, owner_node_id),
+                )
+            else:
+                cur = conn.execute(
+                    'DELETE FROM encuestas WHERE id = ?',
+                    (encuesta_id,),
+                )
             if cur.rowcount:
                 conn.execute('DELETE FROM encuesta_votos WHERE encuesta_id = ?', (encuesta_id,))
             conn.commit()

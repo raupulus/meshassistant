@@ -128,6 +128,45 @@ class MeshDashboard {
     // Elementos de la Guía de Comandos
     this.commandsContainer = document.getElementById("commands-container");
     this.commandsSearchInput = document.getElementById("commands-search-input");
+
+    // Elementos de Encuestas (Pestaña 5)
+    this.pollsList = document.getElementById("polls-list");
+    this.countPolls = document.getElementById("count-polls");
+    this.formCreatePoll = document.getElementById("form-create-poll");
+    this.btnRefreshPolls = document.getElementById("btn-refresh-polls");
+    this.btnAddPollOption = document.getElementById("btn-add-poll-option");
+    this.pollOptionsContainer = document.getElementById("poll-options-container");
+    this.pollDurationMode = document.getElementById("poll-duration-mode");
+    this.pollDaysGroup = document.getElementById("poll-days-group");
+    this.pollDatesGroup = document.getElementById("poll-dates-group");
+    this.currentPollFilter = "all";
+    this.pollsData = [];
+
+    // Modal de Recordatorio de Encuesta
+    this.modalPollReminder = document.getElementById("modal-poll-reminder");
+    this.formPollReminder = document.getElementById("form-poll-reminder");
+    this.reminderPollId = document.getElementById("reminder-poll-id");
+    this.reminderPreviewText = document.getElementById("reminder-preview-text");
+    this.reminderChannelsGroup = document.getElementById("reminder-channels-group");
+    this.reminderFrequency = document.getElementById("reminder-frequency");
+    this.btnCloseReminderModal = document.getElementById("btn-close-reminder-modal");
+    this.btnCancelReminder = document.getElementById("btn-cancel-reminder");
+
+    // Elementos de Clima & AEMET (Pestaña 6)
+    this.btnRefreshWeather = document.getElementById("btn-refresh-weather");
+    this.tidesContent = document.getElementById("tides-content");
+    this.tidesBadge = document.getElementById("tides-badge");
+    this.moonContent = document.getElementById("moon-content");
+    this.moonBadge = document.getElementById("moon-badge");
+    this.sunContent = document.getElementById("sun-content");
+    this.sunBadge = document.getElementById("sun-badge");
+    this.tsunamiContent = document.getElementById("tsunami-content");
+    this.tsunamiBadge = document.getElementById("tsunami-badge");
+    this.weatherHourlyContent = document.getElementById("weather-hourly-content");
+    this.weatherHourlyCity = document.getElementById("weather-hourly-city");
+    this.weatherLocationsContainer = document.getElementById("weather-locations-container");
+    this.weatherAlertsContent = document.getElementById("weather-alerts-content");
+    this.weatherAlertsCount = document.getElementById("weather-alerts-count");
   }
 
   bindEvents() {
@@ -428,6 +467,122 @@ class MeshDashboard {
         }
       });
     }
+
+    // Eventos de Encuestas (Pestaña 5)
+    if (this.btnAddPollOption && this.pollOptionsContainer) {
+      this.btnAddPollOption.addEventListener("click", () => {
+        const inputs = this.pollOptionsContainer.querySelectorAll(".poll-option-input");
+        if (inputs.length >= 5) {
+          this.showToast("Máximo 5 opciones permitidas por encuesta", "warning");
+          return;
+        }
+        const optNum = inputs.length + 1;
+        const div = document.createElement("div");
+        div.style.display = "flex";
+        div.style.gap = "6px";
+        div.innerHTML = `
+          <input type="text" class="input-custom poll-option-input" placeholder="Opción ${optNum}" required style="flex: 1;">
+          <button type="button" class="btn-secondary btn-remove-opt" style="padding: 2px 8px; color: var(--danger);">✕</button>
+        `;
+        div.querySelector(".btn-remove-opt").addEventListener("click", () => div.remove());
+        this.pollOptionsContainer.appendChild(div);
+      });
+    }
+
+    if (this.pollDurationMode) {
+      this.pollDurationMode.addEventListener("change", (e) => {
+        const isDates = e.target.value === "dates";
+        if (this.pollDaysGroup) this.pollDaysGroup.style.display = isDates ? "none" : "block";
+        if (this.pollDatesGroup) this.pollDatesGroup.style.display = isDates ? "grid" : "none";
+      });
+    }
+
+    if (this.formCreatePoll) {
+      this.formCreatePoll.addEventListener("submit", (e) => {
+        e.preventDefault();
+        const question = (document.getElementById("poll-input-question")?.value || "").trim();
+        const optionInputs = Array.from(document.querySelectorAll(".poll-option-input"));
+        const options = optionInputs.map(i => i.value.trim()).filter(Boolean);
+
+        if (!question || options.length < 2) {
+          this.showToast("Introduce una pregunta y al menos 2 opciones", "warning");
+          return;
+        }
+
+        const isDates = this.pollDurationMode?.value === "dates";
+        const days = parseInt(document.getElementById("poll-input-days")?.value || "7", 10);
+        const startVal = document.getElementById("poll-input-start")?.value;
+        const endVal = document.getElementById("poll-input-end")?.value;
+
+        const publishChs = Array.from(document.querySelectorAll("input[name='poll_channel']:checked")).map(c => parseInt(c.value, 10));
+
+        this.sendAction("create_poll", {
+          question: question,
+          options: options,
+          days: days,
+          starts_at: isDates && startVal ? new Date(startVal).toISOString() : null,
+          ends_at: isDates && endVal ? new Date(endVal).toISOString() : null,
+          publish_channels: publishChs,
+        });
+      });
+    }
+
+    if (this.btnRefreshPolls) {
+      this.btnRefreshPolls.addEventListener("click", () => {
+        this.loadPolls();
+        this.showToast("Actualizando encuestas...");
+      });
+    }
+
+    document.querySelectorAll(".filter-poll-status").forEach(btn => {
+      btn.addEventListener("click", () => {
+        document.querySelectorAll(".filter-poll-status").forEach(b => b.classList.remove("active"));
+        btn.classList.add("active");
+        this.currentPollFilter = btn.dataset.filter;
+        this.renderPolls(this.pollsData);
+      });
+    });
+
+    // Modal de Recordatorio de Encuesta
+    if (this.btnCloseReminderModal && this.modalPollReminder) {
+      this.btnCloseReminderModal.addEventListener("click", () => {
+        this.modalPollReminder.style.display = "none";
+      });
+    }
+    if (this.btnCancelReminder && this.modalPollReminder) {
+      this.btnCancelReminder.addEventListener("click", () => {
+        this.modalPollReminder.style.display = "none";
+      });
+    }
+    if (this.formPollReminder) {
+      this.formPollReminder.addEventListener("submit", (e) => {
+        e.preventDefault();
+        const pollId = parseInt(this.reminderPollId?.value, 10);
+        if (!pollId) return;
+
+        const chBoxes = Array.from(document.querySelectorAll("input[name='reminder_ch']:checked"));
+        const channels = chBoxes.map(cb => parseInt(cb.value, 10));
+        if (channels.length === 0) {
+          this.showToast("Selecciona al menos un canal para el recordatorio", "warning");
+          return;
+        }
+
+        const freq = this.reminderFrequency?.value || "once";
+        this.sendAction("publish_poll_reminder", {
+          poll_id: pollId,
+          channels: channels,
+          frequency: freq,
+        });
+      });
+    }
+
+    // Eventos de Clima (Pestaña 6)
+    if (this.btnRefreshWeather) {
+      this.btnRefreshWeather.addEventListener("click", () => {
+        this.loadWeather();
+        this.showToast("Actualizando predicción meteorológica...");
+      });
+    }
   }
 
   updateSortHeaders() {
@@ -459,7 +614,19 @@ class MeshDashboard {
       this.loadSchedules();
     } else if (tabName === "security") {
       this.loadSecurityData();
+    } else if (tabName === "polls") {
+      this.loadPolls();
+    } else if (tabName === "weather") {
+      this.loadWeather();
     }
+  }
+
+  loadPolls() {
+    this.sendAction("get_polls");
+  }
+
+  loadWeather() {
+    this.sendAction("get_weather_full");
   }
 
   loadAuditData() {
@@ -786,8 +953,31 @@ class MeshDashboard {
       }
     } else if (resp.action === "get_polls") {
       this.renderPolls(data.polls || []);
-    } else if (resp.action === "get_weather") {
-      this.renderWeather(data);
+    } else if (resp.action === "create_poll") {
+      this.showToast("Encuesta comunitaria creada correctamente", "success");
+      if (this.formCreatePoll) this.formCreatePoll.reset();
+      // Restaurar 2 inputs de opciones por defecto
+      if (this.pollOptionsContainer) {
+        this.pollOptionsContainer.innerHTML = `
+          <input type="text" class="input-custom poll-option-input" placeholder="Opción 1 (ej: Este sábado)" required>
+          <input type="text" class="input-custom poll-option-input" placeholder="Opción 2 (ej: El próximo fin de semana)" required>
+        `;
+      }
+      if (this.pollDurationMode) this.pollDurationMode.value = "days";
+      if (this.pollDaysGroup) this.pollDaysGroup.style.display = "block";
+      if (this.pollDatesGroup) this.pollDatesGroup.style.display = "none";
+      this.loadPolls();
+    } else if (resp.action === "close_poll") {
+      this.showToast(`Encuesta #${data.poll_id} cerrada`);
+      this.loadPolls();
+    } else if (resp.action === "delete_poll") {
+      this.showToast(`Encuesta #${data.poll_id} eliminada`);
+      this.loadPolls();
+    } else if (resp.action === "publish_poll_reminder") {
+      this.showToast(`Recordatorio de encuesta #${data.poll_id} publicado / programado con éxito`, "success");
+      if (this.modalPollReminder) this.modalPollReminder.style.display = "none";
+    } else if (resp.action === "get_weather" || resp.action === "get_weather_full") {
+      this.renderWeatherFull(data);
     } else if (resp.action === "get_commands_audit") {
       this.renderAuditData(data);
     } else if (resp.action === "get_scheduled_messages") {
@@ -2083,68 +2273,401 @@ class MeshDashboard {
   }
 
   // ==========================================================================
-  // Renderizado: Encuestas & Clima
+  // Renderizado: Encuestas Comunitarias (Pestaña 5)
   // ==========================================================================
   renderPolls(polls) {
-    if (!this.pollsContainer) return;
+    this.pollsData = polls || [];
+    if (!this.pollsList) return;
 
-    if (polls.length === 0) {
-      this.pollsContainer.innerHTML = `<div style="color: var(--text-dim);">No hay encuestas comunitarias activas.</div>`;
+    const activeCount = this.pollsData.filter(p => p.status === "active").length;
+    if (this.countPolls) this.countPolls.textContent = activeCount;
+
+    let filtered = this.pollsData;
+    if (this.currentPollFilter === "active") {
+      filtered = filtered.filter(p => p.status === "active");
+    } else if (this.currentPollFilter === "closed") {
+      filtered = filtered.filter(p => p.status === "closed");
+    }
+
+    if (filtered.length === 0) {
+      this.pollsList.innerHTML = `
+        <div class="card" style="text-align: center; color: var(--text-dim); padding: 30px;">
+          No hay encuestas ${this.currentPollFilter === "active" ? "activas" : (this.currentPollFilter === "closed" ? "cerradas" : "")} en el registro.
+        </div>
+      `;
       return;
     }
 
-    this.pollsContainer.innerHTML = polls.map(p => {
+    this.pollsList.innerHTML = filtered.map(p => {
+      const isActive = p.status === "active";
       const options = p.options || [];
       const counts = p.counts || [];
       const total = p.total_votes || 0;
 
+      const badgeStatus = isActive
+        ? `<span class="badge" style="background: rgba(34, 197, 94, 0.15); color: var(--success); font-weight: 600;">🟢 Vigente (${this.formatRelativeOrDate(p.ends_at)})</span>`
+        : `<span class="badge" style="background: var(--bg-input); color: var(--text-dim);">⚪ Finalizada / Cerrada</span>`;
+
       const optsHtml = options.map((opt, idx) => {
         const c = counts[idx] || 0;
         const pct = total > 0 ? Math.round((c / total) * 100) : 0;
-
         return `
-          <div style="margin-bottom: 8px;">
-            <div style="display: flex; justify-content: space-between; font-size: 0.85rem; margin-bottom: 3px;">
-              <span>${this.escapeHtml(opt)}</span>
-              <span><strong>${c}</strong> (${pct}%)</span>
+          <div style="margin-bottom: 10px;">
+            <div style="display: flex; justify-content: space-between; font-size: 0.85rem; margin-bottom: 4px;">
+              <span><strong style="color: var(--primary); font-family: monospace;">${idx + 1}.</strong> ${this.escapeHtml(opt)}</span>
+              <span><strong>${c}</strong> votos (${pct}%)</span>
             </div>
-            <div style="background: var(--bg-main); height: 8px; border-radius: 4px; overflow: hidden;">
-              <div style="background: var(--primary); height: 100%; width: ${pct}%;"></div>
+            <div style="background: var(--bg-main); height: 9px; border-radius: 4px; overflow: hidden;">
+              <div style="background: ${isActive ? "var(--primary)" : "var(--text-dim)"}; height: 100%; width: ${pct}%; transition: width 0.3s ease;"></div>
             </div>
           </div>
         `;
       }).join("");
 
+      const author = p.owner_node_id && p.owner_node_id !== "web_admin" ? `Nodo ${this.escapeHtml(p.owner_node_id)}` : "Web / Administrador";
+      const createdStr = this.formatRelativeOrDate(p.created_at);
+
       return `
         <div class="card">
-          <div class="card-header">
-            <span>Encuesta #${p.id}</span>
-            <span class="badge" style="background: var(--primary-bg); color: var(--primary);">${total} votos</span>
+          <div class="card-header" style="flex-wrap: wrap; gap: 8px;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span style="font-weight: 700; color: var(--primary); font-family: monospace;">Encuesta #${p.id}</span>
+              ${badgeStatus}
+            </div>
+            <span class="badge" style="background: var(--primary-bg); color: var(--primary); font-weight: 600;">🗳️ ${total} votos emitidos</span>
           </div>
-          <div style="font-weight: 600; margin-bottom: 12px; font-size: 1rem;">
+          
+          <div style="font-weight: 600; margin-bottom: 14px; font-size: 1.05rem; line-height: 1.4;">
             ${this.escapeHtml(p.question)}
           </div>
-          ${optsHtml}
-          <div style="font-size: 0.75rem; color: var(--text-dim); margin-top: 10px;">
-            Creada por ${this.escapeHtml(p.owner_node_id || "N/D")}
+
+          <div style="margin-bottom: 14px;">
+            ${optsHtml}
+          </div>
+
+          <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.75rem; color: var(--text-dim); border-top: 1px solid var(--border); padding-top: 10px; flex-wrap: wrap; gap: 8px;">
+            <div>
+              Iniciada por <strong>${author}</strong> · ${createdStr}
+            </div>
+            <div style="display: flex; gap: 6px;">
+              <button class="btn-secondary" style="padding: 4px 8px; font-size: 0.75rem;" title="Publicar recordatorio en canales LoRa" onclick="window.dashboard.openPollReminderModal(${p.id})">
+                📢 Recordatorio
+              </button>
+              ${isActive ? `
+                <button class="btn-secondary" style="padding: 4px 8px; font-size: 0.75rem; color: var(--warning);" title="Cerrar votación" onclick="window.dashboard.closePoll(${p.id})">
+                  🔒 Cerrar
+                </button>
+              ` : ""}
+              <button class="btn-secondary" style="padding: 4px 8px; font-size: 0.75rem; color: var(--danger);" title="Eliminar encuesta y votos" onclick="window.dashboard.deletePoll(${p.id})">
+                🗑️ Borrar
+              </button>
+            </div>
           </div>
         </div>
       `;
     }).join("");
   }
 
-  renderWeather(weather) {
-    if (!this.weatherContent) return;
-    if (!weather || Object.keys(weather).length === 0) {
-      this.weatherContent.textContent = "No hay datos meteorológicos recientes en la base de datos.";
-      return;
+  openPollReminderModal(pollId) {
+    const poll = (this.pollsData || []).find(p => p.id === pollId);
+    if (!poll) return;
+
+    if (this.reminderPollId) this.reminderPollId.value = poll.id;
+    if (this.modalPollReminder) this.modalPollReminder.style.display = "flex";
+
+    const options = poll.options || [];
+    const opsStr = options.map((op, i) => `${i + 1}. ${op}`).join(" | ");
+    const previewMsg = `🗳️ [Recordatorio Encuesta #${poll.id}] ${poll.question}\n${opsStr}\n👉 Vota con: /encuesta votar ${poll.id} <1-${options.length}>`;
+
+    if (this.reminderPreviewText) this.reminderPreviewText.textContent = previewMsg;
+
+    // Renderizar opciones de canal
+    if (this.reminderChannelsGroup) {
+      let channelsHtml = `
+        <label style="font-size: 0.85rem; display: flex; align-items: center; gap: 4px; cursor: pointer;">
+          <input type="checkbox" name="reminder_ch" value="0" checked> Canal 0 (Público)
+        </label>
+      `;
+      (this.channels || []).forEach(ch => {
+        if (ch.index !== 0) {
+          channelsHtml += `
+            <label style="font-size: 0.85rem; display: flex; align-items: center; gap: 4px; cursor: pointer;">
+              <input type="checkbox" name="reminder_ch" value="${ch.index}"> Ch ${ch.index} (${this.escapeHtml(ch.name || "Canal")})
+            </label>
+          `;
+        }
+      });
+      this.reminderChannelsGroup.innerHTML = channelsHtml;
+    }
+  }
+
+  closePoll(pollId) {
+    if (confirm(`¿Seguro que deseas cerrar la encuesta #${pollId}? No se admitirán más votos.`)) {
+      this.sendAction("close_poll", { poll_id: pollId });
+    }
+  }
+
+  deletePoll(pollId) {
+    if (confirm(`¿Seguro que deseas ELIMINAR definitivamente la encuesta #${pollId} y todos sus votos?`)) {
+      this.sendAction("delete_poll", { poll_id: pollId });
+    }
+  }
+
+  // ==========================================================================
+  // Renderizado: Meteorología, Mar y Astronomía (Pestaña 6)
+  // ==========================================================================
+  getWeatherIcon(str) {
+    if (!str) return "🌤️";
+    const s = str.toLowerCase();
+    if (s.includes("despejado") || s.includes("sol")) return "☀️";
+    if (s.includes("poco nuboso") || s.includes("intervalos")) return "🌤️";
+    if (s.includes("nuboso") || s.includes("cubierto")) return "☁️";
+    if (s.includes("tormenta")) return "⛈️";
+    if (s.includes("lluvia") || s.includes("chubasc") || s.includes("llovizn")) return "🌧️";
+    if (s.includes("nieve")) return "🌨️";
+    if (s.includes("niebla") || s.includes("bruma")) return "🌫️";
+    return "⛅";
+  }
+
+  renderWeatherFull(data) {
+    if (!data) return;
+
+    // 1. Mareas
+    if (this.tidesContent) {
+      const t = data.tides || {};
+      if (t.events && Array.isArray(t.events) && t.events.length > 0) {
+        const eventsHtml = t.events.map(ev => {
+          const isPlea = (ev.type || "").toLowerCase().includes("plea");
+          const icon = isPlea ? "🌊" : "🔻";
+          const typeName = isPlea ? "Pleamar" : "Bajamar";
+          const hStr = ev.height !== undefined && ev.height !== null ? `(${Number(ev.height).toFixed(2)}m)` : "";
+          return `<div style="display: inline-block; margin-right: 12px; font-weight: 500;">${icon} <strong>${typeName}</strong> ${ev.time} ${hStr}</div>`;
+        }).join("");
+
+        const coefStr = t.coefficient ? ` · Coef: <strong>${t.coefficient}</strong>` : "";
+        const sourceStr = t.source ? `<div style="font-size: 0.75rem; color: var(--text-dim); margin-top: 6px;">Fuente: ${this.escapeHtml(t.source)} ${t.location ? "(" + t.location + ")" : ""}</div>` : "";
+
+        this.tidesContent.innerHTML = `
+          <div>${eventsHtml} ${coefStr}</div>
+          ${sourceStr}
+        `;
+        if (this.tidesBadge) this.tidesBadge.textContent = t.location || "En Vivo";
+      } else if (t.summary) {
+        this.tidesContent.innerHTML = `<div>${this.escapeHtml(t.summary)}</div>`;
+      } else {
+        this.tidesContent.innerHTML = `<div style="color: var(--text-dim);">Sin datos de mareas astronómicas recientes.</div>`;
+      }
     }
 
-    if (this.weatherProvince && weather.province) {
-      this.weatherProvince.textContent = `AEMET · ${weather.province}`;
+    // 2. Ciclo Lunar
+    if (this.moonContent) {
+      const m = data.moon || {};
+      if (m.phase_name) {
+        this.moonContent.innerHTML = `
+          <div style="font-size: 1rem; font-weight: 600; color: #c084fc; margin-bottom: 4px;">
+            ${this.escapeHtml(m.phase_name)} (${m.illumination_pct}% iluminada)
+          </div>
+          <div style="font-size: 0.8rem; color: var(--text-muted);">
+            Tendencia: <strong>${this.escapeHtml(m.tendency || "creciente")}</strong>
+          </div>
+          <div style="font-size: 0.75rem; color: var(--text-dim); margin-top: 6px;">
+            🌕 Próx. Llena: <strong>${m.next_full || "--"}</strong> · 🌑 Próx. Nueva: <strong>${m.next_new || "--"}</strong>
+          </div>
+        `;
+      } else {
+        this.moonContent.innerHTML = `<div style="color: var(--text-dim);">Calculando fase lunar...</div>`;
+      }
     }
 
-    this.weatherContent.textContent = weather.summary || weather.data_raw || "Predicción disponible.";
+    // 3. Sol y Luz Diurna
+    if (this.sunContent) {
+      const s = data.sun || {};
+      if (s.sunrise) {
+        this.sunContent.innerHTML = `
+          <div style="font-size: 0.95rem; font-weight: 600; color: #facc15; margin-bottom: 4px;">
+            🌅 Orto: ${s.sunrise} · 🌇 Ocaso: ${s.sunset}
+          </div>
+          <div style="font-size: 0.8rem; color: var(--text-muted);">
+            Luz diurna: <strong>${s.day_length}</strong> (${this.escapeHtml(s.name || "Zona Local")})
+          </div>
+        `;
+      } else {
+        this.sunContent.innerHTML = `<div style="color: var(--text-dim);">Calculando orto y ocaso...</div>`;
+      }
+    }
+
+    // 4. Vigilancia Maremoto
+    if (this.tsunamiContent) {
+      const ts = data.tsunami || {};
+      if (ts.years !== undefined) {
+        this.tsunamiContent.innerHTML = `
+          <div style="font-size: 0.85rem; font-weight: 500; margin-bottom: 4px;">
+            Han pasado <strong>${ts.years} años, ${ts.months} meses y ${ts.days} días</strong>
+          </div>
+          <div style="font-size: 0.75rem; color: var(--text-dim);">
+            Desde el gran maremoto de Cádiz y Chipiona (1/11/1755).
+          </div>
+        `;
+        if (this.tsunamiBadge) this.tsunamiBadge.textContent = ts.status || "Normal";
+      } else {
+        this.tsunamiContent.innerHTML = `<div style="color: var(--text-dim);">Sin registros históricos.</div>`;
+      }
+    }
+
+    // 5. Predicción Horaria (24h)
+    if (this.weatherHourlyContent) {
+      const hData = data.hourly || {};
+      const hJson = hData.data || {};
+      const periods = hJson.horas || hJson.periodos || [];
+
+      if (this.weatherHourlyCity) {
+        this.weatherHourlyCity.textContent = hData.city_name ? `AEMET · ${hData.city_name}` : "AEMET Horaria";
+      }
+
+      if (Array.isArray(periods) && periods.length > 0) {
+        const hourlyItemsHtml = periods.slice(0, 16).map(item => {
+          const hourStr = item.hora || item.periodo || "--:--";
+          const tempStr = item.temperatura !== undefined ? `${item.temperatura}°` : "--";
+          const rainStr = item.prob_precipitacion !== undefined ? `${item.prob_precipitacion}%` : "";
+          const skyStr = item.estado_cielo_desc || item.cielo || "";
+          const icon = this.getWeatherIcon(skyStr);
+
+          return `
+            <div style="display: inline-flex; flex-direction: column; align-items: center; min-width: 68px; padding: 8px 6px; background: var(--bg-input); border-radius: 8px; margin-right: 8px; text-align: center;">
+              <span style="font-size: 0.75rem; color: var(--text-dim);">${hourStr}</span>
+              <span style="font-size: 1.3rem; margin: 3px 0;">${icon}</span>
+              <strong style="font-size: 0.9rem; color: var(--primary);">${tempStr}</strong>
+              ${rainStr ? `<span style="font-size: 0.7rem; color: #38bdf8;">💧 ${rainStr}</span>` : ""}
+            </div>
+          `;
+        }).join("");
+
+        this.weatherHourlyContent.innerHTML = `
+          <div style="display: flex; gap: 4px; overflow-x: auto; padding-bottom: 4px;">
+            ${hourlyItemsHtml}
+          </div>
+        `;
+      } else if (hData.summary_24h) {
+        this.weatherHourlyContent.innerHTML = `
+          <div style="font-size: 0.85rem; color: var(--text-muted); padding: 6px 10px;">
+            ${this.escapeHtml(hData.summary_24h)}
+          </div>
+        `;
+      } else {
+        this.weatherHourlyContent.innerHTML = `
+          <div style="color: var(--text-dim); padding: 10px;">Previsión horaria no disponible temporalmente en AEMET.</div>
+        `;
+      }
+    }
+
+    // 6. Tablas de Días Futuros por Ubicaciones Guardadas
+    if (this.weatherLocationsContainer) {
+      const locations = data.locations || [];
+      if (locations.length === 0) {
+        this.weatherLocationsContainer.innerHTML = `
+          <div class="card" style="text-align: center; color: var(--text-dim); padding: 30px;">
+            No hay predicciones meteorológicas registradas en la base de datos.
+          </div>
+        `;
+      } else {
+        this.weatherLocationsContainer.innerHTML = locations.map(loc => {
+          const locName = loc.city_name || loc.province || "Municipio";
+          const provName = loc.province ? `(${loc.province})` : "";
+          const updatedStr = this.formatRelativeOrDate(loc.created_at);
+
+          const daysData = (loc.data && Array.isArray(loc.data.dias)) ? loc.data.dias : [];
+          let tableRowsHtml = "";
+
+          if (daysData.length > 0) {
+            tableRowsHtml = daysData.slice(0, 7).map(d => {
+              const dateStr = d.fecha ? d.fecha.substring(0, 10) : "--";
+              const dayName = d.dia_semana || (d.fecha ? new Date(d.fecha).toLocaleDateString("es-ES", { weekday: "short" }) : "");
+              const skyDesc = d.estado_cielo_desc || d.cielo || "Despejado";
+              const icon = this.getWeatherIcon(skyDesc);
+              const minT = d.temp_min !== undefined ? `${d.temp_min}°C` : "--";
+              const maxT = d.temp_max !== undefined ? `${d.temp_max}°C` : "--";
+              const rain = d.prob_precipitacion !== undefined ? `${d.prob_precipitacion}%` : "--";
+              const wind = d.viento_velocidad ? `${d.viento_velocidad} km/h ${d.viento_direccion || ""}` : "--";
+
+              return `
+                <tr>
+                  <td style="font-weight: 600; text-transform: capitalize;">${dayName} <span style="font-size: 0.75rem; color: var(--text-dim); font-weight: normal;">${dateStr}</span></td>
+                  <td><span style="font-size: 1.1rem; margin-right: 4px;">${icon}</span> ${this.escapeHtml(skyDesc)}</td>
+                  <td><span style="color: #38bdf8;">${minT}</span> / <strong style="color: var(--danger);">${maxT}</strong></td>
+                  <td>${rain !== "--" ? `<span style="color: #38bdf8;">💧 ${rain}</span>` : "--"}</td>
+                  <td style="font-size: 0.8rem; color: var(--text-muted);">${wind}</td>
+                </tr>
+              `;
+            }).join("");
+          }
+
+          const summaryText = loc.summary_7d || loc.summary_3d || "";
+
+          return `
+            <div class="card">
+              <div class="card-header">
+                <div>
+                  <span style="font-size: 1.05rem; font-weight: 700; color: var(--primary);">📍 ${this.escapeHtml(locName)}</span>
+                  <span style="font-size: 0.85rem; color: var(--text-muted); margin-left: 6px;">${this.escapeHtml(provName)}</span>
+                </div>
+                <span class="badge" style="background: var(--bg-input); color: var(--text-dim); font-size: 0.75rem;">Actualizado ${updatedStr}</span>
+              </div>
+
+              ${tableRowsHtml ? `
+                <div class="table-container" style="margin-bottom: 12px;">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Día / Fecha</th>
+                        <th>Estado del Cielo</th>
+                        <th>Temp. Mín / Máx</th>
+                        <th>Lluvia %</th>
+                        <th>Viento</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      ${tableRowsHtml}
+                    </tbody>
+                  </table>
+                </div>
+              ` : ""}
+
+              ${summaryText ? `
+                <div style="font-size: 0.85rem; color: var(--text-muted); line-height: 1.5; background: var(--bg-input); padding: 10px; border-radius: 6px;">
+                  📝 <strong>Resumen Oficial AEMET:</strong> ${this.escapeHtml(summaryText)}
+                </div>
+              ` : ""}
+            </div>
+          `;
+        }).join("");
+      }
+    }
+
+    // 7. Avisos / Alertas AEMET
+    if (this.weatherAlertsContent && this.weatherAlertsCount) {
+      const alerts = data.alerts || [];
+      this.weatherAlertsCount.textContent = `${alerts.length} ${alerts.length === 1 ? "aviso" : "avisos"}`;
+      this.weatherAlertsCount.style.background = alerts.length > 0 ? "var(--warning-bg)" : "var(--bg-input)";
+      this.weatherAlertsCount.style.color = alerts.length > 0 ? "var(--warning)" : "var(--text-dim)";
+
+      if (alerts.length === 0) {
+        this.weatherAlertsContent.innerHTML = `<div style="color: var(--text-dim);">✅ No hay avisos meteorológicos activos registrados en la zona.</div>`;
+      } else {
+        this.weatherAlertsContent.innerHTML = alerts.map(a => {
+          const timeStr = this.formatRelativeOrDate(a.created_at);
+          return `
+            <div style="padding: 8px 10px; background: var(--bg-input); border-left: 4px solid var(--warning); border-radius: 4px; margin-bottom: 8px;">
+              <div style="font-weight: 600; font-size: 0.9rem; color: var(--warning);">
+                ⚠️ ${this.escapeHtml(a.province || "Alerta")} · <span style="font-size: 0.75rem; color: var(--text-dim);">${timeStr}</span>
+              </div>
+              <div style="font-size: 0.85rem; color: var(--text-muted); margin-top: 4px; line-height: 1.4;">
+                ${this.escapeHtml(a.message || a.data_raw || "Aviso activo")}
+              </div>
+            </div>
+          `;
+        }).join("");
+      }
+    }
   }
 
   // ==========================================================================

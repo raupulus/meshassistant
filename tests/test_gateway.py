@@ -146,13 +146,56 @@ class TestGatewayService(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(resp_telem["data"]["queued"])
         self.assertEqual(resp_telem["data"]["node_id"], "!testnode")
 
-        # 6. get_weather y get_tides
-        resp_w = await self.gateway._handle_action(mock_ws, {"action": "get_weather"})
-        self.assertTrue(resp_w["success"])
+        # 6. create_poll, get_polls, publish_poll_reminder, close_poll, delete_poll
+        resp_cp = await self.gateway._handle_action(mock_ws, {
+            "action": "create_poll",
+            "req_id": "req_06",
+            "params": {
+                "question": "¿Test encuesta?",
+                "options": ["Opción A", "Opción B"],
+                "days": 5,
+                "publish_channels": [0],
+            },
+        })
+        self.assertTrue(resp_cp["success"])
+        poll_id = resp_cp["data"]["poll_id"]
+
+        resp_gp = await self.gateway._handle_action(mock_ws, {"action": "get_polls"})
+        self.assertTrue(resp_gp["success"])
+        self.assertTrue(any(p["id"] == poll_id for p in resp_gp["data"]["polls"]))
+
+        resp_rem = await self.gateway._handle_action(mock_ws, {
+            "action": "publish_poll_reminder",
+            "params": {"poll_id": poll_id, "channels": [0], "frequency": "once"},
+        })
+        self.assertTrue(resp_rem["success"])
+
+        resp_cl = await self.gateway._handle_action(mock_ws, {
+            "action": "close_poll",
+            "params": {"poll_id": poll_id},
+        })
+        self.assertTrue(resp_cl["success"])
+        self.assertTrue(resp_cl["data"]["closed"])
+
+        resp_del = await self.gateway._handle_action(mock_ws, {
+            "action": "delete_poll",
+            "params": {"poll_id": poll_id},
+        })
+        self.assertTrue(resp_del["success"])
+        self.assertTrue(resp_del["data"]["deleted"])
+
+        # 7. get_weather_full y get_tides
+        resp_wf = await self.gateway._handle_action(mock_ws, {"action": "get_weather_full"})
+        self.assertTrue(resp_wf["success"])
+        self.assertIn("sun", resp_wf["data"])
+        self.assertIn("moon", resp_wf["data"])
+        self.assertIn("tsunami", resp_wf["data"])
+        self.assertIn("locations", resp_wf["data"])
+
         resp_t = await self.gateway._handle_action(mock_ws, {"action": "get_tides"})
         self.assertTrue(resp_t["success"])
 
-        # 6. Acción desconocida
+        # 8. Acción desconocida
         resp_unk = await self.gateway._handle_action(mock_ws, {"action": "invalid_action"})
         self.assertFalse(resp_unk["success"])
         self.assertIn("desconocida", resp_unk["error"].lower())

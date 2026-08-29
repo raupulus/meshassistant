@@ -75,12 +75,25 @@ db = Database(db_path="...")    # ruta explícita (tests)
 | `aemet_weather_get_latest(scope=None, province_code=None, province=None, day=None)` | Devuelve la última predicción en texto filtrada por provincia y día con fallback. |
 | `aemet_forecast_daily_insert(city_code, city_name, province, data_json, summary_3d, summary_7d)` | Inserta predicción estructurada a 7 días. |
 | `aemet_forecast_daily_get_latest(city_code=None)` | Devuelve la última predicción multi-día estructurada. |
+| `aemet_forecast_daily_get_all_latest()` | Devuelve la última predicción multi-día para cada una de las ubicaciones registradas en BD. |
 | `aemet_forecast_hourly_insert(city_code, city_name, province, data_json, summary_24h)` | Inserta predicción estructurada horaria. |
 | `aemet_forecast_hourly_get_latest(city_code=None)` | Devuelve la última predicción horaria estructurada. |
 | `aemet_maritime_insert(costa_code, costa_name, data_json, summary)` | Inserta boletín costero oficial. |
 | `aemet_maritime_get_latest(costa_code=None)` | Devuelve el último boletín marítimo costero. |
 | `aemet_observation_insert(station_id, station_name, data_json, summary)` | Inserta mediciones físicas de estación meteorológica. |
 | `aemet_observation_get_latest(station_id=None)` | Devuelve la última observación meteorológica física. |
+
+### Encuestas y Votaciones
+| Método | Descripción |
+|---|---|
+| `encuesta_create(*, owner_node_id, question, options, days=7, starts_at=None, ends_at=None)` | Crea una encuesta comunitaria con duración por días o fechas exactas. |
+| `encuesta_get(encuesta_id)` | Devuelve los metadatos y opciones de una encuesta. |
+| `encuesta_list_active(limit=10)` | Devuelve las encuestas vigentes activas. |
+| `encuesta_list_all(limit=100)` | Devuelve todas las encuestas ordenadas con las activas más recientes primero. |
+| `encuesta_vote(encuesta_id, node_id, option_index)` | Registra o rectifica el voto atómico de un nodo. |
+| `encuesta_results(encuesta_id)` | Calcula los totales y porcentajes de votos por opción. |
+| `encuesta_close(encuesta_id, owner_node_id=None)` | Cierra anticipadamente la votación. |
+| `encuesta_delete(encuesta_id, owner_node_id=None)` | Elimina la encuesta y sus votos. |
 
 ### Log y Auditoría de Comandos
 | Método | Descripción |

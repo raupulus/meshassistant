@@ -244,7 +244,17 @@ Es una **regla inquebrantable** del proyecto que todo cambio, nuevo módulo, mod
 
 ---
 
-## 11. Dependencias y versiones
+## 11. Histórico Local de Planes Ejecutados (`docs/planning/archived/`)
+
+Todos los planes de implementación ejecutados se guardan como archivo markdown en `docs/planning/archived/`.
+- **Nomenclatura:** `<timestamp>_<titulo_descriptivo>.md` (ejemplo: `20260829_154436_separacion_encuestas_y_clima_widgets.md`).
+- **Propósito:** Histórico local de planificaciones pasadas por si hace falta consultar decisiones o diseños anteriores.
+- **Git:** Este directorio está excluido en `.gitignore` para no ensuciar el repositorio.
+- ⚠️ **REGLA DE RENDIMIENTO PARA AGENTES:** **NO LEER** este directorio ni sus ficheros de forma preventiva o rutinaria. Solo debe consultarse un archivo específico si el usuario lo solicita explícitamente o si es indispensable para resolver una duda histórica concreta, para evitar desperdicio de tokens de contexto.
+
+---
+
+## 12. Dependencias y versiones
 
 `requirements.txt` declara versiones mínimas. Validado con (entorno actual):
 

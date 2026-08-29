@@ -74,9 +74,14 @@
         <span class="tab-icon">🗺️</span>
         <span class="tab-label">Traceroutes</span>
       </button>
-      <button class="tab-btn" data-tab="polls" title="📊 Encuestas & Clima">
-        <span class="tab-icon">📊</span>
-        <span class="tab-label">Encuestas & Clima</span>
+      <button class="tab-btn" data-tab="polls" title="🗳️ Encuestas">
+        <span class="tab-icon">🗳️</span>
+        <span class="tab-label">Encuestas</span>
+        <span class="badge-count" id="count-polls">0</span>
+      </button>
+      <button class="tab-btn" data-tab="weather" title="🌤️ Clima & AEMET">
+        <span class="tab-icon">🌤️</span>
+        <span class="tab-label">Clima &amp; AEMET</span>
       </button>
       <button class="tab-btn" data-tab="schedules" title="⏰ Programación">
         <span class="tab-icon">⏰</span>
@@ -245,29 +250,212 @@
       </div>
     </section>
 
-    <!-- Pestaña 5: Encuestas & Clima -->
+    <!-- Pestaña 5: Encuestas Comunitarias -->
     <section id="pane-polls" class="tab-pane">
-      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 20px;">
-        <!-- Bloque Encuestas -->
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 12px;">
         <div>
-          <h2 style="font-size: 1.2rem; margin-bottom: 16px;">Encuestas Comunitarias</h2>
-          <div id="polls-container" style="display: flex; flex-direction: column; gap: 16px;">
-            <div style="color: var(--text-dim);">Cargando encuestas activas...</div>
+          <h2 style="font-size: 1.2rem;">🗳️ Encuestas y Votaciones de la Red</h2>
+          <p style="font-size: 0.85rem; color: var(--text-dim); margin-top: 2px;">Gestión de consultas participativas por radio LoRa y desde la Web</p>
+        </div>
+        <div style="display: flex; gap: 8px;">
+          <button class="btn-secondary" id="btn-refresh-polls">🔄 Actualizar Encuestas</button>
+        </div>
+      </div>
+
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 20px; align-items: start;">
+        <!-- Columna Izquierda: Formulario Crear Encuesta -->
+        <div>
+          <div class="card" style="margin-bottom: 20px;">
+            <div class="card-header">
+              <span style="font-weight: 600;">➕ Crear Nueva Encuesta</span>
+              <span class="badge" style="background: var(--primary-bg); color: var(--primary);">Web / LoRa</span>
+            </div>
+            <form id="form-create-poll" style="display: flex; flex-direction: column; gap: 12px;">
+              <div>
+                <label style="font-size: 0.8rem; color: var(--text-muted); font-weight: 600;">Pregunta de la Consulta:</label>
+                <input type="text" id="poll-input-question" class="input-custom" placeholder="Ej: ¿Cuándo organizamos la próxima quedada LoRa?" required style="margin-top: 4px;">
+              </div>
+
+              <div>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                  <label style="font-size: 0.8rem; color: var(--text-muted); font-weight: 600;">Opciones de Respuesta:</label>
+                  <button type="button" class="btn-secondary" id="btn-add-poll-option" style="padding: 2px 6px; font-size: 0.75rem;">+ Añadir Opción</button>
+                </div>
+                <div id="poll-options-container" style="display: flex; flex-direction: column; gap: 6px;">
+                  <input type="text" class="input-custom poll-option-input" placeholder="Opción 1 (ej: Este sábado)" required>
+                  <input type="text" class="input-custom poll-option-input" placeholder="Opción 2 (ej: El próximo fin de semana)" required>
+                </div>
+              </div>
+
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                <div>
+                  <label style="font-size: 0.8rem; color: var(--text-muted); font-weight: 600;">Modo Duración:</label>
+                  <select id="poll-duration-mode" class="select-custom" style="margin-top: 4px;">
+                    <option value="days">Por Días (Vigencia)</option>
+                    <option value="dates">Fechas Exactas</option>
+                  </select>
+                </div>
+                <div id="poll-days-group">
+                  <label style="font-size: 0.8rem; color: var(--text-muted); font-weight: 600;">Días de Vigencia:</label>
+                  <input type="number" id="poll-input-days" class="input-custom" min="1" max="365" value="7" style="margin-top: 4px;">
+                </div>
+              </div>
+
+              <div id="poll-dates-group" style="display: none; grid-template-columns: 1fr 1fr; gap: 10px;">
+                <div>
+                  <label style="font-size: 0.8rem; color: var(--text-muted); font-weight: 600;">Inicio (Opcional):</label>
+                  <input type="datetime-local" id="poll-input-start" class="input-custom" style="margin-top: 4px; font-size: 0.8rem;">
+                </div>
+                <div>
+                  <label style="font-size: 0.8rem; color: var(--text-muted); font-weight: 600;">Fin / Cierre:</label>
+                  <input type="datetime-local" id="poll-input-end" class="input-custom" style="margin-top: 4px; font-size: 0.8rem;">
+                </div>
+              </div>
+
+              <div>
+                <label style="font-size: 0.8rem; color: var(--text-muted); font-weight: 600;">Difundir anuncio inicial en Canales:</label>
+                <div id="poll-publish-channels" style="display: flex; gap: 12px; margin-top: 6px; flex-wrap: wrap;">
+                  <label style="font-size: 0.85rem; display: flex; align-items: center; gap: 4px; cursor: pointer;">
+                    <input type="checkbox" name="poll_channel" value="0" checked> Canal 0 (Público)
+                  </label>
+                </div>
+              </div>
+
+              <button type="submit" class="btn-primary" style="margin-top: 6px;">🗳️ Crear Encuesta</button>
+            </form>
+          </div>
+
+          <!-- Chuleta de Comandos LoRa RF para Encuestas -->
+          <div class="card">
+            <div class="card-header">
+              <span style="font-weight: 600;">📖 Comandos RF para Encuestas (Malla LoRa)</span>
+            </div>
+            <div style="font-size: 0.85rem; color: var(--text-muted); display: flex; flex-direction: column; gap: 10px; line-height: 1.5;">
+              <div>
+                <code style="color: var(--primary); font-weight: 600;">/encuesta</code>
+                <div style="color: var(--text-dim); font-size: 0.8rem;">Muestra la encuesta activa más reciente, sus opciones y cómo votar.</div>
+              </div>
+              <div>
+                <code style="color: var(--primary); font-weight: 600;">/encuesta ver &lt;id&gt;</code>
+                <div style="color: var(--text-dim); font-size: 0.8rem;">Consulta el desglose de resultados y porcentaje de una encuesta por su ID.</div>
+              </div>
+              <div>
+                <code style="color: var(--primary); font-weight: 600;">/encuesta votar &lt;id&gt; &lt;opción&gt;</code>
+                <div style="color: var(--text-dim); font-size: 0.8rem;">Emite o rectifica tu voto hacia la opción numérica indicada (ej: <code>/encuesta votar 1 2</code>).</div>
+              </div>
+              <div>
+                <code style="color: var(--primary); font-weight: 600;">/encuesta crear &lt;días&gt; &lt;pregunta&gt; | &lt;op1&gt; | &lt;op2&gt;</code>
+                <div style="color: var(--text-dim); font-size: 0.8rem;">Crea una encuesta comunitaria desde tu cliente Meshtastic.</div>
+              </div>
+              <div>
+                <code style="color: var(--primary); font-weight: 600;">/encuesta cerrar &lt;id&gt;</code>
+                <div style="color: var(--text-dim); font-size: 0.8rem;">Cierra anticipadamente tu encuesta si eres el nodo que la creó.</div>
+              </div>
+            </div>
           </div>
         </div>
 
-        <!-- Bloque Clima AEMET -->
+        <!-- Columna Derecha: Listado de Encuestas -->
         <div>
-          <h2 style="font-size: 1.2rem; margin-bottom: 16px;">Predicción Meteorológica AEMET</h2>
-          <div class="card" id="weather-card">
-            <div class="card-header">
-              <span id="weather-province">Meteorología Oficial</span>
-              <span class="badge" style="background: var(--primary-bg); color: var(--primary);">AEMET</span>
-            </div>
-            <div id="weather-content" style="font-size: 0.9rem; color: var(--text-muted); line-height: 1.6; white-space: pre-wrap;">
-              Consultando predicción...
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 8px;">
+            <h3 style="font-size: 1.05rem;">Histórico y Encuestas Vigentes</h3>
+            <div style="display: flex; gap: 6px;">
+              <button class="btn-secondary filter-poll-status active" data-filter="all">Todas</button>
+              <button class="btn-secondary filter-poll-status" data-filter="active">🟢 Activas</button>
+              <button class="btn-secondary filter-poll-status" data-filter="closed">⚪ Cerradas</button>
             </div>
           </div>
+
+          <div id="polls-list" style="display: flex; flex-direction: column; gap: 16px;">
+            <div style="color: var(--text-dim); text-align: center; padding: 20px;">Cargando encuestas...</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Pestaña 6: Meteorología, Mar y Astronomía -->
+    <section id="pane-weather" class="tab-pane">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 12px;">
+        <div>
+          <h2 style="font-size: 1.2rem;">🌤️ Meteorología Oficial, Mar y Astronomía</h2>
+          <p style="font-size: 0.85rem; color: var(--text-dim); margin-top: 2px;">Predicciones AEMET, mareas astronómicas, ciclo lunar y vigilancia marítima</p>
+        </div>
+        <div style="display: flex; gap: 8px;">
+          <button class="btn-secondary" id="btn-refresh-weather">🔄 Actualizar Clima</button>
+        </div>
+      </div>
+
+      <!-- Grid de Widgets Astronómicos, Marítimos y Vigilancia -->
+      <div class="grid-cards" style="margin-bottom: 20px;">
+        <!-- Widget Mareas -->
+        <div class="card" id="widget-tides">
+          <div class="card-header">
+            <span>🌊 Mareas (Pleamar / Bajamar)</span>
+            <span class="badge" style="background: rgba(14, 165, 233, 0.15); color: #38bdf8;" id="tides-badge">En Vivo</span>
+          </div>
+          <div id="tides-content" style="font-size: 0.85rem; color: var(--text-muted); line-height: 1.5;">
+            Cargando mareas...
+          </div>
+        </div>
+
+        <!-- Widget Luna -->
+        <div class="card" id="widget-moon">
+          <div class="card-header">
+            <span>🌙 Ciclo Lunar</span>
+            <span class="badge" style="background: rgba(168, 85, 247, 0.15); color: #c084fc;" id="moon-badge">100% Offline</span>
+          </div>
+          <div id="moon-content" style="font-size: 0.85rem; color: var(--text-muted); line-height: 1.5;">
+            Calculando fase lunar...
+          </div>
+        </div>
+
+        <!-- Widget Sol -->
+        <div class="card" id="widget-sun">
+          <div class="card-header">
+            <span>☀️ Sol y Luz Diurna</span>
+            <span class="badge" style="background: rgba(234, 179, 8, 0.15); color: #facc15;" id="sun-badge">NOAA</span>
+          </div>
+          <div id="sun-content" style="font-size: 0.85rem; color: var(--text-muted); line-height: 1.5;">
+            Calculando orto y ocaso...
+          </div>
+        </div>
+
+        <!-- Widget Maremoto -->
+        <div class="card" id="widget-tsunami">
+          <div class="card-header">
+            <span>🚨 Vigilancia Maremoto</span>
+            <span class="badge" style="background: var(--success-bg); color: var(--success);" id="tsunami-badge">Normal</span>
+          </div>
+          <div id="tsunami-content" style="font-size: 0.85rem; color: var(--text-muted); line-height: 1.5;">
+            Comprobando registro histórico...
+          </div>
+        </div>
+      </div>
+
+      <!-- Predicción en Próximas Horas (24 Horas) -->
+      <div class="card" style="margin-bottom: 20px;" id="weather-hourly-card">
+        <div class="card-header">
+          <span style="font-weight: 600;">⏱️ Predicción en Próximas Horas (24h)</span>
+          <span class="badge" style="background: var(--primary-bg); color: var(--primary);" id="weather-hourly-city">AEMET</span>
+        </div>
+        <div id="weather-hourly-content" style="overflow-x: auto; padding: 4px 0;">
+          <div style="color: var(--text-dim); padding: 10px;">Cargando previsión horaria...</div>
+        </div>
+      </div>
+
+      <!-- Tablas de Días Futuros por Ubicaciones Guardadas -->
+      <div id="weather-locations-container" style="display: flex; flex-direction: column; gap: 20px;">
+        <div style="color: var(--text-dim); text-align: center; padding: 20px;">Cargando tablas de predicción meteorológica...</div>
+      </div>
+
+      <!-- Avisos y Alertas AEMET Activos -->
+      <div class="card" style="margin-top: 20px;" id="weather-alerts-card">
+        <div class="card-header">
+          <span style="font-weight: 600;">⚠️ Avisos Meteorológicos Oficiales Recientes</span>
+          <span class="badge" style="background: var(--warning-bg); color: var(--warning);" id="weather-alerts-count">0 avisos</span>
+        </div>
+        <div id="weather-alerts-content" style="font-size: 0.85rem; color: var(--text-muted); line-height: 1.5;">
+          No hay alertas meteorológicas activas registradas.
         </div>
       </div>
     </section>
@@ -666,9 +854,52 @@
     </div>
   </footer>
 
+  <!-- Modal: Publicar Recordatorio de Encuesta -->
+  <div id="modal-poll-reminder" class="modal" style="display: none;">
+    <div class="modal-content card" style="max-width: 480px;">
+      <div class="card-header">
+        <span style="font-weight: 600;" id="modal-reminder-title">📢 Publicar Recordatorio de Encuesta</span>
+        <button class="btn-secondary" id="btn-close-reminder-modal" style="padding: 2px 6px;">✕</button>
+      </div>
+      <form id="form-poll-reminder" style="display: flex; flex-direction: column; gap: 14px; margin-top: 10px;">
+        <input type="hidden" id="reminder-poll-id" value="">
+        <div>
+          <label style="font-size: 0.8rem; color: var(--text-muted); font-weight: 600;">Vista Previa del Mensaje:</label>
+          <div id="reminder-preview-text" style="font-size: 0.85rem; font-family: monospace; background: var(--bg-input); padding: 10px; border-radius: 6px; white-space: pre-wrap; margin-top: 4px; color: var(--primary);">
+          </div>
+        </div>
+
+        <div>
+          <label style="font-size: 0.8rem; color: var(--text-muted); font-weight: 600;">Seleccionar Canal(es) de Emisión:</label>
+          <div id="reminder-channels-group" style="display: flex; gap: 12px; margin-top: 6px; flex-wrap: wrap;">
+            <label style="font-size: 0.85rem; display: flex; align-items: center; gap: 4px; cursor: pointer;">
+              <input type="checkbox" name="reminder_ch" value="0" checked> Canal 0 (Público)
+            </label>
+          </div>
+        </div>
+
+        <div>
+          <label style="font-size: 0.8rem; color: var(--text-muted); font-weight: 600;">Frecuencia de Publicación:</label>
+          <select id="reminder-frequency" class="select-custom" style="margin-top: 4px;">
+            <option value="once">⚡ Emitir solo una vez (Ahora)</option>
+            <option value="every_6h">⏱️ Cada 6 horas</option>
+            <option value="every_12h">⏱️ Cada 12 horas</option>
+            <option value="daily">📅 Una vez al día</option>
+            <option value="weekly">🗓️ Una vez a la semana</option>
+          </select>
+        </div>
+
+        <div style="display: flex; justify-content: flex-end; gap: 8px; margin-top: 8px;">
+          <button type="button" class="btn-secondary" id="btn-cancel-reminder">Cancelar</button>
+          <button type="submit" class="btn-primary" id="btn-submit-reminder">📢 Confirmar Publicación</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <!-- Contenedor de Alertas Toast -->
   <div id="toast-container"></div>
 
-  <script src="app.js?v=2.3"></script>
+  <script src="app.js?v=2.4"></script>
 </body>
 </html>

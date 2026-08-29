@@ -222,3 +222,6 @@ temp/
 /database.sql
 /database.sql-shm
 /database.sql-wal
+
+# Planning history (local only)
+docs/planning/archived/

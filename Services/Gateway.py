@@ -245,13 +245,127 @@ class GatewayService:
                 response["data"] = {"queued": True, "outbox_id": outbox_id, "node_id": str(node_id)}
 
             elif action == "get_polls":
-                polls = self.db.encuesta_list_active()
+                polls = self.db.encuesta_list_all(limit=100)
                 # Enriquecer con resultados de conteo
                 for p in polls:
                     res = self.db.encuesta_results(p["id"])
                     p["counts"] = res.get("counts", [])
                     p["total_votes"] = res.get("total", 0)
+                    p["results_detailed"] = res.get("results", [])
                 response["data"] = {"polls": polls}
+
+            elif action == "create_poll":
+                question = params.get("question")
+                raw_options = params.get("options")
+                if not question or not raw_options:
+                    raise ValueError("Parámetros 'question' y 'options' obligatorios")
+                
+                if isinstance(raw_options, str):
+                    options = [o.strip() for o in raw_options.split(",") if o.strip()]
+                elif isinstance(raw_options, list):
+                    options = [str(o).strip() for o in raw_options if str(o).strip()]
+                else:
+                    raise ValueError("Formato de 'options' no válido")
+
+                if len(options) < 2:
+                    raise ValueError("La encuesta debe tener al menos 2 opciones")
+
+                days = int(params.get("days", 7))
+                starts_at = params.get("starts_at")
+                ends_at = params.get("ends_at")
+                owner_id = params.get("owner_node_id") or "web_admin"
+
+                poll_id = self.db.encuesta_create(
+                    owner_node_id=owner_id,
+                    question=str(question),
+                    options=options,
+                    days=days,
+                    starts_at=starts_at,
+                    ends_at=ends_at,
+                )
+
+                # Publicación inicial en canales si se solicita
+                publish_channels = params.get("publish_channels") or []
+                if isinstance(publish_channels, (int, str)):
+                    publish_channels = [int(publish_channels)]
+                
+                if publish_channels:
+                    ops_str = " | ".join([f"{i+1}. {op}" for i, op in enumerate(options)])
+                    announce_msg = f"🗳️ [Nueva Encuesta #{poll_id}] {question}\n{ops_str}\n👉 Vota con: /encuesta votar {poll_id} <1-{len(options)}>"
+                    for ch in publish_channels:
+                        try:
+                            self.db.enqueue_outbox(announce_msg, dest="^all", channel=int(ch))
+                        except Exception:
+                            pass
+
+                response["data"] = {"poll_id": poll_id, "success": True}
+
+            elif action == "close_poll":
+                poll_id = params.get("poll_id")
+                if poll_id is None:
+                    raise ValueError("Parámetro 'poll_id' obligatorio")
+                ok = self.db.encuesta_close(int(poll_id), owner_node_id=None)
+                response["data"] = {"poll_id": int(poll_id), "closed": ok}
+
+            elif action == "delete_poll":
+                poll_id = params.get("poll_id")
+                if poll_id is None:
+                    raise ValueError("Parámetro 'poll_id' obligatorio")
+                ok = self.db.encuesta_delete(int(poll_id), owner_node_id=None)
+                response["data"] = {"poll_id": int(poll_id), "deleted": ok}
+
+            elif action == "publish_poll_reminder":
+                poll_id = params.get("poll_id")
+                channels = params.get("channels") or [0]
+                frequency = params.get("frequency") or "once"
+                if poll_id is None:
+                    raise ValueError("Parámetro 'poll_id' obligatorio")
+                if isinstance(channels, (int, str)):
+                    channels = [int(channels)]
+
+                poll = self.db.encuesta_get(int(poll_id))
+                if not poll:
+                    raise ValueError(f"Encuesta #{poll_id} no encontrada")
+
+                options = poll.get("options") or []
+                ops_str = " | ".join([f"{i+1}. {op}" for i, op in enumerate(options)])
+                reminder_msg = (
+                    f"🗳️ [Recordatorio Encuesta #{poll['id']}] {poll['question']}\n"
+                    f"{ops_str}\n"
+                    f"👉 Vota con: /encuesta votar {poll['id']} <1-{len(options)}>"
+                )
+
+                if frequency == "once":
+                    for ch in channels:
+                        self.db.enqueue_outbox(reminder_msg, dest="^all", channel=int(ch))
+                else:
+                    freq_map = {
+                        "hourly": 3600,
+                        "every_6h": 21600,
+                        "every_12h": 43200,
+                        "daily": 86400,
+                        "weekly": 604800,
+                    }
+                    interval_sec = freq_map.get(frequency, 86400)
+                    for ch in channels:
+                        sched_name = f"Recordatorio Encuesta #{poll_id} (Ch {ch})"
+                        self.db.schedule_message_create(
+                            name=sched_name,
+                            text=reminder_msg,
+                            channel=int(ch),
+                            dest="^all",
+                            cron_exp=None,
+                            interval_seconds=interval_sec,
+                            enabled=True,
+                        )
+
+                response["data"] = {
+                    "success": True,
+                    "poll_id": int(poll_id),
+                    "channels": channels,
+                    "frequency": frequency,
+                    "reminder_text": reminder_msg,
+                }
 
             elif action == "vote_poll":
                 poll_id = params.get("poll_id")
@@ -262,9 +376,101 @@ class GatewayService:
                 result = self.db.encuesta_vote(int(poll_id), str(node_id), int(option_index))
                 response["data"] = {"status": result}
 
-            elif action == "get_weather":
-                weather = self.db.aemet_weather_get_latest()
-                response["data"] = weather or {}
+            elif action in ("get_weather", "get_weather_full"):
+                # 1. Ubicaciones multi-día
+                locations = self.db.aemet_forecast_daily_get_all_latest()
+                if not locations:
+                    single = self.db.aemet_forecast_daily_get_latest()
+                    if single:
+                        locations = [single]
+
+                # 2. Textos meteorológicos por provincia/municipio
+                weather_texts = self.db.aemet_weather_get_all_latest()
+                if not weather_texts:
+                    single_w = self.db.aemet_weather_get_latest()
+                    if single_w:
+                        weather_texts = [single_w]
+
+                # 3. Predicción horaria
+                hourly = self.db.aemet_forecast_hourly_get_latest() or {}
+
+                # 4. Mareas
+                tides = self.db.tides_get_latest() or {}
+
+                # 5. Astronomía: Sol y Luna (cálculo instantáneo offline)
+                sun_data = {}
+                moon_data = {}
+                try:
+                    from Models.Astro import sun_info, moon_phase, next_phase_dates
+                    s_info = sun_info()
+                    sr = s_info.get("sunrise")
+                    ss = s_info.get("sunset")
+                    sun_len = s_info.get("day_length")
+                    sun_data = {
+                        "name": s_info.get("name", "Zona Local"),
+                        "sunrise": sr.strftime("%H:%M") if sr else "--:--",
+                        "sunset": ss.strftime("%H:%M") if ss else "--:--",
+                        "day_length": f"{int(sun_len.total_seconds()//3600)}h {int((sun_len.total_seconds()%3600)//60):02d}m" if sun_len else "--",
+                    }
+
+                    m_phase = moon_phase()
+                    m_nxt = next_phase_dates()
+                    nxt_f = m_nxt.get("next_full")
+                    nxt_n = m_nxt.get("next_new")
+                    moon_data = {
+                        "phase_name": m_phase.get("phase_name", "Luna"),
+                        "illumination_pct": int(round(m_phase.get("illumination", 0) * 100)),
+                        "waxing": bool(m_phase.get("waxing")),
+                        "tendency": "creciente" if m_phase.get("waxing") else "menguante",
+                        "next_full": nxt_f.strftime("%d/%m") if nxt_f else "--",
+                        "next_new": nxt_n.strftime("%d/%m") if nxt_n else "--",
+                    }
+                except Exception as e:
+                    log_p(f"[Gateway] Error calculando sol/luna: {e}", level="DEBUG")
+
+                # 6. Maremoto / Sismología histórica
+                from datetime import date
+                from calendar import monthrange
+                today = date.today()
+                ref_date = date(1755, 11, 1)
+                years = today.year - ref_date.year
+                months = today.month - ref_date.month
+                days = today.day - ref_date.day
+                if days < 0:
+                    months -= 1
+                    prev_m = today.month - 1 if today.month > 1 else 12
+                    prev_y = today.year if today.month > 1 else today.year - 1
+                    days += monthrange(prev_y, prev_m)[1]
+                if months < 0:
+                    years -= 1
+                    months += 12
+                tsunami_data = {
+                    "last_event_date": "1755-11-01",
+                    "location": "Golfo de Cádiz / Chipiona",
+                    "years": years,
+                    "months": months,
+                    "days": days,
+                    "status": "Vigilancia normal",
+                    "info": f"Han pasado {years} años, {months} meses y {days} días desde el último gran maremoto en Cádiz y Chipiona (1/11/1755).",
+                }
+
+                # 7. Alertas AEMET activas
+                alerts = self.db.aemet_get_recent_alerts(limit=5, hours=48)
+
+                # 8. Previsión Marítima
+                maritime = self.db.aemet_maritime_get_latest() or {}
+
+                response["data"] = {
+                    "locations": locations,
+                    "weather_texts": weather_texts,
+                    "hourly": hourly,
+                    "tides": tides,
+                    "sun": sun_data,
+                    "moon": moon_data,
+                    "tsunami": tsunami_data,
+                    "alerts": alerts,
+                    "maritime": maritime,
+                }
 
             elif action == "get_tides":
                 tides = self.db.tides_get_latest()

@@ -83,25 +83,39 @@ La aplicación web está estructurada como una SPA (Single Page Application) rea
 
 ---
 
-## 6. Pestaña 5 · Auditoría y Estadísticas de Comandos
+## 6. Pestaña 5 · Encuestas Comunitarias
 
-- **Filtros de Período:** Selección instantánea entre **`Última hora`** (1h), **`Últimas 24h`** (por defecto), **`Últimos 7 días`** (168h) e **`Histórico Total`**.
-- **Tarjetas de Resumen:** Total de comandos, nodos únicos, comando más solicitado y usuario más activo.
-- **Ranking Top 20 de Nodos:** Lista de los 20 usuarios con mayor volumen de peticiones en el período, avisos de alto uso y fecha completa de última interacción.
-- **Registro Cronológico Paginado:** Historial de comandos cargado en bloques de 100 con controles `◀ Anterior` / `Siguiente ▶` y buscador de texto en tiempo real.
+- **Formulario de Creación:**
+  - Pregunta y hasta 5 opciones dinámicas con botón `+ Añadir Opción`.
+  - Duración configurable: por días (1 a 365 días) o fechas exactas de inicio y fin (`datetime-local`).
+  - Selección de canales para anuncio inicial en la malla LoRa.
+- **Histórico y Encuestas Vigentes:**
+  - Filtro por estado: `Todas`, `🟢 Activas` y `⚪ Cerradas`.
+  - Tarjetas con badge de estado (`🟢 Vigente hasta DD/MM HH:MM`), autor (`Nodo` o `Web / Administrador`), barras de porcentaje y conteo exacto de votos.
+  - **Botonera por Encuesta:**
+    - **`📢 Recordatorio`**: Abre modal para difundir de inmediato o programar periódicamente (cada 6h, 12h, diario, semanal) un recordatorio en uno o varios canales con el comando exacto de voto (`/encuesta votar <id> <opción>`).
+    - **`🔒 Cerrar`**: Cierre anticipado de la encuesta para impedir más votos.
+    - **`🗑️ Borrar`**: Eliminación permanente de la encuesta y sus votos asociados.
+- **Chuleta de Comandos LoRa RF:** Resumen interactivo para memorizar los comandos de consulta (`/encuesta`, `/encuesta ver <id>`, `/encuesta votar <id> <opción>`, `/encuesta crear`, `/encuesta cerrar <id>`).
 
 ---
 
-## 7. Pestaña 6 · Encuestas & Clima
+## 7. Pestaña 6 · Meteorología, Mar y Astronomía
 
-- **Encuestas Comunitarias:** Muestra encuestas activas, porcentaje de votos y desglose de opciones.
-- **Meteorología Oficial AEMET:** Visualización de la última predicción meteorológica descargada por el bot para la provincia configurada.
+- **Widgets Visuales Superiores:**
+  - 🌊 **Mareas:** Pleamares y bajamares del día con hora, nivel en metros, coeficiente y fuente oficial (IHM / Estación).
+  - 🌙 **Ciclo Lunar (100% Offline):** Nombre de la fase lunar, porcentaje de iluminación, tendencia (creciente/menguante) y fechas de próxima luna llena y luna nueva.
+  - ☀️ **Sol y Luz Diurna (NOAA):** Hora exacta de orto (amanecer), ocaso (atardecer) y duración efectiva del día solar.
+  - 🚨 **Vigilancia Maremoto:** Tiempo transcurrido (años, meses y días) desde el maremoto de Cádiz y Chipiona de 1755 y estado de alerta sísmica marítima.
+- **Predicción en Próximas Horas (24 Horas):** Carrusel horizontal con intervalos horarios, iconos de estado del cielo (`☀️`, `⛅`, `🌧️`, `⛈️`), temperatura (°C), probabilidad de lluvia (%) y viento.
+- **Tablas Multi-Ubicación de Días Futuros:** Tarjetas dedicadas por cada municipio registrado en la base de datos (Cádiz, Sevilla, Huelva...), con tabla comparativa de 7 días (Día, Fecha, Cielo, Temp. Mín/Máx, Lluvia %, Viento) y texto oficial descriptivo de la AEMET.
+- **Avisos y Alertas AEMET Vigentes:** Alertas meteorológicas oficiales activas con nivel de severidad y descripción.
 
 ---
 
 ## 8. Pestaña 7 · Mensajes Programados
 
-- **Gestión de Automatizaciones:** Programación de difusiones periódicas o diferidas (boletines, recordatorios).
+- **Gestión de Automatizaciones:** Programación de difusiones periódicas o diferidas (boletines, recordatorios de encuestas).
 - **Control de Estado:** Activación/desactivación instantánea, edición y eliminación.
 
 ---
@@ -117,7 +131,18 @@ La aplicación web está estructurada como una SPA (Single Page Application) rea
 - **Lista Negra de Bloqueos:** Histórico y bloqueos manuales activos con tiempo de expiración.
 - **Auditoría Anti-Abuso:** Registro detallado de disparos automáticos del limitador de tasa de comandos.
 
-## 10. Pestaña 9 · Guía de Comandos
+---
+
+## 10. Pestaña 9 · Auditoría y Estadísticas de Comandos
+
+- **Filtros de Período:** Selección instantánea entre **`Última hora`** (1h), **`Últimas 24h`** (por defecto), **`Últimos 7 días`** (168h) e **`Histórico Total`**.
+- **Tarjetas de Resumen:** Total de comandos, nodos únicos, comando más solicitado y usuario más activo.
+- **Ranking Top 20 de Nodos:** Lista de los 20 usuarios con mayor volumen de peticiones en el período, avisos de alto uso y fecha completa de última interacción.
+- **Registro Cronológico Paginado:** Historial de comandos cargado en bloques de 100 con controles `◀ Anterior` / `Siguiente ▶` y buscador de texto en tiempo real.
+
+---
+
+## 11. Pestaña 10 · Guía de Comandos
 
 - **Catálogo Interactivo Clasificado:**
   - Agrupación temática: *🌦️ Meteorología, Marítimo y Naturaleza*, *📻 Red Meshtastic y Repetidores*, *🤖 Asistente de IA y Comunidad*, *⚙️ Sistema y Telemetría*.
@@ -127,10 +152,8 @@ La aplicación web está estructurada como una SPA (Single Page Application) rea
 
 ---
 
-## 11. Navegación y Diseño Adaptativo
+## 12. Navegación y Diseño Adaptativo
 
 - **Barra Lateral Izquierda:**
   - **Pantallas > 900px:** Barra fija de `120px` de ancho con icono y texto en salto de línea natural (`overflow-wrap: break-word`).
   - **Pantallas ≤ 900px:** Modo compacto automático de `58px` con solo iconos visibles y badges flotantes.
-
-

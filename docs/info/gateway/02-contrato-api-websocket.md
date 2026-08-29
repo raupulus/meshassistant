@@ -398,7 +398,9 @@ Emitido en tiempo real cuando llega un mensaje por radio (canal o privado).
         "options": ["Sí", "No"],
         "counts": [5, 2],
         "total_votes": 7,
-        "status": "active"
+        "status": "active",
+        "created_at": "2026-08-29T12:00:00",
+        "ends_at": "2026-09-05T12:00:00"
       }
     ]
   },
@@ -406,7 +408,88 @@ Emitido en tiempo real cuando llega un mensaje por radio (canal o privado).
 }
 ```
 
-### 3.5. `vote_poll` (Votar en Encuesta)
+### 3.6. `create_poll` (Crear Nueva Encuesta)
+- **Petición:**
+```json
+{
+  "action": "create_poll",
+  "req_id": "cp_01",
+  "params": {
+    "question": "¿Cuándo organizamos la próxima quedada LoRa?",
+    "options": ["Este sábado", "Próximo fin de semana", "En dos semanas"],
+    "days": 7,
+    "starts_at": "2026-08-29T12:00:00",
+    "ends_at": "2026-09-05T12:00:00",
+    "publish_channels": [0]
+  }
+}
+```
+- **Respuesta:**
+```json
+{
+  "type": "response",
+  "action": "create_poll",
+  "req_id": "cp_01",
+  "success": true,
+  "data": {
+    "poll_id": 2,
+    "success": true
+  },
+  "error": null
+}
+```
+
+### 3.7. `publish_poll_reminder` (Publicar / Programar Recordatorio de Voto)
+- **Petición:**
+```json
+{
+  "action": "publish_poll_reminder",
+  "req_id": "rem_01",
+  "params": {
+    "poll_id": 2,
+    "channels": [0],
+    "frequency": "once"
+  }
+}
+```
+- **Respuesta:**
+```json
+{
+  "type": "response",
+  "action": "publish_poll_reminder",
+  "req_id": "rem_01",
+  "success": true,
+  "data": {
+    "success": true,
+    "poll_id": 2,
+    "channels": [0],
+    "frequency": "once",
+    "reminder_text": "🗳️ [Recordatorio Encuesta #2] ..."
+  },
+  "error": null
+}
+```
+
+### 3.8. `close_poll` / `delete_poll` (Cerrar o Borrar Encuesta)
+- **Petición:**
+```json
+{
+  "action": "close_poll",
+  "params": { "poll_id": 2 }
+}
+```
+- **Respuesta:**
+```json
+{
+  "type": "response",
+  "action": "close_poll",
+  "success": true,
+  "data": { "poll_id": 2, "closed": true },
+  "error": null
+}
+```
+
+### 3.9. `vote_poll` (Votar en Encuesta)
 - **Petición:**
 ```json
 {
@@ -433,11 +516,11 @@ Emitido en tiempo real cuando llega un mensaje por radio (canal o privado).
 }
 ```
 
-### 3.6. `get_weather` / `get_tides` (Feeds Meteorológicos y Mareas)
+### 3.10. `get_weather_full` / `get_weather` (Meteorología, Mar y Astronomía Completa)
 - **Petición:**
 ```json
 {
-  "action": "get_weather",
+  "action": "get_weather_full",
   "req_id": "wt_01"
 }
 ```
@@ -445,19 +528,52 @@ Emitido en tiempo real cuando llega un mensaje por radio (canal o privado).
 ```json
 {
   "type": "response",
-  "action": "get_weather",
+  "action": "get_weather_full",
   "req_id": "wt_01",
   "success": true,
   "data": {
-    "province": "Cadiz",
-    "content": "Cielos despejados, máxima 24ºC...",
-    "created_at": "2026-08-21T18:00:00"
+    "locations": [
+      {
+        "city_name": "Cádiz",
+        "province": "Cádiz",
+        "summary_7d": "Despejado con temperaturas entre 18 y 28°C.",
+        "data": { "dias": [...] },
+        "created_at": "2026-08-29T12:00:00"
+      }
+    ],
+    "hourly": {
+      "city_name": "Cádiz",
+      "data": { "horas": [...] }
+    },
+    "tides": {
+      "location": "Chipiona",
+      "events": [{ "type": "Pleamar", "time": "16:19", "height": 1.1 }]
+    },
+    "sun": {
+      "sunrise": "07:55",
+      "sunset": "21:00",
+      "day_length": "13h 05m"
+    },
+    "moon": {
+      "phase_name": "Luna Llena",
+      "illumination_pct": 97,
+      "tendency": "creciente",
+      "next_full": "30/08",
+      "next_new": "14/09"
+    },
+    "tsunami": {
+      "years": 270,
+      "months": 9,
+      "days": 28,
+      "status": "Vigilancia normal"
+    },
+    "alerts": []
   },
   "error": null
 }
 ```
 
-### 3.7. `set_node_favorite` (Marcar/Desmarcar Nodo Favorito)
+### 3.11. `set_node_favorite` (Marcar/Desmarcar Nodo Favorito)
 - **Petición:**
 ```json
 {
