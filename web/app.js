@@ -300,7 +300,7 @@ class MeshDashboard {
       });
     }
 
-    // Filtro de Nodos (Todos / Batería / RF / Favs)
+    // Filtro de Nodos (Todos / Batería / Traces / RF / Favs)
     document.querySelectorAll(".filter-nodes").forEach(btn => {
       btn.addEventListener("click", () => {
         document.querySelectorAll(".filter-nodes").forEach(b => b.classList.remove("active"));
@@ -310,6 +310,10 @@ class MeshDashboard {
         if (this.currentNodeFilter === "battery") {
           this.sortField = "battery";
           this.sortDirection = "asc"; // Mostrar primero las baterías más bajas
+          this.updateSortHeaders();
+        } else if (this.currentNodeFilter === "traces") {
+          this.sortField = "traces_detected";
+          this.sortDirection = "desc"; // Mostrar primero los que tienen más traceroutes detectados
           this.updateSortHeaders();
         }
         this.renderNodesTable();
@@ -325,7 +329,7 @@ class MeshDashboard {
           this.sortDirection = this.sortDirection === "asc" ? "desc" : "asc";
         } else {
           this.sortField = field;
-          this.sortDirection = (field === "is_favorite" || field === "battery" || field === "snr" || field === "last_heard" || field === "created_at") ? "desc" : "asc";
+          this.sortDirection = (field === "is_favorite" || field === "battery" || field === "snr" || field === "traces_detected" || field === "last_heard" || field === "created_at") ? "desc" : "asc";
         }
         this.nodesPage = 1;
         this.updateSortHeaders();
@@ -1249,6 +1253,8 @@ class MeshDashboard {
       nodes = nodes.filter(n => n.is_favorite);
     } else if (this.currentNodeFilter === "battery") {
       nodes = nodes.filter(n => (n.battery !== undefined && n.battery !== null) || (n.voltage !== undefined && n.voltage !== null));
+    } else if (this.currentNodeFilter === "traces") {
+      nodes = nodes.filter(n => (Number(n.traces_detected) || 0) > 0);
     }
 
     // 5. Ordenación Multidimensional
@@ -1271,6 +1277,19 @@ class MeshDashboard {
         }
         valA = (a.battery !== undefined && a.battery !== null) ? Number(a.battery) : ((a.voltage !== undefined && a.voltage !== null) ? Number(a.voltage) : 0);
         valB = (b.battery !== undefined && b.battery !== null) ? Number(b.battery) : ((b.voltage !== undefined && b.voltage !== null) ? Number(b.voltage) : 0);
+      } else if (field === "traces_detected") {
+        const tA = Number(a.traces_detected) || 0;
+        const tB = Number(b.traces_detected) || 0;
+        if (tA === 0 && tB === 0) {
+          valA = 0;
+          valB = 0;
+        } else if (tA === 0 || tB === 0) {
+          // Los nodos con 0 traces van siempre al final
+          return tA === 0 ? 1 : -1;
+        } else {
+          valA = tA;
+          valB = tB;
+        }
       } else if (field === "snr" || field === "hops" || field === "uptime") {
         const hasA = valA !== undefined && valA !== null;
         const hasB = valB !== undefined && valB !== null;
@@ -1304,7 +1323,7 @@ class MeshDashboard {
     if (nodes.length === 0) {
       this.nodesTbody.innerHTML = `
         <tr>
-          <td colspan="11" style="text-align: center; color: var(--text-dim); padding: 20px;">
+          <td colspan="12" style="text-align: center; color: var(--text-dim); padding: 20px;">
             No se encontraron nodos con los filtros aplicados.
           </td>
         </tr>`;
@@ -1359,6 +1378,12 @@ class MeshDashboard {
       const hops = n.hops !== undefined && n.hops !== null ? n.hops : "--";
       const nodeId = n.id || n.node_id;
 
+      // Traceroutes emitidos detectados
+      const tracesCount = n.traces_detected ? Number(n.traces_detected) : 0;
+      const tracesCell = tracesCount > 0
+        ? `<span class="badge" style="background: var(--bg-input); color: var(--primary); font-weight: 600;">📍 ${tracesCount}</span>`
+        : `<span style="color: var(--text-dim); font-size: 0.8rem;">--</span>`;
+
       // Última señal inteligente (last_heard o updated_at)
       const lastHeardStr = this.formatRelativeOrDate(n.last_heard || n.updated_at);
 
@@ -1374,7 +1399,6 @@ class MeshDashboard {
           </td>
           <td>
             <strong>${this.escapeHtml(n.name || "Sin nombre")}</strong>
-            ${n.traces_detected > 0 ? `<span class="badge" style="background: var(--bg-input); color: var(--text-muted); font-size: 0.7rem; margin-left: 4px;" title="Traceroutes emitidos por este nodo">📍 ${n.traces_detected}</span>` : ""}
           </td>
           <td style="font-weight: 600; color: var(--primary); font-family: monospace;">
             ${this.escapeHtml(n.short_name || "--")}
@@ -1384,6 +1408,7 @@ class MeshDashboard {
           <td>${hops}</td>
           <td>${battery}</td>
           <td>${snr}</td>
+          <td>${tracesCell}</td>
           <td style="font-size: 0.8rem; color: var(--text-muted);">${lastHeardStr}</td>
           <td style="font-size: 0.8rem; color: var(--text-dim);">${createdAtStr}</td>
           <td>

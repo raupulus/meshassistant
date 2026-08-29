@@ -180,6 +180,7 @@
         <div style="display: flex; gap: 8px; flex-wrap: wrap;">
           <button class="btn-secondary filter-nodes active" data-filter="all">Todos</button>
           <button class="btn-secondary filter-nodes" data-filter="battery">Con Batería 🔋</button>
+          <button class="btn-secondary filter-nodes" data-filter="traces">Con Traceroutes 📍</button>
           <button class="btn-secondary filter-nodes" data-filter="rf">Solo RF</button>
           <button class="btn-secondary filter-nodes" data-filter="fav">Favoritos ⭐</button>
         </div>
@@ -197,6 +198,7 @@
               <th style="cursor: pointer;" class="sort-header" data-sort="hops">Saltos <span class="sort-arrow">↕</span></th>
               <th style="cursor: pointer;" class="sort-header" data-sort="battery">Batería <span class="sort-arrow">↕</span></th>
               <th style="cursor: pointer;" class="sort-header" data-sort="snr">SNR / RSSI <span class="sort-arrow">↕</span></th>
+              <th style="cursor: pointer;" class="sort-header" data-sort="traces_detected">Traces <span class="sort-arrow">↕</span></th>
               <th style="cursor: pointer;" class="sort-header" data-sort="last_heard">Última Señal <span class="sort-arrow">↕</span></th>
               <th style="cursor: pointer;" class="sort-header" data-sort="created_at">Primera Vez <span class="sort-arrow">↕</span></th>
               <th style="width: 110px;">Acciones</th>
@@ -204,7 +206,7 @@
           </thead>
           <tbody id="nodes-tbody">
             <tr>
-              <td colspan="11" style="text-align: center; color: var(--text-dim); padding: 20px;">Cargando lista de nodos...</td>
+              <td colspan="12" style="text-align: center; color: var(--text-dim); padding: 20px;">Cargando lista de nodos...</td>
             </tr>
           </tbody>
         </table>

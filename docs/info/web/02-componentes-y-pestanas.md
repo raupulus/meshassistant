@@ -59,11 +59,13 @@ La aplicación web está estructurada como una SPA (Single Page Application) rea
 - **Filtros Rápidos:**
   - `Todos`: Censo íntegro de la red.
   - `Con Batería 🔋`: Muestra exclusivamente los nodos con telemetría de batería/voltaje reportada, activando por defecto la ordenación ascendente para identificar nodos con batería baja (ideal para monitorizar repetidores solares en días nublados).
+  - `Con Traceroutes 📍`: Filtra de inmediato los nodos a los que se les ha detectado emisión de traceroutes (`traces_detected > 0`) ordenando de mayor a menor actividad.
   - `Solo RF`: Excluye tráfico que llega por pasarelas MQTT.
   - `Favoritos ⭐`: Nodos destacados persistidos en SQLite.
 - **Paginación Ágil:** Selector de 50, 100, 250 por página o "Ver todos", manteniendo el censo completo en memoria.
-- **Ordenación Multidimensional Inteligente:** Posibilidad de ordenar por favoritos, rol, nombre, alias, saltos, batería, SNR, última señal o primera vez visto, manteniendo siempre los nodos con dato real arriba y los nulos al final.
+- **Ordenación Multidimensional Inteligente:** Posibilidad de ordenar por favoritos, rol, nombre, alias, saltos, batería, SNR, Traceroutes detectados (`traces_detected`), última señal o primera vez visto, manteniendo siempre los nodos con dato real arriba y los nulos al final.
 - **Detalle de Columnas:**
+  - **Traces:** Contador de paquetes de traceroute emitidos por ese nodo (`📍 X`), ordenable directamente haciendo clic en la cabecera.
   - **Primera Vez:** Fecha en que el nodo fue descubierto por primera vez (`DD/MM/YYYY`).
   - **Última Señal:** Formateo dinámico (`HH:MM:SS` para hoy / `DD/MM HH:MM` para días previos).
   - **Acciones:**
