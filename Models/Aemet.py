@@ -369,11 +369,29 @@ class Aemet:
         """
         if self.city_code and self.city_code.isdigit() and len(self.city_code) == 5:
             return self.city_code
-        # Mapa mínimo ampliable: nombre municipio normalizado -> código INE (5)
+        # Mapa ampliado: nombre municipio/capital normalizado -> código INE (5 dígitos)
         KNOWN_CITIES = {
             'CHIPIONA': '11016',
+            'CADIZ': '11012',
+            'SEVILLA': '41091',
+            'HUELVA': '21041',
+            'MALAGA': '29067',
+            'CORDOBA': '14021',
+            'GRANADA': '18087',
+            'JAEN': '23050',
+            'ALMERIA': '04013',
+            'JEREZ DE LA FRONTERA': '11020',
+            'JEREZ': '11020',
+            'ALGECIRAS': '11004',
+            'SAN FERNANDO': '11031',
+            'EL PUERTO DE SANTA MARIA': '11027',
+            'ROTA': '11030',
+            'SANLUCAR DE BARRAMEDA': '11032',
         }
-        return KNOWN_CITIES.get(_normalize_name(self.city or ''))
+        name_key = _normalize_name(self.city or '')
+        if not name_key and self.province:
+            name_key = _normalize_name(self.province)
+        return KNOWN_CITIES.get(name_key)
 
     # AEMET sirve con cadena de certificados incompleta en muchos sistemas. Una
     # vez detectado el fallo SSL en el proceso, vamos directos a verify=False para

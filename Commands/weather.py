@@ -103,6 +103,25 @@ def weather_callback(interface, args, msg, metadata):
                 )
                 record = db.aemet_weather_get_latest(province_code=aemet.province_code())
                 is_old = False
+
+            # Intentar obtener predicción multi-día de la capital para enriquecer tablas del panel web
+            try:
+                city_code = aemet.resolve_city_code()
+                if city_code:
+                    daily_data = aemet.fetch_daily_forecast(city_code=city_code)
+                    if daily_data:
+                        sum_3d = aemet.format_daily_forecast(daily_data, days=3)
+                        sum_7d = aemet.format_daily_forecast(daily_data, days=7)
+                        db.aemet_forecast_daily_insert(
+                            city_code=city_code,
+                            city_name=requested_province_name,
+                            province=aemet.province or requested_province_name,
+                            data_json=daily_data,
+                            summary_3d=sum_3d,
+                            summary_7d=sum_7d,
+                        )
+            except Exception as e_daily:
+                log_p(f"Error fetching daily forecast for {requested_province_name}: {e_daily}", level="DEBUG")
         except Exception as e:
             log_p(f"Error fetching clima on the fly: {e}", level="WARN")
 

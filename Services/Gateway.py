@@ -377,25 +377,110 @@ class GatewayService:
                 response["data"] = {"status": result}
 
             elif action in ("get_weather", "get_weather_full"):
-                # 1. Ubicaciones multi-día
-                locations = self.db.aemet_forecast_daily_get_all_latest()
+                # 1. Ubicaciones multi-día y textos meteorológicos
+                locations = self.db.aemet_forecast_daily_get_all_latest() or []
                 if not locations:
                     single = self.db.aemet_forecast_daily_get_latest()
                     if single:
                         locations = [single]
 
-                # 2. Textos meteorológicos por provincia/municipio
-                weather_texts = self.db.aemet_weather_get_all_latest()
+                weather_texts = self.db.aemet_weather_get_all_latest() or []
                 if not weather_texts:
                     single_w = self.db.aemet_weather_get_latest()
                     if single_w:
                         weather_texts = [single_w]
 
+                # Unificar en locations cualquier provincia/municipio presente en weather_texts
+                known_loc_names = {
+                    (loc.get("city_name") or loc.get("province") or "").strip().lower()
+                    for loc in locations
+                }
+                for wt in weather_texts:
+                    p_name = (wt.get("city") or wt.get("province") or "").strip()
+                    if p_name and p_name.lower() not in known_loc_names:
+                        known_loc_names.add(p_name.lower())
+                        locations.append({
+                            "id": f"wt_{wt.get('id', 0)}",
+                            "city_code": wt.get("city_code") or wt.get("province_code"),
+                            "city_name": p_name,
+                            "province": wt.get("province") or "Andalucía",
+                            "summary_7d": wt.get("content") or "",
+                            "summary_3d": wt.get("content") or "",
+                            "data": {},
+                            "created_at": wt.get("created_at"),
+                        })
+
                 # 3. Predicción horaria
                 hourly = self.db.aemet_forecast_hourly_get_latest() or {}
 
-                # 4. Mareas
-                tides = self.db.tides_get_latest() or {}
+                # 4. Mareas (cálculo astronómico garantizado y parseo de eventos futuros)
+                tides_data = {}
+                try:
+                    from Models.Tides import next_extremes, compute_tides
+                    latest_tides = self.db.tides_get_latest()
+                    extremes = []
+                    source = None
+                    approximate = False
+                    name = "Chipiona"
+                    if latest_tides:
+                        extremes = latest_tides.get('extremes') or []
+                        source = latest_tides.get('source')
+                        approximate = bool(latest_tides.get('approximate'))
+                        name = latest_tides.get('location') or name
+
+                    parsed_extremes = []
+                    for e in extremes:
+                        t = e.get('time')
+                        if isinstance(t, str):
+                            try:
+                                t = datetime.fromisoformat(t)
+                            except Exception:
+                                continue
+                        if t:
+                            parsed_extremes.append({'time': t, 'type': e.get('type'), 'height': e.get('height')})
+
+                    upcoming = next_extremes(parsed_extremes, count=4)
+                    if len(upcoming) < 2:
+                        res_t = compute_tides(days=2, allow_network=False)
+                        parsed_extremes = res_t.get('extremes') or []
+                        source = res_t.get('source')
+                        approximate = bool(res_t.get('approximate'))
+                        name = res_t.get('name') or name
+                        upcoming = next_extremes(parsed_extremes, count=4)
+
+                    events = []
+                    etiquetas = {'high': 'Pleamar', 'low': 'Bajamar'}
+                    for u in upcoming:
+                        t_dt = u['time']
+                        t_str = t_dt.strftime('%H:%M') if isinstance(t_dt, datetime) else str(t_dt)
+                        t_type = etiquetas.get(u.get('type'), 'Marea')
+                        events.append({
+                            'type': t_type,
+                            'time': t_str,
+                            'height': u.get('height'),
+                        })
+
+                    trozos = [f"{e['type']} {e['time']}" + (f" ({e['height']:.1f}m)" if e.get('height') is not None else "") for e in events]
+                    summary_str = f"Marea {name}: " + ", ".join(trozos) if trozos else ""
+
+                    tides_data = {
+                        'location': name,
+                        'source': source or 'Cálculo astronómico',
+                        'approximate': approximate,
+                        'events': events,
+                        'summary': summary_str,
+                        'extremes': [
+                            {
+                                'time': e['time'].isoformat() if isinstance(e['time'], datetime) else str(e['time']),
+                                'type': e.get('type'),
+                                'height': e.get('height'),
+                            }
+                            for e in upcoming
+                        ]
+                    }
+                except Exception as e_t:
+                    log_p(f"[Gateway] Error calculando mareas: {e_t}", level="WARN")
+                    tides_data = self.db.tides_get_latest() or {}
 
                 # 5. Astronomía: Sol y Luna (cálculo instantáneo offline)
                 sun_data = {}
@@ -464,7 +549,7 @@ class GatewayService:
                     "locations": locations,
                     "weather_texts": weather_texts,
                     "hourly": hourly,
-                    "tides": tides,
+                    "tides": tides_data,
                     "sun": sun_data,
                     "moon": moon_data,
                     "tsunami": tsunami_data,

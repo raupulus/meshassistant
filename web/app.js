@@ -1081,6 +1081,51 @@ class MeshDashboard {
       this.chatDest.innerHTML = optsHtml;
       if (currentVal) this.chatDest.value = currentVal;
     }
+
+    // 3. Renderizar checkboxes de canales en creación y recordatorio de encuestas
+    this.renderPollChannelCheckboxes();
+  }
+
+  renderPollChannelCheckboxes() {
+    // Checkboxes en formulario de creación de encuestas (#poll-publish-channels)
+    const pollChContainer = document.getElementById("poll-publish-channels");
+    if (pollChContainer && this.channels) {
+      const prevChecked = Array.from(pollChContainer.querySelectorAll("input[name='poll_channel']:checked")).map(cb => String(cb.value));
+      const hasPrev = prevChecked.length > 0;
+      
+      let html = "";
+      for (const [chNum, chObj] of Object.entries(this.channels)) {
+        const name = chObj.name || `Canal ${chNum}`;
+        const isChecked = hasPrev ? prevChecked.includes(String(chNum)) : (String(chNum) !== "0");
+        html += `
+          <label style="font-size: 0.85rem; display: flex; align-items: center; gap: 6px; cursor: pointer; background: var(--bg-input); padding: 5px 10px; border-radius: 6px; border: 1px solid var(--border);">
+            <input type="checkbox" name="poll_channel" value="${chNum}" ${isChecked ? "checked" : ""}>
+            <span>Canal ${chNum} <strong>(${this.escapeHtml(name)})</strong></span>
+          </label>
+        `;
+      }
+      if (html) pollChContainer.innerHTML = html;
+    }
+
+    // Checkboxes en modal de recordatorio de encuestas (#reminder-channels-group)
+    const remChContainer = document.getElementById("reminder-channels-group");
+    if (remChContainer && this.channels) {
+      const prevChecked = Array.from(remChContainer.querySelectorAll("input[name='reminder_ch']:checked")).map(cb => String(cb.value));
+      const hasPrev = prevChecked.length > 0;
+
+      let html = "";
+      for (const [chNum, chObj] of Object.entries(this.channels)) {
+        const name = chObj.name || `Canal ${chNum}`;
+        const isChecked = hasPrev ? prevChecked.includes(String(chNum)) : (String(chNum) !== "0");
+        html += `
+          <label style="font-size: 0.85rem; display: flex; align-items: center; gap: 6px; cursor: pointer; background: var(--bg-input); padding: 5px 10px; border-radius: 6px; border: 1px solid var(--border);">
+            <input type="checkbox" name="reminder_ch" value="${chNum}" ${isChecked ? "checked" : ""}>
+            <span>Canal ${chNum} <strong>(${this.escapeHtml(name)})</strong></span>
+          </label>
+        `;
+      }
+      if (html) remChContainer.innerHTML = html;
+    }
   }
 
   // ==========================================================================
@@ -2382,23 +2427,7 @@ class MeshDashboard {
     if (this.reminderPreviewText) this.reminderPreviewText.textContent = previewMsg;
 
     // Renderizar opciones de canal
-    if (this.reminderChannelsGroup) {
-      let channelsHtml = `
-        <label style="font-size: 0.85rem; display: flex; align-items: center; gap: 4px; cursor: pointer;">
-          <input type="checkbox" name="reminder_ch" value="0" checked> Canal 0 (Público)
-        </label>
-      `;
-      (this.channels || []).forEach(ch => {
-        if (ch.index !== 0) {
-          channelsHtml += `
-            <label style="font-size: 0.85rem; display: flex; align-items: center; gap: 4px; cursor: pointer;">
-              <input type="checkbox" name="reminder_ch" value="${ch.index}"> Ch ${ch.index} (${this.escapeHtml(ch.name || "Canal")})
-            </label>
-          `;
-        }
-      });
-      this.reminderChannelsGroup.innerHTML = channelsHtml;
-    }
+    this.renderPollChannelCheckboxes();
   }
 
   closePoll(pollId) {
@@ -2435,18 +2464,30 @@ class MeshDashboard {
     // 1. Mareas
     if (this.tidesContent) {
       const t = data.tides || {};
+      let eventsHtml = "";
+
       if (t.events && Array.isArray(t.events) && t.events.length > 0) {
-        const eventsHtml = t.events.map(ev => {
-          const isPlea = (ev.type || "").toLowerCase().includes("plea");
+        eventsHtml = t.events.map(ev => {
+          const isPlea = (ev.type || "").toLowerCase().includes("plea") || ev.type === "high";
           const icon = isPlea ? "🌊" : "🔻";
           const typeName = isPlea ? "Pleamar" : "Bajamar";
           const hStr = ev.height !== undefined && ev.height !== null ? `(${Number(ev.height).toFixed(2)}m)` : "";
           return `<div style="display: inline-block; margin-right: 12px; font-weight: 500;">${icon} <strong>${typeName}</strong> ${ev.time} ${hStr}</div>`;
         }).join("");
+      } else if (t.extremes && Array.isArray(t.extremes) && t.extremes.length > 0) {
+        eventsHtml = t.extremes.map(ev => {
+          const isPlea = ev.type === "high" || (ev.type || "").toLowerCase().includes("plea");
+          const icon = isPlea ? "🌊" : "🔻";
+          const typeName = isPlea ? "Pleamar" : "Bajamar";
+          const timeStr = typeof ev.time === "string" && ev.time.includes("T") ? ev.time.split("T")[1].substring(0, 5) : String(ev.time || "");
+          const hStr = ev.height !== undefined && ev.height !== null ? `(${Number(ev.height).toFixed(2)}m)` : "";
+          return `<div style="display: inline-block; margin-right: 12px; font-weight: 500;">${icon} <strong>${typeName}</strong> ${timeStr} ${hStr}</div>`;
+        }).join("");
+      }
 
+      if (eventsHtml) {
         const coefStr = t.coefficient ? ` · Coef: <strong>${t.coefficient}</strong>` : "";
         const sourceStr = t.source ? `<div style="font-size: 0.75rem; color: var(--text-dim); margin-top: 6px;">Fuente: ${this.escapeHtml(t.source)} ${t.location ? "(" + t.location + ")" : ""}</div>` : "";
-
         this.tidesContent.innerHTML = `
           <div>${eventsHtml} ${coefStr}</div>
           ${sourceStr}
@@ -2454,6 +2495,7 @@ class MeshDashboard {
         if (this.tidesBadge) this.tidesBadge.textContent = t.location || "En Vivo";
       } else if (t.summary) {
         this.tidesContent.innerHTML = `<div>${this.escapeHtml(t.summary)}</div>`;
+        if (this.tidesBadge) this.tidesBadge.textContent = t.location || "En Vivo";
       } else {
         this.tidesContent.innerHTML = `<div style="color: var(--text-dim);">Sin datos de mareas astronómicas recientes.</div>`;
       }
@@ -2601,7 +2643,7 @@ class MeshDashboard {
             }).join("");
           }
 
-          const summaryText = loc.summary_7d || loc.summary_3d || "";
+          const summaryText = loc.summary_7d || loc.summary_3d || loc.content || "";
 
           return `
             <div class="card">
@@ -2633,8 +2675,8 @@ class MeshDashboard {
               ` : ""}
 
               ${summaryText ? `
-                <div style="font-size: 0.85rem; color: var(--text-muted); line-height: 1.5; background: var(--bg-input); padding: 10px; border-radius: 6px;">
-                  📝 <strong>Resumen Oficial AEMET:</strong> ${this.escapeHtml(summaryText)}
+                <div style="font-size: 0.85rem; color: var(--text-muted); line-height: 1.6; background: var(--bg-input); padding: 12px; border-radius: 6px; white-space: pre-wrap;">
+                  📝 <strong>Resumen Oficial AEMET:</strong>\n${this.escapeHtml(summaryText)}
                 </div>
               ` : ""}
             </div>
