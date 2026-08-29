@@ -128,50 +128,139 @@ header {
 }
 
 /* ==========================================================================
-   Navigation Tabs
+   Layout Principal (Barra Lateral + Main)
+   ========================================================================== */
+.app-layout {
+  display: flex;
+  flex-direction: row;
+  flex: 1;
+  width: 100%;
+  min-height: calc(100vh - 65px);
+  position: relative;
+  align-items: stretch;
+}
+
+/* ==========================================================================
+   Navigation Tabs (Barra Lateral Izquierda)
    ========================================================================== */
 nav.tabs {
   display: flex;
+  flex-direction: column;
   gap: 4px;
   background-color: var(--bg-card);
-  padding: 6px 20px 0 20px;
-  border-bottom: 1px solid var(--border-color);
-  overflow-x: auto;
-  white-space: nowrap;
+  padding: 10px 4px;
+  border-right: 1px solid var(--border-color);
+  border-bottom: none;
+  overflow-y: auto;
+  overflow-x: hidden;
+  position: sticky;
+  top: 57px;
+  height: calc(100vh - 57px);
+  z-index: 30;
+  flex-shrink: 0;
+  width: 120px;
+  min-width: 120px;
+  max-width: 120px;
+  box-sizing: border-box;
 }
 
 .tab-btn {
   background: transparent;
   border: none;
   color: var(--text-muted);
-  padding: 10px 16px;
-  font-size: 0.95rem;
+  padding: 8px 4px;
   font-weight: 600;
   cursor: pointer;
-  border-bottom: 3px solid transparent;
+  border-radius: var(--radius-sm);
+  border-left: 3px solid transparent;
+  border-bottom: none;
   display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 8px;
+  justify-content: center;
+  gap: 3px;
+  text-align: center;
+  position: relative;
   transition: all 0.15s ease;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .tab-btn:hover {
   color: var(--text-main);
-  background-color: rgba(255, 255, 255, 0.03);
+  background-color: rgba(255, 255, 255, 0.05);
 }
 
 .tab-btn.active {
   color: var(--primary);
-  border-bottom-color: var(--primary);
+  border-left-color: var(--primary);
+  background-color: rgba(56, 189, 248, 0.08);
+}
+
+.tab-icon {
+  font-size: 1.3rem;
+  line-height: 1;
+  display: inline-block;
+}
+
+.tab-label {
+  font-size: 0.74rem;
+  font-weight: 600;
+  line-height: 1.15;
+  text-align: center;
+  word-break: normal;
+  overflow-wrap: break-word;
+  white-space: normal;
+  color: inherit;
+  max-width: 110px;
 }
 
 .tab-btn .badge-count {
   background-color: var(--bg-input);
   color: var(--text-muted);
-  font-size: 0.75rem;
-  padding: 2px 6px;
+  font-size: 0.68rem;
+  padding: 1px 5px;
   border-radius: 10px;
   border: 1px solid var(--border-color);
+  line-height: 1.2;
+}
+
+.tab-btn.active .badge-count {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+/* Modo compacto por debajo de 900px: solo iconos */
+@media (max-width: 900px) {
+  nav.tabs {
+    width: 58px;
+    min-width: 58px;
+    max-width: 58px;
+    padding: 8px 3px;
+    gap: 6px;
+  }
+
+  .tab-btn {
+    padding: 10px 2px;
+    gap: 2px;
+  }
+
+  .tab-label {
+    display: none !important;
+  }
+
+  .tab-icon {
+    font-size: 1.45rem;
+  }
+
+  .tab-btn .badge-count {
+    position: absolute;
+    top: 2px;
+    right: 2px;
+    font-size: 0.65rem;
+    padding: 0 4px;
+    min-width: 14px;
+  }
 }
 
 /* ==========================================================================
@@ -180,9 +269,11 @@ nav.tabs {
 main {
   flex: 1;
   padding: 20px;
-  max-width: 1280px;
+  max-width: 1400px;
   margin: 0 auto;
   width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
 }
 
 .tab-pane {

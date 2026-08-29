@@ -35,9 +35,9 @@ def _parse_prevision_args(args: list) -> tuple:
         clamped_h = max(1, min(12, val))
         return ('hourly', clamped_h)
 
-    # Detección de días: "4 dias", "4d", "dias 4", "7 dias", etc.
-    m_d = re.search(r'(\d+)\s*(?:d|dias?)|dias?\s*(\d+)', raw)
-    if m_d or 'dia' in raw:
+    # Detección de días: "4 dias", "4 días", "4d", "días 4", "7 dias", etc.
+    m_d = re.search(r'(\d+)\s*(?:d|dias?|días?)|(?:dias?|días?)\s*(\d+)', raw)
+    if m_d or 'dia' in raw or 'día' in raw:
         val = 3
         if m_d:
             num_str = m_d.group(1) or m_d.group(2)

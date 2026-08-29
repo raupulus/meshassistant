@@ -11,8 +11,8 @@ class BulletinGenerator:
     """Generador de boletines periódicos para la comunidad de la malla (ámbito provincial)."""
 
     @staticmethod
-    def build_bulletin(slot_name: str = "Diario") -> List[str]:
-        """Construye las partes del boletín diario (máx 2 partes de <= 200 bytes)."""
+    def build_bulletin_text(slot_name: str = "Diario") -> str:
+        """Construye el texto unificado del boletín diario."""
         db = Database()
         prov_name = getattr(env, "AEMET_PROVINCE", None) or getattr(env, "LOCATION_NAME", "Cádiz") or "Cádiz"
         loc_display = "Cádiz" if str(prov_name).lower() in ("cadiz", "cádiz") else str(prov_name)
@@ -25,13 +25,14 @@ class BulletinGenerator:
             sr = s_info.get("sunrise")
             ss = s_info.get("sunset")
             if sr and ss:
-                astro_items.append(f"☀️ Sol {sr.strftime('%H:%M')}-{ss.strftime('%H:%M')}")
+                astro_items.append(f"☀️ {sr.strftime('%H:%M')}-{ss.strftime('%H:%M')}")
 
             m_info = moon_phase()
             p_name = m_info.get("phase_name", "")
+            p_abbr = p_name.replace("Luna ", "").capitalize()
             illum = int(round(m_info.get("illumination", 0) * 100))
-            if p_name:
-                astro_items.append(f"🌙 {p_name} ({illum}%)")
+            if p_abbr:
+                astro_items.append(f"🌙 {p_abbr} ({illum}%)")
         except Exception:
             pass
 
@@ -47,11 +48,15 @@ class BulletinGenerator:
                 w = db.aemet_weather_get_latest(day="hoy")
             if w and w.get("content"):
                 raw_c = w["content"].strip()
-                # Extraer resumen conciso (primera frase o hasta 85 caracteres)
+                # Quitar prefijo redundante provincial si viene en el texto
+                for prefix in ("CÁDIZ ", "CADIZ ", "Cádiz ", "Cadiz "):
+                    if raw_c.startswith(prefix):
+                        raw_c = raw_c[len(prefix):].strip()
+                        break
                 first_line = raw_c.split(".")[0] if "." in raw_c else raw_c
                 first_line = sanitize_text(first_line)
-                if len(first_line) > 85:
-                    first_line = first_line[:82] + "…"
+                if len(first_line) > 42:
+                    first_line = first_line[:39] + "…"
                 clima_txt = f"🌦️ {first_line}."
         except Exception:
             pass
@@ -73,7 +78,7 @@ class BulletinGenerator:
 
             tz = extremes[0]["time"].tzinfo if extremes else None
             now = datetime.now(tz) if tz else datetime.now()
-            upcoming = next_extremes(extremes, now=now, count=3) if extremes else []
+            upcoming = next_extremes(extremes, now=now, count=2) if extremes else []
 
             if not upcoming:
                 # Fallback de cálculo astronómico offline
@@ -81,7 +86,7 @@ class BulletinGenerator:
                 if t_comp and t_comp.get("extremes"):
                     tz_c = t_comp["extremes"][0]["time"].tzinfo if t_comp["extremes"] else None
                     now_c = datetime.now(tz_c) if tz_c else datetime.now()
-                    upcoming = next_extremes(t_comp["extremes"], now=now_c, count=3)
+                    upcoming = next_extremes(t_comp["extremes"], now=now_c, count=2)
 
             if upcoming:
                 etiquetas = {"high": "Plea", "low": "Baja"}
@@ -99,10 +104,9 @@ class BulletinGenerator:
             pass
 
         # 4. Alertas activas de la provincia
-        avisos_txt = "⚠️ Avisos: Sin alertas activas."
+        avisos_txt = "⚠️ Sin avisos activos."
         try:
             with db._connect() as conn:
-                # Comprobar alertas de las últimas 24h
                 cur = conn.execute(
                     "SELECT message, data_raw FROM aemet WHERE created_at >= datetime('now', '-24 hours', 'localtime') ORDER BY id DESC LIMIT 1"
                 )
@@ -112,29 +116,25 @@ class BulletinGenerator:
                     msg_al = sanitize_text(msg_al)
                     if msg_al:
                         first_al = msg_al.split(".")[0] if "." in msg_al else msg_al
-                        if len(first_al) > 60:
-                            first_al = first_al[:57] + "…"
+                        if len(first_al) > 40:
+                            first_al = first_al[:37] + "…"
                         avisos_txt = f"⚠️ Alerta: {first_al}."
         except Exception:
             pass
 
-        # Construir Parte 1: Cabecera + Astro (Sol & Luna) + Clima
-        p1_lines = [f"📢 [Boletín {slot_name}] 📍 {loc_display}"]
+        lines = [f"📢 [Boletín {slot_name}] 📍 {loc_display}"]
         if astro_txt:
-            p1_lines.append(astro_txt)
+            lines.append(astro_txt)
         if clima_txt:
-            p1_lines.append(clima_txt)
-        part1 = "\n".join(p1_lines)
+            lines.append(clima_txt)
+        lines.append(marea_txt)
+        lines.append(avisos_txt)
 
-        # Construir Parte 2: Mareas + Alertas
-        p2_lines = [marea_txt, avisos_txt]
-        part2 = "\n".join(p2_lines)
+        return "\n".join(lines)
 
-        messages = []
-        # Asegurar ajuste estricto a MESH_MAX_BYTES por mensaje
-        for p in [part1, part2]:
-            sub_chunks = split_messages(p, max_bytes=MESH_MAX_BYTES, max_parts=1)
-            if sub_chunks:
-                messages.append(sub_chunks[0])
-
-        return messages
+    @staticmethod
+    def build_bulletin(slot_name: str = "Diario") -> List[str]:
+        """Construye las partes del boletín diario (<= 200 bytes por mensaje)."""
+        full_text = BulletinGenerator.build_bulletin_text(slot_name=slot_name)
+        parts = split_messages(full_text, max_bytes=MESH_MAX_BYTES, max_parts=2)
+        return parts if parts else [full_text]

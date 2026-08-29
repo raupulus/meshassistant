@@ -47,42 +47,56 @@
   </header>
 
   <!-- ==========================================================================
-       Pestañas de Navegación
+       Layout Principal: Barra Lateral + Contenido
        ========================================================================== -->
-  <nav class="tabs">
-    <button class="tab-btn active" data-tab="chat">
-      <span>💬 Mensajes</span>
-      <span class="badge-count" id="count-msgs">0</span>
-    </button>
-    <button class="tab-btn" data-tab="routers">
-      <span>📡 Routers</span>
-      <span class="badge-count" id="count-routers">0</span>
-    </button>
-    <button class="tab-btn" data-tab="nodes">
-      <span>👥 Nodos</span>
-      <span class="badge-count" id="count-nodes">0</span>
-    </button>
-    <button class="tab-btn" data-tab="traces">
-      <span>🗺️ Traceroutes</span>
-    </button>
-    <button class="tab-btn" data-tab="polls">
-      <span>📊 Encuestas & Clima</span>
-    </button>
-    <button class="tab-btn" data-tab="schedules">
-      <span>⏰ Programación</span>
-      <span class="badge-count" id="count-scheds">0</span>
-    </button>
-    <button class="tab-btn" data-tab="security">
-      <span>🛡️ Seguridad</span>
-      <span class="badge-count" id="count-blocked">0</span>
-    </button>
-    <button class="tab-btn" data-tab="audit">
-      <span>📋 Auditoría</span>
-    </button>
-    <button class="tab-btn" data-tab="commands">
-      <span>📖 Comandos</span>
-    </button>
-  </nav>
+  <div class="app-layout">
+
+    <!-- ==========================================================================
+         Barra Lateral de Navegación
+         ========================================================================== -->
+    <nav class="tabs" aria-label="Navegación principal">
+      <button class="tab-btn active" data-tab="chat" title="💬 Mensajes">
+        <span class="tab-icon">💬</span>
+        <span class="tab-label">Mensajes</span>
+        <span class="badge-count" id="count-msgs">0</span>
+      </button>
+      <button class="tab-btn" data-tab="routers" title="📡 Routers">
+        <span class="tab-icon">📡</span>
+        <span class="tab-label">Routers</span>
+        <span class="badge-count" id="count-routers">0</span>
+      </button>
+      <button class="tab-btn" data-tab="nodes" title="👥 Nodos">
+        <span class="tab-icon">👥</span>
+        <span class="tab-label">Nodos</span>
+        <span class="badge-count" id="count-nodes">0</span>
+      </button>
+      <button class="tab-btn" data-tab="traces" title="🗺️ Traceroutes">
+        <span class="tab-icon">🗺️</span>
+        <span class="tab-label">Traceroutes</span>
+      </button>
+      <button class="tab-btn" data-tab="polls" title="📊 Encuestas & Clima">
+        <span class="tab-icon">📊</span>
+        <span class="tab-label">Encuestas & Clima</span>
+      </button>
+      <button class="tab-btn" data-tab="schedules" title="⏰ Programación">
+        <span class="tab-icon">⏰</span>
+        <span class="tab-label">Programación</span>
+        <span class="badge-count" id="count-scheds">0</span>
+      </button>
+      <button class="tab-btn" data-tab="security" title="🛡️ Seguridad">
+        <span class="tab-icon">🛡️</span>
+        <span class="tab-label">Seguridad</span>
+        <span class="badge-count" id="count-blocked">0</span>
+      </button>
+      <button class="tab-btn" data-tab="audit" title="📋 Auditoría">
+        <span class="tab-icon">📋</span>
+        <span class="tab-label">Auditoría</span>
+      </button>
+      <button class="tab-btn" data-tab="commands" title="📖 Guía de Comandos">
+        <span class="tab-icon">📖</span>
+        <span class="tab-label">Comandos</span>
+      </button>
+    </nav>
 
   <!-- ==========================================================================
        Contenido Principal
@@ -574,6 +588,7 @@
     </section>
 
   </main>
+  </div> <!-- .app-layout -->
 
   <!-- Barra Fina de Telemetría Hardware en Footer (Módulo 05) -->
   <footer class="telemetry-footer">

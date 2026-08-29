@@ -213,6 +213,55 @@ commands_dict = {
         "usage": "/telemetria o /estado",
         "info": "Alias de /estado: telemetría de hardware de la Raspberry Pi"
     },
+    "boletín": {
+        "callback": boletin_callback,
+        "in_group": True,
+        "hidden": True,
+        "usage": "/boletín [matinal|vespertino]",
+        "info": "Alias con tilde de /boletin"
+    },
+    "previsión": {
+        "callback": prevision_callback,
+        "in_group": True,
+        "hidden": True,
+        "usage": "/previsión [mañana|N días|N horas]",
+        "info": "Alias con tilde de /prevision"
+    },
+    "telemetría": {
+        "callback": estado_callback,
+        "in_group": True,
+        "hidden": True,
+        "usage": "/telemetría",
+        "info": "Alias con tilde de /telemetria"
+    },
+    "estación": {
+        "callback": weather_callback,
+        "in_group": True,
+        "hidden": True,
+        "usage": "/estación",
+        "info": "Alias de /tiempo real para datos de estación meteorológica"
+    },
+    "estacion": {
+        "callback": weather_callback,
+        "in_group": True,
+        "hidden": True,
+        "usage": "/estacion",
+        "info": "Alias de /tiempo real para datos de estación meteorológica"
+    },
+    "información": {
+        "callback": about_callback,
+        "in_group": False,
+        "hidden": True,
+        "usage": "/información",
+        "info": "Alias con tilde de /about"
+    },
+    "informacion": {
+        "callback": about_callback,
+        "in_group": False,
+        "hidden": True,
+        "usage": "/informacion",
+        "info": "Alias de /about"
+    },
 }
 
 channels = {

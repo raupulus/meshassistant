@@ -150,7 +150,12 @@ def search_command (msg):
 
     # Buscar la primera palabra de la cadena en diccionario "command_dict"
     if comando not in commands_dict:
-        return None, []
+        import unicodedata
+        norm_cmd = "".join(c for c in unicodedata.normalize('NFD', comando) if unicodedata.category(c) != 'Mn')
+        if norm_cmd in commands_dict:
+            comando = norm_cmd
+        else:
+            return None, []
 
     # Devolver comando y argumentos
     return comando, parts[1:]

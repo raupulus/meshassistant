@@ -1,5 +1,6 @@
 from __future__ import annotations
 from datetime import datetime
+from functions import reply_long
 from Models.Bulletin import BulletinGenerator
 
 
@@ -20,8 +21,7 @@ def boletin_callback(interface, args, msg, metadata):
         if not slot_name:
             slot_name = "Matinal" if datetime.now().hour < 14 else "Vespertino"
 
-        parts = BulletinGenerator.build_bulletin(slot_name=slot_name)
-        for p in parts:
-            interface.reply_to_message(p, metadata)
+        full_text = BulletinGenerator.build_bulletin_text(slot_name=slot_name)
+        reply_long(interface, metadata, full_text, max_parts=2)
     except Exception as e:
         interface.reply_to_message(f"Error generando boletín: {e}", metadata)
