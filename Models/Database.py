@@ -737,28 +737,41 @@ class Database:
         *,
         hops_limit: int = 2,
         reload_hours: int = 72,
-        router_reload_hours: int = 6,
+        router_reload_hours: int = 24,
         router_max_hops: int = 2,
         router_retry_short_hours: int = 1,
         router_max_retries: int = 5,
         router_retry_long_hours: int = 24,
         retry_hours: int = 24,
+        max_inactive_days: int = 7,
+        router_start_hour: int = 5,
         router_identifiers: Optional[List[str]] = None,
     ) -> Optional[str]:
         """Devuelve el próximo node_id candidato para traceroute.
 
+        Compensación de saltos: Se añade +1 salto al límite configurado para contemplar
+        el salto local Bot <-> RAU0 (ej. hops_limit=2 equivale a <=3 saltos brutos desde el bot).
+
+        Filtro de actividad: Descarta nodos sin señales recientes (>7 días) o que se hayan alejado.
+
         Prioridad 1: Nodos routers cercanos (en router_identifiers o con role ROUTER/ROUTER_LATE/REPEATER)
-                    con hops <= router_max_hops (2).
-                    - Éxito previo ('done'): re-trazar cada router_reload_hours (6h).
+                    con hops <= router_max_hops + 1 (<=3 brutos).
+                    - Se ejecutan preferentemente a partir de router_start_hour (05:00 AM).
+                    - Éxito previo ('done'): re-trazar cada router_reload_hours (24h).
                     - Fallo previo ('error') con < router_max_retries (5): reintentar cada router_retry_short_hours (1h).
                     - Fallo previo ('error') con >= router_max_retries (5): enfriamiento de router_retry_long_hours (24h).
-        Prioridad 2: Nodos normales y routers más lejanos (hops <= hops_limit, no MQTT)
+        Prioridad 2: Nodos normales y routers más lejanos (hops <= hops_limit + 1, no MQTT, activos en 7 días)
                     cuya última traza exitosa tenga ≥ reload_hours (72h) o reintento de retry_hours (24h).
         """
         router_idents = [str(r) for r in (router_identifiers or [])]
+        eff_router_hops = int(router_max_hops) + 1
+        eff_hops_limit = int(hops_limit) + 1
+        inactive_sec = int(max_inactive_days) * 86400
+        current_hour = datetime.now().hour
+        router_routine_allowed = (current_hour >= int(router_start_hour))
 
         with closing(self._connect()) as conn:
-            # 1. Comprobar primero si algún ROUTER CERCANO (<= router_max_hops) necesita traceroute (prioridad 1)
+            # 1. Comprobar primero si algún ROUTER CERCANO (<= router_max_hops + 1) necesita traceroute (prioridad 1)
             query_routers = '''
                 WITH last_processed AS (
                     SELECT "to" AS node_id, MAX(updated_at) AS last_updated
@@ -796,6 +809,10 @@ class Database:
                 LEFT JOIN pend p ON p.node_id = n.node_id
                 WHERE COALESCE(n.via_mqtt, 0) = 0
                   AND (n.hops IS NULL OR n.hops <= ?)
+                  AND (
+                      (n.last_heard IS NOT NULL AND strftime('%s','now','localtime') - n.last_heard <= ?)
+                   OR (n.last_heard IS NULL AND strftime('%s','now','localtime') - strftime('%s', n.updated_at) <= ?)
+                  )
                   AND COALESCE(p.pendings, 0) = 0
                   AND (
                       n.role IN (2, 4, 9)
@@ -804,8 +821,8 @@ class Database:
                    OR UPPER(COALESCE(n.node_id, '')) IN ({ro_placeholders})
                   )
                   AND (
-                        lp.last_updated IS NULL
-                     OR (ls.last_status = 'done'  AND strftime('%s','now','localtime') - strftime('%s', lp.last_updated) >= ?)
+                        (lp.last_updated IS NULL AND ? = 1)
+                     OR (ls.last_status = 'done' AND ? = 1 AND strftime('%s','now','localtime') - strftime('%s', lp.last_updated) >= ?)
                      OR (ls.last_status = 'error' AND COALESCE(ce.err_count, 0) < ?  AND strftime('%s','now','localtime') - strftime('%s', lp.last_updated) >= ?)
                      OR (ls.last_status = 'error' AND COALESCE(ce.err_count, 0) >= ? AND strftime('%s','now','localtime') - strftime('%s', lp.last_updated) >= ?)
                   )
@@ -815,8 +832,11 @@ class Database:
                 ro_placeholders=','.join(['?'] * len(router_idents)) if router_idents else "''"
             )
 
+            allow_flag = 1 if router_routine_allowed else 0
             params_routers = tuple(
-                [int(router_max_hops)] + [r.upper() for r in router_idents] * 2 + [
+                [eff_router_hops, inactive_sec, inactive_sec] + [r.upper() for r in router_idents] * 2 + [
+                    allow_flag,
+                    allow_flag,
                     int(router_reload_hours) * 3600,
                     int(router_max_retries),
                     int(router_retry_short_hours) * 3600,
@@ -824,7 +844,11 @@ class Database:
                     int(router_retry_long_hours) * 3600,
                 ]
             ) if router_idents else (
-                int(router_max_hops),
+                eff_router_hops,
+                inactive_sec,
+                inactive_sec,
+                allow_flag,
+                allow_flag,
                 int(router_reload_hours) * 3600,
                 int(router_max_retries),
                 int(router_retry_short_hours) * 3600,
@@ -837,9 +861,8 @@ class Database:
             if row:
                 return row['node_id']
 
-            # 2. Si ningún router cercano necesita trace, seleccionar nodo normal o router lejano cumpliendo reload_hours (72h)
-            cur = conn.execute(
-                '''
+            # 2. Si ningún router cercano necesita trace, seleccionar nodo normal o router lejano cumpliendo reload_hours (72h) y activo en 7 días
+            query_clients = '''
                 WITH last_processed AS (
                     SELECT "to" AS node_id, MAX(updated_at) AS last_updated
                     FROM traces
@@ -866,7 +889,20 @@ class Database:
                 LEFT JOIN pend p ON p.node_id = n.node_id
                 WHERE COALESCE(n.via_mqtt, 0) = 0
                   AND (n.hops IS NULL OR n.hops <= ?)
+                  AND (
+                      (n.last_heard IS NOT NULL AND strftime('%s','now','localtime') - n.last_heard <= ?)
+                   OR (n.last_heard IS NULL AND strftime('%s','now','localtime') - strftime('%s', n.updated_at) <= ?)
+                  )
                   AND COALESCE(p.pendings, 0) = 0
+                  AND NOT (
+                      (
+                          n.role IN (2, 4, 9)
+                       OR UPPER(COALESCE(n.role, '')) IN ('ROUTER', 'ROUTER_LATE', 'REPEATER')
+                       OR UPPER(COALESCE(n.short_name, '')) IN ({ro_placeholders})
+                       OR UPPER(COALESCE(n.node_id, '')) IN ({ro_placeholders})
+                      )
+                      AND (n.hops IS NULL OR n.hops <= ?)
+                  )
                   AND (
                         lp.last_updated IS NULL
                      OR (
@@ -876,13 +912,26 @@ class Database:
                   )
                 ORDER BY n.updated_at DESC
                 LIMIT 1
-                ''',
-                (
-                    int(hops_limit),
+            '''.format(
+                ro_placeholders=','.join(['?'] * len(router_idents)) if router_idents else "''"
+            )
+
+            params_clients = tuple(
+                [eff_hops_limit, inactive_sec, inactive_sec] + [r.upper() for r in router_idents] * 2 + [
+                    eff_router_hops,
                     int(reload_hours) * 3600,
                     int(retry_hours) * 3600,
-                ),
+                ]
+            ) if router_idents else (
+                eff_hops_limit,
+                inactive_sec,
+                inactive_sec,
+                eff_router_hops,
+                int(reload_hours) * 3600,
+                int(retry_hours) * 3600,
             )
+
+            cur = conn.execute(query_clients, params_clients)
             row = cur.fetchone()
             return row['node_id'] if row else None
 

@@ -147,6 +147,10 @@ def loop():
                         log_p(f"[outbox] Procesando solicitud NodeInfo para '{out_dest}'")
                         ok = interface.request_node_info(out_dest)
                         db.mark_outbox_sent(out_id, ok=ok)
+                    elif out_text == "__REQ_TELEMETRY__":
+                        log_p(f"[outbox] Procesando solicitud de Telemetría/Batería para '{out_dest}'")
+                        ok = interface.request_telemetry(out_dest, channel_index=out_ch)
+                        db.mark_outbox_sent(out_id, ok=ok)
                     else:
                         log_p(f"[outbox] Transmitiendo mensaje #{out_id} a '{out_dest}' ch={out_ch}: {out_text[:40]}")
                         ok = interface.send(out_text, dest=out_dest, channel=out_ch)

@@ -626,8 +626,10 @@ class SerialInterface:
         import env
         return int(getattr(env, 'MESH_DEFAULT_HOP_LIMIT', 3) or 3)
 
-    def traceroute(self, node_id: str, timeout: float = 10.0):
+    def traceroute(self, node_id: str, timeout: float = 60.0):
         """Ejecuta un TraceRoute real usando Meshtastic `sendTraceRoute` y capta la salida textual.
+
+        Timeout máximo: 60 segundos (1 minuto exacto desde el envío).
 
         Compatibilidad de llamada (variantes probadas en orden):
           1) sendTraceRoute(node_id, 3, False, callback)
@@ -875,6 +877,41 @@ class SerialInterface:
             'forward': forward_hops,
             'backward': backward_hops,
         }
+
+    def request_telemetry(self, destination_id: str, channel_index: int = 0) -> bool:
+        """Envía una solicitud de telemetría a un nodo remoto para consultar su batería/voltaje."""
+        if not self.interface:
+            return False
+        try:
+            target_id = destination_id
+            if not target_id.startswith('!') and not target_id.isdigit():
+                from Models.Database import Database
+                found = Database().get_node_by_identifier(target_id)
+                if found and found.get('node_id'):
+                    target_id = found['node_id']
+
+            req_fn = getattr(self.interface, 'sendTelemetry', None) or getattr(self.interface, 'requestTelemetry', None)
+            if callable(req_fn):
+                req_fn(destinationId=target_id)
+                log_p(f"Solicitud de telemetría enviada a {target_id} vía sendTelemetry", level="INFO")
+                return True
+
+            send_data_fn = getattr(self.interface, 'sendData', None)
+            if callable(send_data_fn):
+                from meshtastic import portnums_pb2, telemetry_pb2
+                req_payload = telemetry_pb2.Telemetry()
+                send_data_fn(
+                    req_payload.SerializeToString(),
+                    destinationId=target_id,
+                    portNum=portnums_pb2.TELEMETRY_APP,
+                    channelIndex=channel_index,
+                    wantResponse=True,
+                )
+                log_p(f"Solicitud de telemetría enviada a {target_id} vía sendData TELEMETRY_APP", level="INFO")
+                return True
+        except Exception as e:
+            log_p(f"Error en request_telemetry a {destination_id}: {e}", level="WARN")
+        return False
 
     def get_nodes (self):
         """

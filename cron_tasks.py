@@ -170,14 +170,16 @@ def send_trace() -> None:
         except Exception:
             pass
 
-    # Seleccionar próximo nodo candidato respetando configuración y prioridad a routers cada 6h
+    # Seleccionar próximo nodo candidato respetando configuración y prioridad a routers cada 24h desde las 05:00 AM
     hops_limit = int(getattr(env, 'TRACES_HOPS', 2) or 2)
     reload_hours = int(getattr(env, 'TRACES_RELOAD_INTERVAL', 72) or 72)
-    router_reload_hours = int(getattr(env, 'ROUTER_TRACE_INTERVAL_HOURS', 6) or 6)
+    router_reload_hours = int(getattr(env, 'ROUTER_TRACE_INTERVAL_HOURS', 24) or 24)
     router_max_hops = int(getattr(env, 'ROUTER_MAX_HOPS', 2) or 2)
     router_retry_short_hours = int(getattr(env, 'ROUTER_RETRY_SHORT_HOURS', 1) or 1)
     router_max_retries = int(getattr(env, 'ROUTER_MAX_RETRIES', 5) or 5)
     router_retry_long_hours = int(getattr(env, 'ROUTER_RETRY_LONG_HOURS', 24) or 24)
+    router_start_hour = int(getattr(env, 'ROUTER_TRACE_START_HOUR', 5) or 5)
+    max_inactive_days = int(getattr(env, 'TRACES_MAX_INACTIVE_DAYS', 7) or 7)
     retry_hours = int(getattr(env, 'TRACES_RETRY_INTERVAL', 24) or 24)
 
     routers_cfg = getattr(env, 'ROUTER_NODES', None) or getattr(env, 'ROUTERS_LIST', None) or []
@@ -193,6 +195,8 @@ def send_trace() -> None:
         router_max_retries=router_max_retries,
         router_retry_long_hours=router_retry_long_hours,
         retry_hours=retry_hours,
+        max_inactive_days=max_inactive_days,
+        router_start_hour=router_start_hour,
         router_identifiers=routers_cfg,
     )
     if node_id:
@@ -200,7 +204,44 @@ def send_trace() -> None:
         trace_id = db.enqueue_trace(node_id)
         log_p(f"[cron] send_trace: encolado trace id={trace_id} para nodo {node_id}")
     else:
-        log_p(f"[cron] send_trace: ningún nodo candidato (≤{hops_limit} hops, no MQTT, ventanas cumplidas)")
+        log_p(f"[cron] send_trace: ningún nodo candidato (≤{hops_limit} hops, activos en {max_inactive_days}d, no MQTT, ventanas cumplidas)")
+
+
+def request_router_telemetry() -> None:
+    """Solicita una vez al día a partir de las 07:00 AM la telemetría de batería a routers cercanos."""
+    db = Database()
+    task_name = 'router_telemetry_request'
+
+    # Cooldown de 24 horas (1440 minutos)
+    if not _should_run(db, task_name, 1440):
+        return
+
+    start_hour = int(getattr(env, 'ROUTER_TELEMETRY_START_HOUR', 7) or 7)
+    if datetime.now().hour < start_hour:
+        return
+
+    routers_cfg = getattr(env, 'ROUTER_NODES', None) or getattr(env, 'ROUTERS_LIST', None) or []
+    if isinstance(routers_cfg, str):
+        routers_cfg = [r.strip() for r in routers_cfg.split(',') if r.strip()]
+
+    # Obtener routers cercanos (<= 2 saltos exteriores)
+    router_nodes = db.get_router_nodes(configured_identifiers=routers_cfg, max_hops=2)
+    enqueued = 0
+    for r in router_nodes:
+        nid = r.get('node_id') or r.get('identifier')
+        if not nid or nid in ('RAU0', '!63ca1feb'):
+            continue
+        # Encolar en outbox para que main.py lo despache espaciadamente
+        db.enqueue_outbox(
+            text="__REQ_TELEMETRY__",
+            dest=nid,
+            channel=0,
+        )
+        enqueued += 1
+
+    if enqueued > 0:
+        log_p(f"[cron] request_router_telemetry: encoladas {enqueued} solicitudes de telemetría para routers cercanos")
+    db.set_task_run(task_name)
 
 
 def check_aemet() -> None:
@@ -872,6 +913,7 @@ def run_all():
     chiste_upload()
     chiste_download()
     send_trace()
+    request_router_telemetry()
     check_aemet_key_expiry()
     check_aemet()
     weather_aemet()
