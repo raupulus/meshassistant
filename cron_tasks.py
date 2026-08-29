@@ -228,8 +228,15 @@ def request_router_telemetry() -> None:
     router_nodes = db.get_router_nodes(configured_identifiers=routers_cfg, max_hops=2)
     enqueued = 0
     for r in router_nodes:
-        nid = r.get('node_id') or r.get('identifier')
-        if not nid or nid in ('RAU0', '!63ca1feb'):
+        nid = r.get('node_id')
+        if not nid or (not str(nid).startswith('!') and not str(nid).isdigit()):
+            ident = r.get('identifier') or r.get('short_name') or nid
+            if ident:
+                found = db.get_node_by_identifier(str(ident))
+                if found and found.get('node_id') and str(found['node_id']).startswith('!'):
+                    nid = found['node_id']
+
+        if not nid or not str(nid).startswith('!') or nid in ('RAU0', '!63ca1feb'):
             continue
         # Encolar en outbox para que main.py lo despache espaciadamente
         db.enqueue_outbox(

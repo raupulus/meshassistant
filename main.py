@@ -174,7 +174,7 @@ def loop():
                             })
                         except Exception:
                             pass
-            except Exception as e:
+            except (Exception, SystemExit) as e:
                 log_p(f"[outbox] Error procesando mensaje saliente: {e}", level="WARN")
 
             # Publicación de alertas AEMET mínima (si hay API key y dentro de ventana horaria)

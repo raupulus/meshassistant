@@ -474,9 +474,26 @@ class SerialInterface:
             log_p("No se puede solicitar NodeInfo: interfaz serie no inicializada", level="WARN")
             return False
 
-        log_p(f"Solicitando NodeInfo al nodo {destination_id}...")
         try:
-            dest_val = destination_id
+            dest_val = str(destination_id).strip()
+            if not dest_val.startswith('!') and not dest_val.isdigit():
+                # 1. Buscar en memoria node_dict
+                for nid, n_obj in self.node_dict.items():
+                    if (getattr(n_obj, 'short_name', '') or '').upper() == dest_val.upper() or (getattr(n_obj, 'name', '') or '').upper() == dest_val.upper():
+                        dest_val = nid
+                        break
+                # 2. Buscar en BD
+                if not dest_val.startswith('!') and not dest_val.isdigit():
+                    from Models.Database import Database
+                    found = Database().get_node_by_identifier(dest_val)
+                    if found and found.get('node_id'):
+                        dest_val = found['node_id']
+
+            if not dest_val.startswith('!') and not dest_val.isdigit():
+                log_p(f"request_node_info: No se pudo resolver '{destination_id}' a un ID hexadecimal de nodo", level="WARN")
+                return False
+
+            log_p(f"Solicitando NodeInfo al nodo {dest_val}...")
             if hasattr(self.interface, 'sendNodeInfo'):
                 self.interface.sendNodeInfo(destinationId=dest_val)
                 return True
@@ -492,7 +509,7 @@ class SerialInterface:
             else:
                 log_p(f"Métodos de requestNodeInfo no disponibles en la versión actual de meshtastic", level="DEBUG")
                 return False
-        except (Exception, SystemExit) as e:
+        except (Exception, SystemExit, BaseException) as e:
             log_p(f"Error al solicitar NodeInfo a {destination_id}: {e}", level="WARN")
             return False
 
@@ -918,12 +935,24 @@ class SerialInterface:
         if not self.interface:
             return False
         try:
-            target_id = destination_id
+            target_id = str(destination_id).strip()
             if not target_id.startswith('!') and not target_id.isdigit():
-                from Models.Database import Database
-                found = Database().get_node_by_identifier(target_id)
-                if found and found.get('node_id'):
-                    target_id = found['node_id']
+                # 1. Buscar en memoria node_dict
+                for nid, n_obj in self.node_dict.items():
+                    if (getattr(n_obj, 'short_name', '') or '').upper() == target_id.upper() or (getattr(n_obj, 'name', '') or '').upper() == target_id.upper():
+                        target_id = nid
+                        break
+                # 2. Buscar en BD
+                if not target_id.startswith('!') and not target_id.isdigit():
+                    from Models.Database import Database
+                    found = Database().get_node_by_identifier(target_id)
+                    if found and found.get('node_id'):
+                        target_id = found['node_id']
+
+            # Si sigue sin ser un ID hexadecimal o numérico válido, no enviar para evitar sys.exit de meshtastic CLI
+            if not target_id.startswith('!') and not target_id.isdigit():
+                log_p(f"request_telemetry: No se pudo resolver '{destination_id}' a un ID hexadecimal de nodo", level="WARN")
+                return False
 
             req_fn = getattr(self.interface, 'sendTelemetry', None) or getattr(self.interface, 'requestTelemetry', None)
             if callable(req_fn):
@@ -944,7 +973,7 @@ class SerialInterface:
                 )
                 log_p(f"Solicitud de telemetría enviada a {target_id} vía sendData TELEMETRY_APP", level="INFO")
                 return True
-        except Exception as e:
+        except (Exception, SystemExit, BaseException) as e:
             log_p(f"Error en request_telemetry a {destination_id}: {e}", level="WARN")
         return False
 
