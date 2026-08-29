@@ -623,15 +623,23 @@ class MeshDashboard {
       case "node_updated":
         if (data.id && String(data.id).trim() && data.id !== "None" && data.id !== "Desconocido") {
           const prev = this.nodesMap.get(data.id) || {};
-          this.nodesMap.set(data.id, { ...prev, ...data });
+          const merged = { ...prev };
+          Object.keys(data).forEach(k => {
+            const val = data[k];
+            // Solo sobreescribir si el nuevo valor tiene contenido significativo
+            if (val !== null && val !== undefined && val !== "") {
+              merged[k] = val;
+            }
+          });
+          this.nodesMap.set(data.id, merged);
           this.renderNodesTable();
         }
         break;
       case "device_telemetry":
         if (data.id && this.nodesMap.has(data.id)) {
           const node = this.nodesMap.get(data.id);
-          if (data.battery !== undefined) node.battery = data.battery;
-          if (data.voltage !== undefined) node.voltage = data.voltage;
+          if (data.battery !== undefined && data.battery !== null) node.battery = data.battery;
+          if (data.voltage !== undefined && data.voltage !== null) node.voltage = data.voltage;
           this.renderNodesTable();
         }
         break;

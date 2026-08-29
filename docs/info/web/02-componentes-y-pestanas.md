@@ -44,7 +44,8 @@ La aplicación web está estructurada como una SPA (Single Page Application) rea
 
 - **Buscador en Vivo y Filtros de Cabecera:**
   - **Texto:** Búsqueda instantánea por nombre, alias o ID hexadecimal.
-  - **Rol:** Selector de roles (`CLIENT`, `ROUTER`, `REPEATER`, `TRACKER`, `SENSOR`, etc.).
+  - **Rol:** Selector de roles completo (`CLIENT`, `CLIENT_BASE`, `ROUTER`, `REPEATER`, `ROUTER_CLIENT`, `TRACKER`, `TAK_TRACKER`, `SENSOR`, `CLIENT_MUTE`, `CLIENT_HIDDEN`, `LOST_FOUND`).
+  - **Preservación de Batería en Vivo:** Las actualizaciones reactivas de nodo (`node_updated`) preservan la última telemetría de batería y voltaje conocida, evitando que paquetes sin métricas borren temporalmente el estado en la tabla.
   - **Última Señal (Tiempo):** Selector desplegable junto al de roles para filtrar por ventanas de actividad o inactividad:
     - `Última señal: Todos` (sin límite temporal).
     - `Vistos hoy (≤ 24h)`: Nodos que han emitido en las últimas 24 horas.

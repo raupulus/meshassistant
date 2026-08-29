@@ -1889,7 +1889,8 @@ class Database:
             
             roles_map = {
                 0: 'CLIENT', 1: 'CLIENT_MUTE', 2: 'ROUTER', 3: 'ROUTER_CLIENT',
-                4: 'REPEATER', 5: 'TRACKER', 6: 'SENSOR', 7: 'TAK', 8: 'CLIENT_HIDDEN'
+                4: 'REPEATER', 5: 'TRACKER', 6: 'SENSOR', 7: 'TAK', 8: 'CLIENT_HIDDEN',
+                9: 'LOST_FOUND', 10: 'TAK_TRACKER', 11: 'CLIENT_BASE'
             }
             results = []
             for r in cur.fetchall():
