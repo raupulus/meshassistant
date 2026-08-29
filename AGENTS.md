@@ -226,10 +226,25 @@ python3 cron_tasks.py             # una pasada de tareas periódicas
 - ❌ No superar ~200 bytes por mensaje a la malla.
 - ❌ No renombrar un fichero de `Commands/` sin actualizar su import en `data.py`.
 - ❌ No bloquear el `loop()` con esperas largas; usa colas/estado en BD.
+- ❌ No dar nunca por finalizada una tarea o cambio de código sin actualizar/crear la documentación detallada en `docs/info/`.
 
 ---
 
-## 10. Dependencias y versiones
+## 10. Documentación Obligatoria Continua (`docs/info/`)
+
+Es una **regla inquebrantable** del proyecto que todo cambio, nuevo módulo, modificación en el esquema de base de datos, nuevo comando, endpoint de WebSocket/IPC o ajuste en la interfaz web debe quedar **inmediata y exhaustivamente documentado** en el directorio correspondiente de `docs/info/`:
+
+- Esquema / Tablas → `docs/info/03-base-de-datos.md`.
+- Métodos de Base de Datos → `docs/info/06-modelo-database.md`.
+- Radio / Serie / Recepción → `docs/info/04-interfaz-serial.md`.
+- Seguridad / Anti-Abuso / Vigilancia → `docs/info/15-seguridad-y-vigilancia.md`.
+- Pasarela WebSocket / Acciones / Eventos → `docs/info/gateway/02-contrato-api-websocket.md`.
+- Frontend Web / Pestañas / Layout → `docs/info/web/02-componentes-y-pestanas.md`.
+- Índice Maestro → `docs/info/00-indice.md`.
+
+---
+
+## 11. Dependencias y versiones
 
 `requirements.txt` declara versiones mínimas. Validado con (entorno actual):
 
