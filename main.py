@@ -258,14 +258,123 @@ def loop():
                 # diagnosticar fallos en la publicación de alertas de emergencia.
                 log_p(f"Error publicando alerta AEMET: {e}", level="WARN")
 
-            # Heartbeat para la pasarela WiFi y métricas de canal
+            # Despacho de mensajes programados / cola de difusión periódica (Módulo 04)
             try:
+                pending_sched = db.get_pending_scheduled_messages()
+                for s_msg in pending_sched:
+                    msg_id = s_msg['id']
+                    raw_text = s_msg['message']
+                    raw_channels = s_msg.get('channels', 'all')
+                    p_type = s_msg.get('period_type', 'hours')
+                    p_val = max(1, int(s_msg.get('period_value', 1)))
+
+                    # Resolver canales de destino (0..7 o todos)
+                    target_chs = []
+                    if str(raw_channels).lower() in ('all', '*', 'todos', '["all"]'):
+                        target_chs = [0, 1, 2, 3, 4, 5, 6, 7]
+                    else:
+                        try:
+                            if isinstance(raw_channels, list):
+                                target_chs = [int(c) for c in raw_channels]
+                            elif str(raw_channels).startswith('['):
+                                target_chs = [int(c) for c in json.loads(raw_channels)]
+                            else:
+                                target_chs = [int(c.strip()) for c in str(raw_channels).split(',') if c.strip().isdigit()]
+                        except Exception:
+                            target_chs = [0]
+
+                    if not target_chs:
+                        target_chs = [0]
+
+                    # Comprobar si el mensaje es un comando dinámico del bot (ej: /chiste, /weather, /estado, /marea, etc.)
+                    from data import commands_dict
+                    from functions import search_command
+                    command, cmd_args = search_command(raw_text)
+
+                    generated_parts = []
+                    if command and command in commands_dict:
+                        log_p(f"[scheduled] Ejecutando comando dinámico '{command}' para difusión programada...")
+
+                        class ScheduledReplyCapture:
+                            def __init__(self, serial_if):
+                                self.serial_if = serial_if
+                                self.captured = []
+
+                            def reply_to_message(self, text, metadata=None, reply_id=None):
+                                if text:
+                                    self.captured.append(text)
+
+                            def send(self, text, dest="^all", channel=0):
+                                if text:
+                                    self.captured.append(text)
+
+                            def __getattr__(self, name):
+                                return getattr(self.serial_if, name)
+
+                        capture_interface = ScheduledReplyCapture(interface)
+                        dummy_metadata = {
+                            "node_from": {"id": "!SCHEDULED", "name": "Programador"},
+                            "node_to": "^all",
+                            "channel": 4,  # Canal bots para permitir comandos con restricción
+                            "is_direct": True, # Permitir respuesta de comandos como /estado o /stats
+                            "is_scheduled": True,
+                        }
+
+                        try:
+                            commands_dict[command]["callback"](
+                                capture_interface,
+                                cmd_args,
+                                raw_text,
+                                dummy_metadata,
+                            )
+                            generated_parts = capture_interface.captured
+                        except Exception as e:
+                            log_p(f"[scheduled] Error ejecutando callback de '{command}': {e}", level="WARN")
+                            generated_parts = []
+
+                    if not generated_parts:
+                        generated_parts = [raw_text]
+
+                    log_p(f"[scheduled] Emitiendo mensaje #{msg_id} ({len(generated_parts)} partes) a canales {target_chs}")
+
+                    for ch_i, ch in enumerate(target_chs):
+                        for p_i, part in enumerate(generated_parts):
+                            interface.send(part, dest="^all", channel=ch)
+                            if p_i < len(generated_parts) - 1:
+                                sleep(2.5)
+                        if ch_i < len(target_chs) - 1:
+                            sleep(2.5)
+
+                    # Calcular próximo disparo
+                    now_dt = __import__('datetime').datetime.now()
+                    next_run_iso = None
+                    if p_type == 'hours':
+                        next_run_iso = (now_dt + __import__('datetime').timedelta(hours=p_val)).isoformat(timespec='seconds')
+                    elif p_type == 'days':
+                        next_run_iso = (now_dt + __import__('datetime').timedelta(days=p_val)).isoformat(timespec='seconds')
+                    elif p_type == 'once':
+                        next_run_iso = None
+
+                    db.mark_scheduled_message_sent(msg_id, next_run_at=next_run_iso)
+            except Exception as e:
+                log_p(f"[scheduled] Error despachando mensajes programados: {e}", level="WARN")
+
+            # Heartbeat y telemetría de hardware de la RPi / Bot para la pasarela WiFi (Módulo 05)
+            try:
+                from functions import get_system_telemetry
                 from Models.EventBroadcaster import broadcast_event
+
+                telem = get_system_telemetry()
+                telem["uart_connected"] = interface.interface is not None
+                telem["serial_port"] = SERIAL_DEVICE_PATH
+                telem["nodes_in_memory"] = len(interface.node_dict)
+
                 broadcast_event("system_status", {
                     "uart_connected": interface.interface is not None,
                     "serial_port": SERIAL_DEVICE_PATH,
                     "nodes_in_memory": len(interface.node_dict),
                 })
+                broadcast_event("system_telemetry", telem)
 
                 # Consultar y emitir telemetría de canal y datos del nodo local
                 if interface and interface.interface:

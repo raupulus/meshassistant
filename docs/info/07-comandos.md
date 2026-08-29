@@ -54,30 +54,62 @@ Todo callback **registra el comando** con `Database().log_command(...)` (en
 
 ## Comandos actuales
 
-| Comando | Fichero | `in_group` | Estado | Notas |
+| Comando | Fichero | `in_group` | Estado | Sintaxis y Opciones |
 |---|---|---|---|---|
-| `/help [cmd]` | `Commands/help.py` | No | ✅ | Lista comandos (omite alias `hidden`) o muestra `info` de uno. |
-| `/about` | `Commands/about.py` | No | ✅ | Texto fijo del proyecto. |
-| `/ping` | `Commands/ping.py` | Sí | ✅ | Guarda ping en BD; responde saltos o "via MQTT". |
-| `/test` | `Commands/ping.py` | Sí | ✅ | Alias directo de `/ping`. |
-| `/chiste [add\|help …]` | `Commands/chiste.py` | Sí | ✅ | Aleatorio, alta (`need_approve`+`need_upload`) o ayuda. |
-| `/maremoto` | `Commands/maremoto.py` | Sí | ✅ | Años/meses/días desde 1/11/1755. |
-| `/weather` | `Commands/weather.py` | No | ✅ | Tiempo actual desde BD (`aemet_weather`, cron AEMET). |
-| `/tiempo` | (alias → `weather.py`) | Sí | ✅ | Mismo callback que `/weather`, pero accesible en canal. |
-| `/prevision` | `Commands/prevision.py` | Sí | ✅ | Previsión multi-día municipal. BD-first + fallback en vivo. |
-| `/avisos` | `Commands/avisos.py` | Sí | ✅ | Últimas alertas AEMET (tabla `aemet`), ventana 48 h. |
-| `/marea` | `Commands/marea.py` | Sí | ✅ | Extremos de marea desde `tides`; fallback en vivo/estimación. |
-| `/sol` | `Commands/sol.py` | Sí | ✅ | Orto/ocaso/duración (offline, `Models/Astro.py`). |
-| `/luna` | `Commands/luna.py` | Sí | ✅ | Fase e iluminación (offline, `Models/Astro.py`). |
-| `/nodos` | `Commands/nodos.py` | Sí | ✅ | Total/RF/MQTT/activos 24h desde `nodes`. |
-| `/snr` | `Commands/snr.py` | Sí | ✅ | SNR del nodo pasarela + media RF. |
-| `/stats` | `Commands/stats.py` | Sí | ✅ | Comandos, pings, nodos, encuestas y uptime. |
-| `/encuesta …` | `Commands/encuesta.py` | Sí | ✅ | Encuestas comunitarias (subcomandos abajo). |
-| `/dado [NdM]` | `Commands/dado.py` | Sí | ✅ | 1d6 por defecto; admite `N` caras o `NdM`. |
-| `/bola8` (`/8ball`) | `Commands/bola8.py` | Sí | ✅ | Bola 8 mágica; `8ball` es alias `hidden`. |
-| `/routers` (`/repetidores`) | `Commands/routers.py` | Sí | ✅ | Estado de routers/repetidores configurados (actividad, SNR, hops). |
-| `/uptime` | `Commands/uptime.py` | No | ✅ | Tiempo encendido del bot (`format_uptime`). |
-| `/ia [pregunta\|reset]` | `Commands/ia.py` | Sí | ✅ | Asistente de Emergencias RAG (RPi 5) con cola secuencial y memoria por nodo. |
+| `/help [cmd]` | `Commands/help.py` | No | ✅ | Lista todos los comandos o detalla el uso y opciones de `/help <cmd>`. |
+| `/about` | `Commands/about.py` | No | ✅ | Información fija del proyecto, hardware y autor. |
+| `/ping` (`/test`) | `Commands/ping.py` | Sí | ✅ | Comprueba conectividad, saltos, RSSI y SNR. |
+| `/weather` (`/tiempo`) | `Commands/weather.py` | Sí | ✅ | `/tiempo` (día completo), `/tiempo real` (estación física) o `/tiempo <provincia>`. |
+| `/prevision` | `Commands/prevision.py` | Sí | ✅ | `/prevision` (3 días), `/prevision mañana`, `/prevision <1-7> dias` o `/prevision <1-12> horas`. |
+| `/marea` | `Commands/marea.py` | Sí | ✅ | `/marea` (pleamares y bajamares del día) o `/marea mar` / `/marea costa` (boletín costero Cádiz). |
+| `/avisos` | `Commands/avisos.py` | Sí | ✅ | Alertas oficiales activas para la provincia con color (*Amarillo/Naranja/Rojo*), fenómeno y vigencia. |
+| `/sol` | `Commands/sol.py` | Sí | ✅ | Orto, ocaso y duración solar del día (offline). |
+| `/luna` | `Commands/luna.py` | Sí | ✅ | Fase lunar actual, porcentaje iluminado y próximas fases (offline). |
+| `/boletin [tipo]` | `Commands/boletin.py` | Sí | ✅ | `/boletin [matinal\|vespertino]` (resumen sol, luna, tiempo provincial, mareas y avisos). |
+| `/nodos` | `Commands/nodos.py` | Sí | ✅ | Conteo de nodos descubiertos (total, RF, MQTT y activos 24h). |
+| `/snr` | `Commands/snr.py` | Sí | ✅ | SNR del nodo pasarela y media de la malla RF. |
+| `/routers` (`/repetidores`) | `Commands/routers.py` | Sí | ✅ | Estado de routers/repetidores (actividad, tramos SNR y saltos). |
+| `/estado` (`/status`, `/salud`) | `Commands/estado.py` | Sí | ✅ | Telemetría y salud de la Raspberry Pi y nodo (temperatura, RAM, CPU, disco). |
+| `/chiste [add]` | `Commands/chiste.py` | Sí | ✅ | `/chiste` (aleatorio) o `/chiste add <texto>` (proponer chiste). |
+| `/encuesta …` | `Commands/encuesta.py` | Sí | ✅ | Encuestas comunitarias (`/encuesta nueva`, `voto`, `ver`, `lista`, `cerrar`). |
+| `/ia [pregunta]` | `Commands/ia.py` | Sí | ✅ | Asistente de IA mínima para consultas de emergencia (cola RAG). |
+| `/dado [NdM]` | `Commands/dado.py` | Sí | ✅ | Tirada de dados (1d6 por defecto, N caras o formato NdM). |
+| `/bola8` (`/8ball`) | `Commands/bola8.py` | Sí | ✅ | Bola 8 mágica para preguntas de sí/no. |
+| `/maremoto` | `Commands/maremoto.py` | Sí | ✅ | Tiempo transcurrido desde el maremoto de 1755 en Chipiona. |
+| `/uptime` | `Commands/uptime.py` | No | ✅ | Tiempo en funcionamiento continuo del bot. |
+
+---
+
+## Detalle de Comandos Meteorológicos y Marítimos
+
+### `/tiempo` (alias `/weather`)
+* **Uso estándar:** `/tiempo` o `/weather`
+  * Devuelve la predicción meteorológica completa para el **día actual** (texto oficial de AEMET para la jornada + resumen de temperaturas mín/máx, cielo y lluvia).
+* **Medición física en vivo:** `/tiempo real` o `/tiempo ahora`
+  * Muestra la última medición registrada por la estación meteorológica física de AEMET más cercana (Cádiz / Rota): temperatura real, velocidad del viento, racha máxima, humedad relativa y presión barométrica.
+* **Otras provincias:** `/tiempo <provincia>`
+  * Permite consultar el pronóstico de cualquier provincia de Andalucía (ej: `/tiempo sevilla`, `/tiempo malaga`).
+
+### `/prevision`
+* **Por defecto (3 días):** `/prevision`
+  * Muestra la previsión resumida para los próximos **3 días** (temperaturas mín/máx, estado del cielo y probabilidad de lluvia).
+* **Mañana:** `/prevision mañana`
+  * Devuelve el pronóstico específico para el día siguiente con temperaturas, cielo, probabilidad de lluvia, viento y radiación UV.
+* **Multi-día:** `/prevision <1-7> dias` (ej: `/prevision 4 dias`, `/prevision 7 dias`)
+  * Devuelve la previsión para el número de días indicado (acotado automáticamente entre 1 y 7 días).
+* **Horaria / Subdiaria:** `/prevision <1-12> horas` (ej: `/prevision 6 horas`, `/prevision 12h`)
+  * Devuelve la evolución cronológica por tramos horarios a partir de la hora actual (temperatura, cielo y lluvia).
+
+### `/marea`
+* **Mareas del día:** `/marea`
+  * Devuelve las pleamares y bajamares del día actual con sus horas y alturas (m) para la costa local.
+* **Boletín costero:** `/marea mar` o `/marea costa`
+  * Devuelve el boletín marítimo costero oficial de AEMET (Costa 42 - Andalucía Occidental / Cádiz): dirección y fuerza del viento (escala Beaufort), estado de la mar (*Marejadilla/Marejada*), mar de fondo (m) y visibilidad.
+
+### `/avisos`
+* **Alertas meteorológicas oficiales:** `/avisos`
+  * Consulta las alertas vigentes emitidas por Meteoalerta / CAP para la provincia, indicando nivel de gravedad (*Amarillo, Naranja, Rojo*), fenómeno meteorológico y hora de expiración.
+
 
 ## Referencia de los comandos nuevos
 

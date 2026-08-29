@@ -70,6 +70,7 @@ class GatewayService:
 
         # Último estado conocido en memoria
         self.last_system_status: Dict[str, Any] = {}
+        self.last_system_telemetry: Dict[str, Any] = {}
         self.last_local_node: Dict[str, Any] = {}
         self.last_channel_metrics: Dict[str, Any] = {}
 
@@ -86,6 +87,8 @@ class GatewayService:
             self.recent_messages.append(event_obj)
         elif event_name == "system_status":
             self.last_system_status = data
+        elif event_name == "system_telemetry":
+            self.last_system_telemetry = data
         elif event_name == "local_node_info":
             self.last_local_node = data
         elif event_name == "channel_metrics":
@@ -147,6 +150,8 @@ class GatewayService:
                     snapshot_data["recent_messages"] = list(self.recent_messages)
                 if "system_status" in include:
                     snapshot_data["system_status"] = self.last_system_status
+                if "system_telemetry" in include or "system_status" in include:
+                    snapshot_data["system_telemetry"] = self.last_system_telemetry
                 if "local_node" in include:
                     snapshot_data["local_node"] = self.last_local_node
                 if "channel_metrics" in include:
@@ -291,6 +296,92 @@ class GatewayService:
                     "limit": limit,
                 }
 
+            elif action == "get_scheduled_messages":
+                msgs = self.db.get_scheduled_messages(limit=100)
+                response["data"] = {"messages": msgs}
+
+            elif action == "create_scheduled_message":
+                text = params.get("message")
+                if not text:
+                    raise ValueError("Parámetro 'message' obligatorio")
+                chs = params.get("channels", "all")
+                p_type = params.get("period_type", "hours")
+                p_val = int(params.get("period_value", 1))
+                start_at = params.get("start_at")
+                enabled = 1 if params.get("enabled", True) else 0
+                msg_id = self.db.create_scheduled_message(
+                    message=text,
+                    channels=chs,
+                    period_type=p_type,
+                    period_value=p_val,
+                    start_at=start_at,
+                    enabled=enabled,
+                )
+                response["data"] = {"id": msg_id, "created": True}
+
+            elif action == "update_scheduled_message":
+                msg_id = params.get("id")
+                if not msg_id:
+                    raise ValueError("Parámetro 'id' obligatorio")
+                data_up = params.get("data")
+                if not isinstance(data_up, dict):
+                    data_up = {k: v for k, v in params.items() if k not in ("id", "action")}
+                ok = self.db.update_scheduled_message(int(msg_id), data_up)
+                response["data"] = {"id": msg_id, "updated": ok}
+
+            elif action == "toggle_scheduled_message":
+                msg_id = params.get("id")
+                if not msg_id:
+                    raise ValueError("Parámetro 'id' obligatorio")
+                en = 1 if params.get("enabled", True) else 0
+                ok = self.db.update_scheduled_message(int(msg_id), {"enabled": en})
+                response["data"] = {"id": msg_id, "enabled": bool(en), "success": ok}
+
+            elif action == "delete_scheduled_message":
+                msg_id = params.get("id")
+                if not msg_id:
+                    raise ValueError("Parámetro 'id' obligatorio")
+                ok = self.db.delete_scheduled_message(int(msg_id))
+                response["data"] = {"id": msg_id, "deleted": ok}
+
+            elif action == "get_blocked_nodes":
+                nodes = self.db.get_blocked_nodes(active_only=False)
+                response["data"] = {"blocked_nodes": nodes}
+
+            elif action == "block_node_manual":
+                node_id = params.get("node_id")
+                if not node_id:
+                    raise ValueError("Parámetro 'node_id' obligatorio")
+                node_name = params.get("node_name")
+                reason = params.get("reason") or "Bloqueo manual administrativo"
+                expires_at = params.get("expires_at")  # None = permanente
+                self.db.block_node(
+                    node_id=str(node_id),
+                    node_name=node_name,
+                    block_type="manual",
+                    reason=reason,
+                    expires_at=expires_at,
+                )
+                self.db.log_abuse(
+                    node_id=str(node_id),
+                    command=None,
+                    action_taken="manual_block",
+                    reason=reason,
+                )
+                response["data"] = {"node_id": node_id, "blocked": True}
+
+            elif action == "unblock_node":
+                node_id = params.get("node_id")
+                if not node_id:
+                    raise ValueError("Parámetro 'node_id' obligatorio")
+                ok = self.db.unblock_node(str(node_id))
+                response["data"] = {"node_id": node_id, "unblocked": ok}
+
+            elif action == "get_abuse_logs":
+                limit = int(params.get("limit", 50))
+                logs = self.db.get_abuse_logs(limit=limit)
+                response["data"] = {"logs": logs}
+
             elif action == "restart_serial":
                 response["data"] = {"requested": True, "message": "Solicitud de reinicio de enlace serie registrada"}
 
@@ -402,7 +493,9 @@ class GatewayService:
             headers = Headers()
             headers["Content-Type"] = content_type
             headers["Content-Length"] = str(len(body))
-            headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+            headers["Cache-Control"] = "no-cache, no-store, must-revalidate, max-age=0"
+            headers["Pragma"] = "no-cache"
+            headers["Expires"] = "0"
             return Response(200, "OK", headers, body)
         except Exception as e:
             log_p(f"[Gateway HTTP] Error leyendo archivo {requested_file}: {e}", level="WARN")

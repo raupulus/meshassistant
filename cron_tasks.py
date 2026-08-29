@@ -631,48 +631,197 @@ def fetch_aemet_alerts_archive(aemet: Aemet) -> Optional[list[str]]:
         return None
 
 
-def weather_forecast_aemet() -> None:
-    """Descarga la predicción multi-día del municipio y la guarda como histórico.
-
-    - Cadencia: según AEMET_PERIOD (mismo helper que el resto de AEMET).
-    - Solo si hay AEMET_API_KEY configurada.
-    - Guarda en `aemet_weather` con scope='forecast' para que /prevision lo
-      sirva offline (BD-first) con fallback on-demand en el propio comando.
-    """
+def check_aemet_key_expiry() -> None:
+    """Comprueba la caducidad del JWT de AEMET_API_KEY y emite aviso si expira pronto."""
     db = Database()
-    task_name = 'aemet_forecast_fetch'
-
-    aemet = Aemet()
-    period_min = aemet.period_to_minutes(aemet.period)
-
-    if not _should_run(db, task_name, period_min):
-        log_p(f"[cron] weather_forecast_aemet: omitido (cooldown {period_min}min)")
+    task_name = 'aemet_key_expiry_check'
+    if not _should_run(db, task_name, 1440):
         return
 
-    if not getattr(env, 'AEMET_API_KEY', None):
-        log_p("[cron] weather_forecast_aemet: AEMET_API_KEY vacío; no se consulta API")
+    api_key = getattr(env, 'AEMET_API_KEY', None)
+    if not api_key:
         db.set_task_run(task_name)
         return
 
     try:
-        days = int(getattr(env, 'AEMET_FORECAST_DAYS', 4) or 4)
-        text = aemet.fetch_city_forecast_multi(days=days)
-        if text:
-            new_id = db.aemet_weather_insert(
-                scope='forecast',
-                content=text,
-                province=aemet.province,
-                province_code=aemet.province_code(),
-                city=aemet.city,
-                city_code=aemet.resolve_city_code(),
-                day='multi',
-                data_raw=text,
-            )
-            log_p(f"[cron] weather_forecast_aemet: previsión guardada id={new_id} len={len(text)}")
-        else:
-            log_p("[cron] weather_forecast_aemet: sin datos de previsión municipal")
+        aemet = Aemet()
+        is_expired, days_left, exp_date = aemet.check_api_key_expiry(api_key)
+        if days_left is None:
+            db.set_task_run(task_name)
+            return
+
+        warn_days = int(getattr(env, 'AEMET_EXPIRY_WARNING_DAYS', 10) or 10)
+        if days_left <= warn_days or is_expired:
+            today_tag = f"aemet_key_warn_{datetime.now().strftime('%Y%m%d')}"
+            if not db.get_task_last_run(today_tag):
+                channels = getattr(env, 'AEMET_EXPIRY_WARNING_CHANNELS', None)
+                if channels is None:
+                    channels = [6]  # Canal raupulus por defecto
+
+                if is_expired:
+                    msg_text = f"🚨 [AEMET] Tu API Key HA CADUCADO (el {exp_date}). Renuévala en opendata.aemet.es."
+                else:
+                    msg_text = f"⚠️ [AEMET] Tu API Key caduca en {days_left} días ({exp_date}). Renuévala en opendata.aemet.es."
+
+                for ch in channels:
+                    ch_idx = ch if isinstance(ch, int) else (6 if str(ch).lower() == 'raupulus' else 0)
+                    db.outbox_enqueue(msg_text, dest="^all", channel=ch_idx)
+                    log_p(f"[cron] check_aemet_key_expiry: aviso encolado en canal {ch_idx}: {msg_text}")
+
+                db.set_task_run(today_tag)
     except Exception as e:
-        log_p(f"[cron] weather_forecast_aemet: excepción general: {e}", level="WARN")
+        log_p(f"[cron] check_aemet_key_expiry: error: {e}", level="WARN")
+    finally:
+        db.set_task_run(task_name)
+
+
+def maritime_aemet() -> None:
+    """Descarga el boletín marítimo costero a las 12:05 y 20:05 con 3 reintentos cada 10 min."""
+    db = Database()
+    if not getattr(env, 'AEMET_API_KEY', None):
+        return
+
+    now = datetime.now()
+    hour = now.hour
+    minute = now.minute
+
+    # Ventanas de emisión oficial: 12:05 y 20:05 (+ reintentos en :15, :25, :35)
+    slot_id = None
+    if hour == 12 and 5 <= minute <= 40:
+        slot_id = f"{now.strftime('%Y%m%d')}_12"
+    elif hour == 20 and 5 <= minute <= 40:
+        slot_id = f"{now.strftime('%Y%m%d')}_20"
+
+    if not slot_id:
+        return
+
+    success_tag = f"maritime_success_{slot_id}"
+    if db.get_task_last_run(success_tag):
+        return
+
+    last_attempt_tag = f"maritime_attempt_{slot_id}"
+    last_attempt = db.get_task_last_run(last_attempt_tag)
+    if last_attempt:
+        try:
+            if datetime.now() - datetime.fromisoformat(last_attempt) < timedelta(minutes=10):
+                return
+        except Exception:
+            pass
+
+    db.set_task_run(last_attempt_tag)
+    log_p(f"[cron] maritime_aemet: intentando descarga slot {slot_id} (minuto {minute})")
+
+    try:
+        aemet = Aemet()
+        costa_code = getattr(env, 'AEMET_MARITIME_COAST_CODE', '42') or '42'
+        data = aemet.fetch_maritime_coastal(costa_code=costa_code)
+        if data:
+            summary = aemet.format_maritime_coastal(data)
+            if summary:
+                new_id = db.aemet_maritime_insert(
+                    costa_code=costa_code,
+                    costa_name="Costa Andalucía Occidental / Cádiz",
+                    data_json=data,
+                    summary=summary,
+                )
+                log_p(f"[cron] maritime_aemet: guardado exitoso id={new_id} len={len(summary)}")
+                db.set_task_run(success_tag)
+    except Exception as e:
+        log_p(f"[cron] maritime_aemet: error en intento: {e}", level="WARN")
+
+
+def observation_aemet() -> None:
+    """Descarga periódicamente la observación de la estación meteorológica física."""
+    db = Database()
+    task_name = 'aemet_observation_fetch'
+    if not _should_run(db, task_name, 60):
+        return
+
+    if not getattr(env, 'AEMET_API_KEY', None):
+        db.set_task_run(task_name)
+        return
+
+    try:
+        aemet = Aemet()
+        station_id = getattr(env, 'AEMET_OBSERVATION_STATION', '5972X') or '5972X'
+        obs_data = aemet.fetch_station_observation(station_id=station_id)
+        if obs_data:
+            summary = aemet.format_station_observation(obs_data)
+            if summary:
+                new_id = db.aemet_observation_insert(
+                    station_id=station_id,
+                    station_name="Cádiz/Costa",
+                    data_json=obs_data,
+                    summary=summary,
+                )
+                log_p(f"[cron] observation_aemet: guardado exitoso id={new_id} len={len(summary)}")
+    except Exception as e:
+        log_p(f"[cron] observation_aemet: error: {e}", level="WARN")
+    finally:
+        db.set_task_run(task_name)
+
+
+def weather_forecast_aemet() -> None:
+    """Descarga predicción municipal (diaria 7 días y horaria) y provincial (mañana)."""
+    db = Database()
+    task_name = 'aemet_forecast_fetch'
+    period_min = 180  # cada 3 horas
+
+    if not _should_run(db, task_name, period_min):
+        return
+
+    if not getattr(env, 'AEMET_API_KEY', None):
+        db.set_task_run(task_name)
+        return
+
+    try:
+        aemet = Aemet()
+        city_code = aemet.resolve_city_code() or '11016'
+        city_name = aemet.city or 'Chipiona'
+        province = aemet.province or 'Cádiz'
+
+        # 1) Predicción diaria 7 días
+        data_d = aemet.fetch_daily_forecast(city_code=city_code)
+        if data_d:
+            sum_3d = aemet.format_daily_forecast(data_d, days=3)
+            sum_7d = aemet.format_daily_forecast(data_d, days=7)
+            db.aemet_forecast_daily_insert(
+                city_code=city_code,
+                city_name=city_name,
+                province=province,
+                data_json=data_d,
+                summary_3d=sum_3d,
+                summary_7d=sum_7d,
+            )
+            log_p(f"[cron] weather_forecast_aemet: predicción diaria 7d guardada ({city_name})")
+
+        # 2) Predicción horaria
+        data_h = aemet.fetch_hourly_forecast(city_code=city_code)
+        if data_h:
+            sum_24h = aemet.format_hourly_forecast(data_h, hours=12)
+            db.aemet_forecast_hourly_insert(
+                city_code=city_code,
+                city_name=city_name,
+                province=province,
+                data_json=data_h,
+                summary_24h=sum_24h,
+            )
+            log_p(f"[cron] weather_forecast_aemet: predicción horaria guardada ({city_name})")
+
+        # 3) Texto provincial para mañana
+        txt_manana = aemet.fetch_province_forecast(day='manana')
+        if txt_manana:
+            db.aemet_weather_insert(
+                scope='province',
+                content=txt_manana,
+                province=province,
+                province_code=aemet.province_code(),
+                day='manana',
+                data_raw=txt_manana,
+            )
+            log_p("[cron] weather_forecast_aemet: texto provincial de mañana guardado")
+    except Exception as e:
+        log_p(f"[cron] weather_forecast_aemet: excepción: {e}", level="WARN")
     finally:
         db.set_task_run(task_name)
 
@@ -723,9 +872,12 @@ def run_all():
     chiste_upload()
     chiste_download()
     send_trace()
+    check_aemet_key_expiry()
     check_aemet()
     weather_aemet()
     weather_forecast_aemet()
+    maritime_aemet()
+    observation_aemet()
     tides_fetch()
     encuestas_expire()
     log_p("[cron] run_all: fin")

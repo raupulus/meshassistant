@@ -29,6 +29,11 @@ AEMET_PERIOD = 'Day' # Cadencia de descarga del clima y publicación: Hour, Thre
 AEMET_HOUR_MIN = 8
 AEMET_HOUR_MAX = 22
 AEMET_FORECAST_DAYS = 4 # Días de previsión municipal a descargar para /prevision (1-7)
+AEMET_EXPIRY_WARNING_DAYS = 10 # Días antes de expirar la API Key para empezar a alertar
+AEMET_EXPIRY_WARNING_CHANNELS = ['raupulus'] # Canales por los que avisar de la caducidad (nombres o índices)
+AEMET_MARITIME_COAST_CODE = '42' # Código de costa AEMET (42 = Andalucía Occidental y Ceuta / Cádiz)
+AEMET_OBSERVATION_STATION = '5972X' # Estación meteorológica física para /tiempo real (5972X Cádiz, 5960X Rota)
+
 
 ## Comandos con fallback en vivo (/marea, /prevision): cada cuántos minutos como
 ## mucho se permite una petición a Internet desde el propio comando. Evita
@@ -81,3 +86,7 @@ IA_API_TOKEN = ''                                # Bearer token precompartido (A
 IA_TIMEOUT = 120                                 # Timeout en segundos para la inferencia del LLM
 IA_MAX_QUEUE = 10                                # Máximo de consultas de IA encoladas concurrentemente
 IA_CHANNELS = ['Cadiz', 'Chipiona', 'bots', 'raupulus', 'Frikidevs']  # Canales permitidos en grupo (además de privado)
+
+## Control Anti-Abuso y Rate Limiting (Módulo 06)
+RATE_LIMIT_MAX_PER_MINUTE = 10                   # Máximo de comandos por nodo en ventana de 60s
+RATE_LIMIT_BAN_MINUTES = 15                      # Duración en minutos del primer auto-bloqueo

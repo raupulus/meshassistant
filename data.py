@@ -18,6 +18,8 @@ from Commands.encuesta import encuesta_callback
 from Commands.dado import dado_callback
 from Commands.bola8 import bola8_callback
 from Commands.routers import routers_callback
+from Commands.estado import estado_callback
+from Commands.boletin import boletin_callback
 
 from datetime import date
 
@@ -50,57 +52,56 @@ commands_dict = {
     "weather": {
         "callback": weather_callback,
         "in_group": True,
-        "usage": "/weather o !weather",
-        "info": "Predicción meteorológica de la zona (datos AEMET)"
+        "usage": "/weather, /tiempo, /tiempo real o /tiempo <provincia>",
+        "info": "Predicción del día actual. /tiempo real para datos de estación física"
     },
     "chiste": {
         "callback": chiste_callback,
         "in_group": True,
-        "usage": "/chiste o !chiste",
-        "info": "Cuenta un chiste. Añade el tuyo con !chiste add <texto>"
+        "usage": "/chiste o /chiste add <texto>",
+        "info": "Cuenta un chiste. Añade el tuyo con /chiste add <texto>"
     },
     "ia": {
         "callback": ia_callback,
         "in_group": True,
-        "usage": "/ia o !ia",
+        "usage": "/ia <pregunta> o /ia reset",
         "info": "Respuesta breve generada por una IA mínima"
     },
     "uptime": {
         "callback": uptime_callback,
         "in_group": False,
-        "usage": "/uptime o !uptime",
+        "usage": "/uptime",
         "info": "Tiempo que lleva encendido el bot"
     },
     "maremoto": {
         "callback": maremoto_callback,
         "in_group": True,
-        "usage": "/maremoto o !maremoto",
-        "info": "Tiempo desde el último maremoto en Chipiona (1755)"
+        "usage": "/maremoto",
+        "info": "Tiempo transcurrido desde el maremoto de 1755 en Chipiona"
     },
     "tiempo": {
-        # Alias accesible de /weather (misma fuente AEMET, pero usable en canal).
         "callback": weather_callback,
         "in_group": True,
-        "usage": "/tiempo o !tiempo",
-        "info": "Tiempo actual de la zona (alias de /weather, datos AEMET)"
+        "usage": "/tiempo, /tiempo real o /tiempo <provincia>",
+        "info": "Predicción del día actual. /tiempo real para datos de estación física"
     },
     "prevision": {
         "callback": prevision_callback,
         "in_group": True,
-        "usage": "/prevision o !prevision",
-        "info": "Previsión de varios días del municipio (AEMET). BD + en vivo si hace falta"
+        "usage": "/prevision, /prevision mañana, /prevision <1-7> dias o /prevision <1-12> horas",
+        "info": "Previsión meteorológica (3 días por defecto, mañana, N días o N horas)"
     },
     "avisos": {
         "callback": avisos_callback,
         "in_group": True,
-        "usage": "/avisos o !avisos",
-        "info": "Últimos avisos meteorológicos de AEMET para la provincia"
+        "usage": "/avisos",
+        "info": "Avisos meteorológicos oficiales activos para la provincia con color y vigencia"
     },
     "marea": {
         "callback": marea_callback,
         "in_group": True,
-        "usage": "/marea o !marea",
-        "info": "Próximas pleamares y bajamares (Chipiona). Offline con estimación de respaldo"
+        "usage": "/marea o /marea mar (o costa)",
+        "info": "Pleamares y bajamares del día actual. /marea mar para boletín marítimo costero"
     },
     "sol": {
         "callback": sol_callback,
@@ -138,6 +139,12 @@ commands_dict = {
         "usage": "/encuesta [nueva|voto|ver|lista|cerrar|borrar|ayuda] …",
         "info": "Encuestas comunitarias. 1 activa por nodo; vota cualquiera. Ver /encuesta ayuda"
     },
+    "boletin": {
+        "callback": boletin_callback,
+        "in_group": True,
+        "usage": "/boletin [matinal|vespertino]",
+        "info": "Resumen diario: sol, tiempo, mareas y alertas. Uso: /boletin [matinal|vespertino]"
+    },
     "dado": {
         "callback": dado_callback,
         "in_group": True,
@@ -171,6 +178,40 @@ commands_dict = {
         "hidden": True,
         "usage": "/repetidores o /routers",
         "info": "Alias de /routers: estado de los routers y repetidores de la malla"
+    },
+    "estado": {
+        "callback": estado_callback,
+        "in_group": True,
+        "usage": "/estado, /salud o /bot",
+        "info": "Telemetría y salud del bot/RPi (solo DM o canal #bots)"
+    },
+    "salud": {
+        "callback": estado_callback,
+        "in_group": True,
+        "hidden": True,
+        "usage": "/salud o /estado",
+        "info": "Alias de /estado: salud y telemetría de la Raspberry Pi"
+    },
+    "bot": {
+        "callback": estado_callback,
+        "in_group": True,
+        "hidden": True,
+        "usage": "/bot o /estado",
+        "info": "Alias de /estado: telemetría del nodo y la Raspberry Pi"
+    },
+    "status": {
+        "callback": estado_callback,
+        "in_group": True,
+        "hidden": True,
+        "usage": "/status o /estado",
+        "info": "Alias de /estado: salud y telemetría del nodo y la Raspberry Pi"
+    },
+    "telemetria": {
+        "callback": estado_callback,
+        "in_group": True,
+        "hidden": True,
+        "usage": "/telemetria o /estado",
+        "info": "Alias de /estado: telemetría de hardware de la Raspberry Pi"
     },
 }
 

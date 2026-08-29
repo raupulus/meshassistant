@@ -67,8 +67,13 @@ Services/
 web/                  Mini dashboard web 100% offline (index.html, app.js, style.css).
 clients/              Clientes de referencia y prueba (pico_w_sample.py).
 Crons/                Reservado para futuro.
-docs/info/            Documentación técnica por módulo (incluye docs/info/gateway/ y docs/info/web/).
+docs/info/            Documentación técnica de ESTA aplicación (incluye docs/info/apis/, gateway/ y web/).
+docs/apis/            Documentación oficial de APIs de terceros (especificaciones, catálogos, limitaciones de AEMET, etc.). NO describe la implementación interna.
 ```
+
+> **IMPORTANTE sobre documentación de APIs:**
+> - `docs/apis/` contiene información **oficial y externa** de cómo usar las APIs de terceros (endpoints, parámetros, límites de la API en sí). No se indica nada de cómo la usamos en esta aplicación.
+> - `docs/info/` es el directorio exclusivo para toda la documentación técnica de **esta aplicación**. Cómo usamos e integramos las APIs de terceros se documenta en `docs/info/apis/`.
 
 > Cada comando es `Commands/<nombre>.py` con un callback `<nombre>_callback` y se
 > registra en `data.py`. Si renombras un fichero de comando, actualiza su import en
@@ -214,8 +219,8 @@ python3 cron_tasks.py             # una pasada de tareas periódicas
 ## 9. Qué NO hacer
 
 - ❌ No abrir el puerto serie desde `cron_tasks.py` ni desde callbacks: encola en BD.
-- ❌ No versionar secretos ni datos locales. Están en `.gitignore`: `env.py`,
-  `database.sql*`, `.venv`, `.junie`, `.idea`. **Nunca** los añadas al repo.
+- ❌ No versionar secretos, emails ni datos de clientes o locales. Están en `.gitignore`: `env.py`,
+  `database.sql*`, `.venv`, `.junie`, `.idea`. **Nunca** los añadas al repo ni a la documentación pública.
 - ❌ No introducir PostgreSQL ni otro motor: el proyecto es SQLite por diseño (RPi
   Zero, sin servicio que mantener).
 - ❌ No superar ~200 bytes por mensaje a la malla.

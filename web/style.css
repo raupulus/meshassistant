@@ -411,6 +411,13 @@ main {
   font-weight: 600;
 }
 
+.card .btn-secondary,
+.card-action-btn {
+  margin-top: auto !important;
+  width: 100%;
+  font-weight: 600;
+}
+
 /* ==========================================================================
    Nodes Table
    ========================================================================== */
@@ -494,4 +501,189 @@ tr:hover td {
   main { padding: 10px; }
   .chat-container { height: calc(100vh - 170px); }
   .msg-card { max-width: 100%; }
+}
+
+/* ==========================================================================
+   Telemetry Footer (Módulo 05)
+   ========================================================================== */
+.telemetry-footer {
+  position: sticky;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  background-color: rgba(15, 23, 42, 0.95);
+  border-top: 1px solid var(--border-color);
+  backdrop-filter: blur(8px);
+  padding: 6px 20px;
+  z-index: 40;
+  font-size: 0.8rem;
+}
+
+.telemetry-bar {
+  max-width: 1280px;
+  margin: 0 auto;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.telem-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-muted);
+}
+
+.telem-item strong {
+  color: var(--text-main);
+  font-weight: 600;
+}
+
+.telem-icon {
+  font-size: 0.9rem;
+}
+
+.checkbox-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  cursor: pointer;
+  background: var(--bg-card);
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-color);
+}
+
+.checkbox-label:hover {
+  background: var(--bg-card-hover);
+  color: var(--text-main);
+}
+
+/* ==========================================================================
+   Guía de Comandos Web UI
+   ========================================================================== */
+.commands-category {
+  margin-bottom: 24px;
+}
+
+.commands-category-title {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--primary);
+  margin-bottom: 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border-bottom: 1px solid var(--border-color);
+  padding-bottom: 6px;
+}
+
+.commands-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 14px;
+}
+
+.command-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 10px;
+  transition: all 0.2s ease;
+}
+
+.command-card:hover {
+  border-color: var(--primary);
+  background: var(--bg-card-hover);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+
+.command-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.command-name {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text-main);
+  font-family: monospace;
+  background: rgba(56, 189, 248, 0.12);
+  padding: 3px 8px;
+  border-radius: var(--radius-sm);
+  border: 1px solid rgba(56, 189, 248, 0.25);
+  cursor: pointer;
+}
+
+.command-name:hover {
+  background: rgba(56, 189, 248, 0.25);
+}
+
+.command-badge {
+  font-size: 0.72rem;
+  padding: 2px 7px;
+  border-radius: 9999px;
+  font-weight: 600;
+}
+
+.badge-channel {
+  background: var(--success-bg);
+  color: var(--success);
+  border: 1px solid rgba(52, 211, 153, 0.3);
+}
+
+.badge-dm {
+  background: var(--warning-bg);
+  color: var(--warning);
+  border: 1px solid rgba(251, 191, 36, 0.3);
+}
+
+.command-desc {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
+.command-usage-box {
+  background: var(--bg-input);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+  font-family: monospace;
+  font-size: 0.8rem;
+  color: var(--primary);
+  word-break: break-all;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  cursor: pointer;
+}
+
+.command-usage-box:hover {
+  border-color: var(--primary);
+}
+
+.btn-try-cmd {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.btn-try-cmd:hover {
+  color: var(--primary);
+  background: var(--bg-card);
 }

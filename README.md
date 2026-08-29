@@ -252,34 +252,34 @@ comando declara en `data.py` si responde también **en grupo/canal** (`in_group`
 
 | Comando | En grupo | Descripción | Estado |
 |---|---|---|---|
-| `/help [cmd]` | No | Ayuda general o detalle de un comando | ✅ |
-| `/about` | No | Información del proyecto | ✅ |
+| `/help [cmd]` | No | Ayuda general o detalle de opciones y sintaxis de un comando | ✅ |
+| `/about` | No | Información fija del proyecto, hardware y autor | ✅ |
 | `/ping` (`/test`) | Sí | Devuelve saltos/SNR/MQTT y guarda el ping (alias /test) | ✅ |
 | `/routers` (`/repetidores`) | Sí | Estado de routers (SNR exterior de trace, saltos, tiempo y offline 24h) | ✅ |
-| `/chiste [add …]` | Sí | Chiste aleatorio o alta de uno nuevo | ✅ |
-| `/maremoto` | Sí | Tiempo desde el último maremoto en Chipiona | ✅ |
-| `/weather` | No | Tiempo actual de la zona (datos AEMET, desde BD) | ✅ |
-| `/tiempo` | Sí | Alias de `/weather`, usable en canal | ✅ |
-| `/prevision` | Sí | Previsión de varios días (AEMET); BD + en vivo si hace falta | ✅ |
-| `/avisos` | Sí | Últimos avisos AEMET de la provincia (desde BD) | ✅ |
-| `/marea` | Sí | Próximas pleamares/bajamares (offline, con estimación de respaldo) | ✅ |
+| `/weather` (`/tiempo`) | Sí | Predicción del día actual (`/tiempo`), estación física (`/tiempo real`) o provincia (`/tiempo sevilla`) | ✅ |
+| `/prevision` | Sí | Previsión configurable: 3 días (defecto), `/prevision mañana`, `X dias` (1-7) o `X horas` (1-12) | ✅ |
+| `/marea` | Sí | Pleamares y bajamares del día (`/marea`) o boletín costero oficial de Cádiz (`/marea mar`) | ✅ |
+| `/avisos` | Sí | Alertas meteorológicas oficiales activas con color (*Amarillo/Naranja/Rojo*), fenómeno y vigencia | ✅ |
 | `/sol` | Sí | Orto, ocaso y duración del día (cálculo offline) | ✅ |
 | `/luna` | Sí | Fase lunar e iluminación (cálculo offline) | ✅ |
+| `/boletin [tipo]` | Sí | Resumen diario en 2 partes (Sol, Luna, Tiempo Provincial, Mareas y Avisos) | ✅ |
 | `/nodos` | Sí | Total de nodos: RF, MQTT y activos 24h | ✅ |
 | `/snr` | Sí | Señal del nodo pasarela (RAU0) y media de la malla RF | ✅ |
-| `/stats` | Sí | Estadísticas del bot (comandos, pings, nodos, uptime) | ✅ |
+| `/estado` (`/status`, `/salud`) | Sí | Telemetría hardware de la RPi y nodo (CPU, RAM, disco, uptime) | ✅ |
+| `/chiste [add …]` | Sí | Chiste aleatorio o alta de uno nuevo (`/chiste add <texto>`) | ✅ |
 | `/encuesta …` | Sí | Encuestas comunitarias (crear, votar, ver, cerrar) | ✅ |
-| `/dado [NdM]` | Sí | Tira dados (1d6 por defecto) | ✅ |
-| `/bola8` (`/8ball`) | Sí | Bola 8 mágica (sí/no, diversión) | ✅ |
-| `/uptime` | No | Tiempo encendido | 🟡 Placeholder |
-| `/ia` | Sí | Respuesta de la micro-IA | 🟡 Placeholder |
+| `/ia [pregunta]` | Sí | Asistente de emergencias con cola secuencial (RAG en RPi 5) | ✅ |
+| `/dado [NdM]` | Sí | Tira dados (1d6 por defecto, N caras o formato NdM) | ✅ |
+| `/bola8` (`/8ball`) | Sí | Bola 8 mágica para preguntas de sí/no | ✅ |
+| `/maremoto` | Sí | Tiempo desde el último maremoto en Chipiona (1755) | ✅ |
+| `/uptime` | No | Tiempo encendido del bot | ✅ |
 
 Origen de los datos:
 
-- `/weather`, `/tiempo`, `/prevision` y `/avisos` usan **AEMET** (requiere `AEMET_API_KEY`). El cron descarga y guarda en BD; los comandos sirven **offline** desde ahí. `/prevision` intenta además una descarga en vivo si el dato de BD está obsoleto (>12 h).
-- `/marea` usa **Open-Meteo Marine** (gratis, sin clave) o **WorldTides** (si configuras `TIDES_API_KEY`) vía cron→BD. Si no hay dato ni Internet, hace una **estimación astronómica** offline (se marca con `~`).
+- `/weather`, `/tiempo`, `/prevision` y `/avisos` usan **AEMET** (requiere `AEMET_API_KEY`). El cron descarga y guarda en BD; los comandos sirven **offline** desde ahí con fallback on-demand.
+- `/marea` usa **Open-Meteo Marine** (gratis) o **AEMET Costero** (`/marea mar`) vía cron→BD. Si no hay datos ni Internet, realiza una **estimación astronómica** offline (se marca con `~`).
 - `/sol` y `/luna` se calculan **100% offline** desde la ubicación configurada (`LOCATION_*`; por defecto Chipiona).
-- `/nodos`, `/snr` y `/stats` leen la BD local (`nodes`, `pings`, `commands_sent`, `encuestas`).
+- `/nodos`, `/snr`, `/estado` y `/stats` leen la BD local (`nodes`, `pings`, `commands_sent`, `encuestas`).
 
 Todos los comandos quedan registrados en la tabla `commands_sent`, lo que permite
 detectar abusos y, en el futuro, bloquear nodos.

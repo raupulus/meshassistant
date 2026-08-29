@@ -5,6 +5,7 @@ from contextlib import closing
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Iterable, Tuple
 import hashlib
+import json
 
 from create_db import ensure_database
 from functions import sanitize_text
@@ -1243,6 +1244,190 @@ class Database:
                 )
             return [dict(r) for r in cur.fetchall()]
 
+    # ---------- AEMET ENRIQUECIDO (DIARIA 7D, HORARIA 24H, MARÍTIMA Y OBSERVACIÓN) ----------
+    def aemet_forecast_daily_insert(
+        self,
+        city_code: str,
+        city_name: str,
+        province: str,
+        data_json: Any,
+        summary_3d: Optional[str] = None,
+        summary_7d: Optional[str] = None,
+    ) -> int:
+        """Guarda la predicción multi-día (7 días) de un municipio."""
+        payload_str = json.dumps(data_json, ensure_ascii=False) if not isinstance(data_json, str) else data_json
+        now_iso = datetime.now().isoformat(timespec='seconds')
+        with closing(self._connect()) as conn:
+            cur = conn.execute(
+                """
+                INSERT INTO aemet_forecast_daily (city_code, city_name, province, data_json, summary_3d, summary_7d, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (str(city_code), str(city_name), str(province), payload_str, summary_3d, summary_7d, now_iso),
+            )
+            conn.commit()
+            return int(cur.lastrowid)
+
+    def aemet_forecast_daily_get_latest(self, city_code: Optional[str] = None) -> Optional[Dict[str, Any]]:
+        """Obtiene la última predicción multi-día."""
+        with closing(self._connect()) as conn:
+            if city_code:
+                cur = conn.execute(
+                    "SELECT id, city_code, city_name, province, data_json, summary_3d, summary_7d, created_at "
+                    "FROM aemet_forecast_daily WHERE city_code = ? ORDER BY created_at DESC, id DESC LIMIT 1",
+                    (str(city_code),),
+                )
+            else:
+                cur = conn.execute(
+                    "SELECT id, city_code, city_name, province, data_json, summary_3d, summary_7d, created_at "
+                    "FROM aemet_forecast_daily ORDER BY created_at DESC, id DESC LIMIT 1"
+                )
+            row = cur.fetchone()
+            if not row:
+                return None
+            res = dict(row)
+            try:
+                res['data'] = json.loads(res.get('data_json') or '{}')
+            except Exception:
+                res['data'] = {}
+            return res
+
+    def aemet_forecast_hourly_insert(
+        self,
+        city_code: str,
+        city_name: str,
+        province: str,
+        data_json: Any,
+        summary_24h: Optional[str] = None,
+    ) -> int:
+        """Guarda la predicción horaria (24-48 horas) de un municipio."""
+        payload_str = json.dumps(data_json, ensure_ascii=False) if not isinstance(data_json, str) else data_json
+        now_iso = datetime.now().isoformat(timespec='seconds')
+        with closing(self._connect()) as conn:
+            cur = conn.execute(
+                """
+                INSERT INTO aemet_forecast_hourly (city_code, city_name, province, data_json, summary_24h, created_at)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (str(city_code), str(city_name), str(province), payload_str, summary_24h, now_iso),
+            )
+            conn.commit()
+            return int(cur.lastrowid)
+
+    def aemet_forecast_hourly_get_latest(self, city_code: Optional[str] = None) -> Optional[Dict[str, Any]]:
+        """Obtiene la última predicción horaria."""
+        with closing(self._connect()) as conn:
+            if city_code:
+                cur = conn.execute(
+                    "SELECT id, city_code, city_name, province, data_json, summary_24h, created_at "
+                    "FROM aemet_forecast_hourly WHERE city_code = ? ORDER BY created_at DESC, id DESC LIMIT 1",
+                    (str(city_code),),
+                )
+            else:
+                cur = conn.execute(
+                    "SELECT id, city_code, city_name, province, data_json, summary_24h, created_at "
+                    "FROM aemet_forecast_hourly ORDER BY created_at DESC, id DESC LIMIT 1"
+                )
+            row = cur.fetchone()
+            if not row:
+                return None
+            res = dict(row)
+            try:
+                res['data'] = json.loads(res.get('data_json') or '{}')
+            except Exception:
+                res['data'] = {}
+            return res
+
+    def aemet_maritime_insert(
+        self,
+        costa_code: str,
+        costa_name: str,
+        data_json: Any,
+        summary: str,
+    ) -> int:
+        """Guarda un boletín marítimo costero."""
+        payload_str = json.dumps(data_json, ensure_ascii=False) if not isinstance(data_json, str) else data_json
+        now_iso = datetime.now().isoformat(timespec='seconds')
+        with closing(self._connect()) as conn:
+            cur = conn.execute(
+                """
+                INSERT INTO aemet_maritime (costa_code, costa_name, data_json, summary, created_at)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (str(costa_code), str(costa_name), payload_str, str(summary), now_iso),
+            )
+            conn.commit()
+            return int(cur.lastrowid)
+
+    def aemet_maritime_get_latest(self, costa_code: Optional[str] = None) -> Optional[Dict[str, Any]]:
+        """Obtiene el último boletín marítimo costero."""
+        with closing(self._connect()) as conn:
+            if costa_code:
+                cur = conn.execute(
+                    "SELECT id, costa_code, costa_name, data_json, summary, created_at "
+                    "FROM aemet_maritime WHERE costa_code = ? ORDER BY created_at DESC, id DESC LIMIT 1",
+                    (str(costa_code),),
+                )
+            else:
+                cur = conn.execute(
+                    "SELECT id, costa_code, costa_name, data_json, summary, created_at "
+                    "FROM aemet_maritime ORDER BY created_at DESC, id DESC LIMIT 1"
+                )
+            row = cur.fetchone()
+            if not row:
+                return None
+            res = dict(row)
+            try:
+                res['data'] = json.loads(res.get('data_json') or '{}')
+            except Exception:
+                res['data'] = {}
+            return res
+
+    def aemet_observation_insert(
+        self,
+        station_id: str,
+        station_name: str,
+        data_json: Any,
+        summary: str,
+    ) -> int:
+        """Guarda la observación física de una estación meteorológica."""
+        payload_str = json.dumps(data_json, ensure_ascii=False) if not isinstance(data_json, str) else data_json
+        now_iso = datetime.now().isoformat(timespec='seconds')
+        with closing(self._connect()) as conn:
+            cur = conn.execute(
+                """
+                INSERT INTO aemet_observation (station_id, station_name, data_json, summary, created_at)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (str(station_id), str(station_name), payload_str, str(summary), now_iso),
+            )
+            conn.commit()
+            return int(cur.lastrowid)
+
+    def aemet_observation_get_latest(self, station_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
+        """Obtiene la última observación de estación meteorológica."""
+        with closing(self._connect()) as conn:
+            if station_id:
+                cur = conn.execute(
+                    "SELECT id, station_id, station_name, data_json, summary, created_at "
+                    "FROM aemet_observation WHERE station_id = ? ORDER BY created_at DESC, id DESC LIMIT 1",
+                    (str(station_id),),
+                )
+            else:
+                cur = conn.execute(
+                    "SELECT id, station_id, station_name, data_json, summary, created_at "
+                    "FROM aemet_observation ORDER BY created_at DESC, id DESC LIMIT 1"
+                )
+            row = cur.fetchone()
+            if not row:
+                return None
+            res = dict(row)
+            try:
+                res['data'] = json.loads(res.get('data_json') or '{}')
+            except Exception:
+                res['data'] = {}
+            return res
+
     # ---------- COMMANDS LOG ----------
     def log_command(
         self,
@@ -1806,3 +1991,266 @@ class Database:
                 out["top_user_count"] = int(row["cnt"] or 0)
 
         return out
+
+    # ---------- MENSAJES PROGRAMADOS (MÓDULO 04) ----------
+    def get_scheduled_messages(self, limit: int = 50) -> List[Dict[str, Any]]:
+        """Devuelve todos los mensajes programados."""
+        with closing(self._connect()) as conn:
+            cur = conn.execute(
+                "SELECT id, message, channels, period_type, period_value, start_at, last_sent_at, next_run_at, enabled, created_at "
+                "FROM scheduled_messages ORDER BY id DESC LIMIT ?",
+                (int(limit),),
+            )
+            return [dict(r) for r in cur.fetchall()]
+
+    def get_scheduled_message(self, msg_id: int) -> Optional[Dict[str, Any]]:
+        """Obtiene un mensaje programado por su ID."""
+        with closing(self._connect()) as conn:
+            cur = conn.execute(
+                "SELECT id, message, channels, period_type, period_value, start_at, last_sent_at, next_run_at, enabled, created_at "
+                "FROM scheduled_messages WHERE id = ?",
+                (int(msg_id),),
+            )
+            row = cur.fetchone()
+            return dict(row) if row else None
+
+    def create_scheduled_message(
+        self,
+        message: str,
+        channels: str = "all",
+        period_type: str = "hours",
+        period_value: int = 1,
+        start_at: Optional[str] = None,
+        enabled: int = 1,
+    ) -> int:
+        now = datetime.now()
+        now_iso = now.isoformat(timespec="seconds")
+        
+        if not start_at:
+            start_iso = now_iso
+            next_run_iso = now_iso
+        else:
+            s_clean = str(start_at).replace("Z", "")
+            try:
+                if "." in s_clean:
+                    s_clean = s_clean.split(".")[0]
+                start_dt = datetime.fromisoformat(s_clean)
+                start_iso = start_dt.isoformat(timespec="seconds")
+                if start_dt <= now:
+                    next_run_iso = now_iso
+                else:
+                    next_run_iso = start_iso
+            except Exception:
+                start_iso = now_iso
+                next_run_iso = now_iso
+
+        with closing(self._connect()) as conn:
+            cur = conn.execute(
+                """
+                INSERT INTO scheduled_messages (
+                    message, channels, period_type, period_value, start_at, next_run_at, enabled, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    message.strip(),
+                    str(channels),
+                    period_type,
+                    max(1, int(period_value)),
+                    start_iso,
+                    next_run_iso,
+                    1 if enabled else 0,
+                    now_iso,
+                ),
+            )
+            conn.commit()
+            return int(cur.lastrowid)
+
+    def update_scheduled_message(self, msg_id: int, data: Dict[str, Any]) -> bool:
+        """Actualiza campos de un mensaje programado."""
+        data_clean = dict(data)
+        if "channels" in data_clean and isinstance(data_clean["channels"], (list, tuple)):
+            data_clean["channels"] = json.dumps(data_clean["channels"])
+        if "period_value" in data_clean:
+            try:
+                data_clean["period_value"] = max(1, int(data_clean["period_value"]))
+            except Exception:
+                pass
+        if "message" in data_clean and data_clean["message"]:
+            data_clean["message"] = str(data_clean["message"]).strip()
+
+        if "start_at" in data_clean and data_clean["start_at"]:
+            s_clean = str(data_clean["start_at"]).replace("Z", "")
+            if "." in s_clean:
+                s_clean = s_clean.split(".")[0]
+            try:
+                start_dt = datetime.fromisoformat(s_clean)
+                data_clean["start_at"] = start_dt.isoformat(timespec="seconds")
+                if "next_run_at" not in data_clean:
+                    data_clean["next_run_at"] = data_clean["start_at"]
+            except Exception:
+                pass
+
+        if "next_run_at" in data_clean and data_clean["next_run_at"]:
+            n_clean = str(data_clean["next_run_at"]).replace("Z", "")
+            if "." in n_clean:
+                n_clean = n_clean.split(".")[0]
+            try:
+                next_dt = datetime.fromisoformat(n_clean)
+                data_clean["next_run_at"] = next_dt.isoformat(timespec="seconds")
+            except Exception:
+                pass
+
+        allowed = ["message", "channels", "period_type", "period_value", "start_at", "next_run_at", "enabled"]
+        updates = []
+        params = []
+        for k in allowed:
+            if k in data_clean:
+                updates.append(f"{k} = ?")
+                params.append(data_clean[k])
+        if not updates:
+            return False
+        params.append(int(msg_id))
+        with closing(self._connect()) as conn:
+            cur = conn.execute(
+                f"UPDATE scheduled_messages SET {', '.join(updates)} WHERE id = ?",
+                tuple(params),
+            )
+            conn.commit()
+            return (cur.rowcount or 0) > 0
+
+    def delete_scheduled_message(self, msg_id: int) -> bool:
+        """Elimina un mensaje programado."""
+        with closing(self._connect()) as conn:
+            cur = conn.execute("DELETE FROM scheduled_messages WHERE id = ?", (int(msg_id),))
+            conn.commit()
+            return (cur.rowcount or 0) > 0
+
+    def get_pending_scheduled_messages(self) -> List[Dict[str, Any]]:
+        """Obtiene mensajes programados activos cuyo next_run_at ya venció."""
+        now_iso = datetime.now().isoformat(timespec="seconds")
+        with closing(self._connect()) as conn:
+            cur = conn.execute(
+                """
+                SELECT id, message, channels, period_type, period_value, start_at, last_sent_at, next_run_at, enabled, created_at
+                FROM scheduled_messages
+                WHERE enabled = 1 AND next_run_at IS NOT NULL AND next_run_at <= ?
+                ORDER BY next_run_at ASC
+                """,
+                (now_iso,),
+            )
+            return [dict(r) for r in cur.fetchall()]
+
+    def mark_scheduled_message_sent(self, msg_id: int, next_run_at: Optional[str] = None) -> None:
+        """Actualiza last_sent_at y fija el nuevo next_run_at (o deshabilita si era de un solo uso)."""
+        now_iso = datetime.now().isoformat(timespec="seconds")
+        with closing(self._connect()) as conn:
+            if next_run_at is None:
+                # Caso 'once': deshabilitar
+                conn.execute(
+                    "UPDATE scheduled_messages SET last_sent_at = ?, enabled = 0, next_run_at = NULL WHERE id = ?",
+                    (now_iso, int(msg_id)),
+                )
+            else:
+                conn.execute(
+                    "UPDATE scheduled_messages SET last_sent_at = ?, next_run_at = ? WHERE id = ?",
+                    (now_iso, next_run_at, int(msg_id)),
+                )
+            conn.commit()
+
+    # ---------- NODOS BLOQUEADOS Y ANTI-ABUSO (MÓDULO 06) ----------
+    def get_blocked_nodes(self, active_only: bool = True) -> List[Dict[str, Any]]:
+        """Devuelve los nodos bloqueados (con soporte de expiración automática)."""
+        now_iso = datetime.now().isoformat(timespec="seconds")
+        with closing(self._connect()) as conn:
+            sql = "SELECT id, node_id, node_name, block_type, reason, created_at, expires_at, active FROM blocked_nodes"
+            if active_only:
+                sql += " WHERE active = 1 AND (expires_at IS NULL OR expires_at > ?)"
+                sql += " ORDER BY id DESC"
+                cur = conn.execute(sql, (now_iso,))
+            else:
+                sql += " ORDER BY id DESC"
+                cur = conn.execute(sql)
+            return [dict(r) for r in cur.fetchall()]
+
+    def is_node_blocked(self, node_id: str) -> Tuple[bool, Optional[Dict[str, Any]]]:
+        """Comprueba si un nodo está bloqueado actualmente. Devuelve (is_blocked, block_info)."""
+        if not node_id:
+            return False, None
+        now_iso = datetime.now().isoformat(timespec="seconds")
+        with closing(self._connect()) as conn:
+            cur = conn.execute(
+                """
+                SELECT id, node_id, node_name, block_type, reason, created_at, expires_at, active
+                FROM blocked_nodes
+                WHERE node_id = ? AND active = 1 AND (expires_at IS NULL OR expires_at > ?)
+                ORDER BY id DESC LIMIT 1
+                """,
+                (str(node_id), now_iso),
+            )
+            row = cur.fetchone()
+            if row:
+                return True, dict(row)
+            return False, None
+
+    def block_node(
+        self,
+        node_id: str,
+        node_name: Optional[str] = None,
+        block_type: str = "manual",
+        reason: Optional[str] = None,
+        expires_at: Optional[str] = None,
+    ) -> int:
+        """Bloquea un nodo (auto o manual). Actualiza o inserta según existencia."""
+        now_iso = datetime.now().isoformat(timespec="seconds")
+        with closing(self._connect()) as conn:
+            cur = conn.execute(
+                """
+                INSERT INTO blocked_nodes (node_id, node_name, block_type, reason, created_at, expires_at, active)
+                VALUES (?, ?, ?, ?, ?, ?, 1)
+                ON CONFLICT(node_id) DO UPDATE SET
+                    node_name = COALESCE(excluded.node_name, blocked_nodes.node_name),
+                    block_type = excluded.block_type,
+                    reason = excluded.reason,
+                    created_at = excluded.created_at,
+                    expires_at = excluded.expires_at,
+                    active = 1
+                """,
+                (str(node_id), node_name, block_type, reason, now_iso, expires_at),
+            )
+            conn.commit()
+            return int(cur.lastrowid or 0)
+
+    def unblock_node(self, node_id: str) -> bool:
+        """Desbloquea un nodo marcándolo como inactivo."""
+        with closing(self._connect()) as conn:
+            cur = conn.execute(
+                "UPDATE blocked_nodes SET active = 0 WHERE node_id = ?",
+                (str(node_id),),
+            )
+            conn.commit()
+            return (cur.rowcount or 0) > 0
+
+    def log_abuse(self, node_id: str, command: Optional[str], action_taken: str, reason: Optional[str] = None) -> None:
+        """Registra un evento de abuso/bloqueo para auditoría."""
+        now_iso = datetime.now().isoformat(timespec="seconds")
+        with closing(self._connect()) as conn:
+            conn.execute(
+                "INSERT INTO abuse_logs (node_id, command, action_taken, reason, created_at) VALUES (?, ?, ?, ?, ?)",
+                (str(node_id), command, action_taken, reason, now_iso),
+            )
+            conn.commit()
+
+    def get_abuse_logs(self, limit: int = 50) -> List[Dict[str, Any]]:
+        """Devuelve los últimos registros de abusos."""
+        with closing(self._connect()) as conn:
+            cur = conn.execute(
+                """
+                SELECT a.id, a.node_id, a.command, a.action_taken, a.reason, a.created_at,
+                       n.name, n.short_name
+                FROM abuse_logs a
+                LEFT JOIN nodes n ON n.node_id = a.node_id
+                ORDER BY a.id DESC LIMIT ?
+                """,
+                (int(limit),),
+            )
+            return [dict(r) for r in cur.fetchall()]

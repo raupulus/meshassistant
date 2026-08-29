@@ -1,14 +1,43 @@
 def marea_callback(interface, args, msg, metadata):
-    """/marea — Próximas pleamares y bajamares de la zona (por defecto Chipiona).
+    """/marea — Pleamares y bajamares del día o estado de la mar costera.
 
-    Estrategia BD-first con fallback on-demand:
-    1. Lee la última predicción guardada por el cron de mareas (offline).
-    2. Si no hay dato fresco o quedan menos de 2 extremos futuros, calcula en
-       vivo (WorldTides/Open-Meteo si hay Internet; si no, estimación lunar).
-    Las estimaciones offline se marcan con '~' por ser aproximadas.
+    - Sin argumentos: pleamares y bajamares del día actual con horarios y alturas.
+    - /marea mar | costa: boletín marítimo costero oficial de Cádiz (viento Beaufort, oleaje, visibilidad).
     """
-    from functions import reply_long
+    from functions import reply_long, log_p
     from datetime import datetime, timedelta
+    from Models.Database import Database
+
+    db = Database()
+
+    # 1) Caso: /marea mar | /marea costa
+    if args and args[0].lower() in ('mar', 'costa', 'oleaje', 'viento'):
+        rec_m = db.aemet_maritime_get_latest()
+        if rec_m and rec_m.get('summary'):
+            reply_long(interface, metadata, rec_m.get('summary'))
+            return
+        # Intento on-demand si no hay en BD
+        try:
+            from Models.Aemet import Aemet
+            aemet = Aemet()
+            costa_code = getattr(aemet, 'maritime_coast_code', '42')
+            mar_data = aemet.fetch_maritime_coastal(costa_code=costa_code)
+            if mar_data:
+                summary_mar = aemet.format_maritime_coastal(mar_data)
+                if summary_mar:
+                    db.aemet_maritime_insert(
+                        costa_code=costa_code,
+                        costa_name="Costa Andalucía Occidental / Cádiz",
+                        data_json=mar_data,
+                        summary=summary_mar,
+                    )
+                    reply_long(interface, metadata, summary_mar)
+                    return
+        except Exception as e:
+            log_p(f"Error consultando boletín costero on-demand: {e}", level="WARN")
+
+        interface.reply_to_message("🌊 Sin boletín costero disponible en este momento.", metadata)
+        return
 
     def _parse(extremes):
         out = []

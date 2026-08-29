@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import json
 import unicodedata
-from typing import Any, Dict, List, Optional
+from datetime import datetime
+from typing import Any, Dict, List, Optional, Tuple
 
 import requests
 import env
@@ -395,6 +396,46 @@ class Aemet:
             Aemet._ssl_insecure = True
             return requests.get(url, headers=headers, params=params, timeout=to, verify=False)
 
+    # ----------- Control de cuota y expiración JWT -----------
+    last_remaining_requests: Optional[int] = None
+
+    @staticmethod
+    def parse_jwt_payload(token: str) -> Optional[Dict[str, Any]]:
+        """Decodifica el payload de un token JWT (base64url) sin dependencias."""
+        import base64
+        try:
+            parts = token.strip().split('.')
+            if len(parts) != 3:
+                return None
+            payload_b64 = parts[1]
+            payload_b64 += '=' * (-len(payload_b64) % 4)
+            payload_bytes = base64.urlsafe_b64decode(payload_b64)
+            return json.loads(payload_bytes.decode('utf-8'))
+        except Exception:
+            return None
+
+    def check_api_key_expiry(self, token: Optional[str] = None) -> Tuple[bool, Optional[int], Optional[str]]:
+        """Comprueba la fecha de caducidad del JWT de la API Key de AEMET.
+
+        Devuelve: (is_expired: bool, days_left: int|None, exp_date_str: str|None)
+        """
+        key = token or self.api_key
+        if not key:
+            return True, 0, None
+        payload = self.parse_jwt_payload(key)
+        if not payload or 'exp' not in payload:
+            return False, None, None
+        try:
+            exp_ts = int(payload['exp'])
+            exp_dt = datetime.fromtimestamp(exp_ts)
+            now = datetime.now()
+            diff = exp_dt - now
+            days_left = diff.days
+            is_expired = (exp_dt <= now)
+            return is_expired, days_left, exp_dt.strftime('%Y-%m-%d')
+        except Exception:
+            return False, None, None
+
     def _opendata_two_step(self, path_url: str, *, raw: bool = False) -> Optional[Any]:
         """Realiza el patrón OpenData de dos pasos.
 
@@ -411,6 +452,16 @@ class Aemet:
             headers = {'Accept': 'application/json', 'api_key': self.api_key}
             params = {'api_key': self.api_key}
             r1 = self._http_get(path_url, headers=headers, params=params)
+            
+            # Registrar contador de cuota oficial si está presente
+            rem_hdr = r1.headers.get('Remaining-request-endpoint')
+            if rem_hdr is not None:
+                try:
+                    self.last_remaining_requests = int(rem_hdr)
+                    log_p(f"[aemet] Cuota restante en endpoint ({path_url.split('?')[0]}): {self.last_remaining_requests}")
+                except Exception:
+                    pass
+
             log_p(f"[aemet] paso1 {path_url} -> {r1.status_code} ct={r1.headers.get('Content-Type')}")
             r1.raise_for_status()
             try:
@@ -655,3 +706,336 @@ class Aemet:
             return text or None
         except Exception:
             return None
+
+    # ----------- Nuevos métodos AEMET enriquecidos -----------
+    def fetch_daily_forecast(self, city_code: Optional[str] = None) -> Optional[Dict[str, Any]]:
+        """Obtiene la predicción diaria completa (7 días) en JSON estructurado."""
+        code = city_code or self.resolve_city_code()
+        if not code:
+            return None
+        url = f"{AEMET_OPENDATA_BASE}/prediccion/especifica/municipio/diaria/{code}"
+        return self._opendata_two_step(url, raw=True)
+
+    def fetch_hourly_forecast(self, city_code: Optional[str] = None) -> Optional[Dict[str, Any]]:
+        """Obtiene la predicción horaria (24-48 horas) en JSON estructurado."""
+        code = city_code or self.resolve_city_code()
+        if not code:
+            return None
+        url = f"{AEMET_OPENDATA_BASE}/prediccion/especifica/municipio/horaria/{code}"
+        return self._opendata_two_step(url, raw=True)
+
+    def fetch_maritime_coastal(self, costa_code: str = '42') -> Optional[Dict[str, Any]]:
+        """Obtiene el boletín marítimo costero (Costa 42 = Andalucía Occidental / Cádiz)."""
+        url = f"{AEMET_OPENDATA_BASE}/prediccion/maritima/costera/costa/{costa_code}"
+        return self._opendata_two_step(url, raw=True)
+
+    def fetch_station_observation(self, station_id: str = '5972X') -> Optional[Dict[str, Any]]:
+        """Obtiene las observaciones reales de la estación física indicada (5972X = Cádiz, 5960X = Rota)."""
+        url = f"{AEMET_OPENDATA_BASE}/observacion/convencional/datos/estacion/{station_id}"
+        return self._opendata_two_step(url, raw=True)
+
+    def format_daily_forecast(self, data: Any, days: int = 3) -> Optional[str]:
+        """Formatea la predicción de 1 a 7 días (acotado al límite más cercano)."""
+        try:
+            if isinstance(data, str):
+                data = json.loads(data)
+            root = data[0] if isinstance(data, list) and data else data
+            if not isinstance(root, dict):
+                return None
+
+            nombre = root.get('nombre') or self.city or 'Municipio'
+            dias_raw = (((root.get('prediccion') or {}).get('dia')) or [])
+            if not dias_raw:
+                return None
+
+            clamped_days = max(1, min(7, int(days)))
+            import datetime as _dt
+            dow = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom']
+
+            partes: List[str] = []
+            for idx, d in enumerate(dias_raw[:clamped_days]):
+                if not isinstance(d, dict):
+                    continue
+                fecha = d.get('fecha') or ''
+                if idx == 0:
+                    etiqueta = "Hoy"
+                elif idx == 1:
+                    etiqueta = "Mañana"
+                else:
+                    try:
+                        dt = _dt.date.fromisoformat(fecha[:10])
+                        etiqueta = f"{dow[dt.weekday()]} {dt.day}"
+                    except Exception:
+                        etiqueta = fecha[:10]
+
+                temp = d.get('temperatura') or {}
+                tmax = temp.get('maxima')
+                tmin = temp.get('minima')
+
+                cielo = ''
+                for ec in (d.get('estadoCielo') or []):
+                    desc = (ec or {}).get('descripcion') or ''
+                    if desc.strip():
+                        cielo = desc.strip()
+                        break
+
+                probs = []
+                for pp in (d.get('probPrecipitacion') or []):
+                    v = (pp or {}).get('value')
+                    try:
+                        if v is not None and str(v) != '':
+                            probs.append(int(float(v)))
+                    except Exception:
+                        pass
+                prob = max(probs) if probs else None
+
+                item = [etiqueta]
+                if tmin is not None and tmax is not None:
+                    item.append(f"{tmin}-{tmax}°C")
+                if cielo:
+                    item.append(cielo)
+                if prob is not None and prob > 0:
+                    item.append(f"lluvia {prob}%")
+                partes.append(' '.join(item))
+
+            if not partes:
+                return None
+            return f"🌦️ {nombre}: " + ' | '.join(partes)
+        except Exception:
+            return None
+
+    def format_tomorrow_forecast(self, data: Any) -> Optional[str]:
+        """Formatea la predicción específica y detallada de mañana."""
+        try:
+            if isinstance(data, str):
+                data = json.loads(data)
+            root = data[0] if isinstance(data, list) and data else data
+            if not isinstance(root, dict):
+                return None
+
+            nombre = root.get('nombre') or self.city or 'Municipio'
+            dias = (((root.get('prediccion') or {}).get('dia')) or [])
+            if len(dias) < 2:
+                return None
+            d1 = dias[1]  # Mañana
+
+            temp = d1.get('temperatura') or {}
+            tmax = temp.get('maxima')
+            tmin = temp.get('minima')
+
+            cielo = ''
+            for ec in (d1.get('estadoCielo') or []):
+                desc = (ec or {}).get('descripcion') or ''
+                if desc.strip():
+                    cielo = desc.strip()
+                    break
+
+            probs = []
+            for pp in (d1.get('probPrecipitacion') or []):
+                v = (pp or {}).get('value')
+                try:
+                    if v is not None and str(v) != '':
+                        probs.append(int(float(v)))
+                except Exception:
+                    pass
+            prob = max(probs) if probs else None
+
+            # Viento
+            viento_txt = ''
+            for v in (d1.get('viento') or d1.get('vientoAndRachaMax') or []):
+                dir_ = (v or {}).get('direccion') or ''
+                vel = (v or {}).get('velocidad') or ''
+                if dir_ or vel:
+                    viento_txt = f"viento {dir_} {vel}km/h".strip()
+                    break
+
+            uv = d1.get('uvMax')
+
+            partes = [f"🌦️ {nombre} (Mañana)"]
+            if tmin is not None and tmax is not None:
+                partes.append(f"{tmin}-{tmax}°C")
+            if cielo:
+                partes.append(cielo)
+            if prob is not None:
+                partes.append(f"lluvia {prob}%")
+            if viento_txt:
+                partes.append(viento_txt)
+            if uv:
+                partes.append(f"UV {uv}")
+
+            return ', '.join(partes[:2]) + '. ' + ', '.join(partes[2:])
+        except Exception:
+            return None
+
+    def format_hourly_forecast(self, data: Any, hours: int = 6) -> Optional[str]:
+        """Formatea los tramos horarios próximos desde la hora actual hasta N horas (1-12h)."""
+        try:
+            if isinstance(data, str):
+                data = json.loads(data)
+            root = data[0] if isinstance(data, list) and data else data
+            if not isinstance(root, dict):
+                return None
+
+            nombre = root.get('nombre') or self.city or 'Municipio'
+            dias = (((root.get('prediccion') or {}).get('dia')) or [])
+            if not dias:
+                return None
+
+            clamped_hours = max(1, min(12, int(hours)))
+            now = datetime.now()
+            current_hour = now.hour
+
+            # Recolectar tramos horarios cronológicos a partir de la hora actual
+            tramos: List[Dict[str, Any]] = []
+            for d in dias[:2]:  # hoy y mañana
+                fecha_str = d.get('fecha') or ''
+                temp_list = (d.get('temperatura') or [])
+                cielo_list = (d.get('estadoCielo') or [])
+                prec_list = (d.get('precipitacion') or d.get('probPrecipitacion') or [])
+
+                # Mapas por periodo/hora
+                cielo_map = {}
+                for c in cielo_list:
+                    p = str((c or {}).get('periodo') or (c or {}).get('hora') or '')
+                    desc = (c or {}).get('descripcion') or ''
+                    if p and desc:
+                        cielo_map[p.zfill(2)] = desc
+
+                prec_map = {}
+                for pr in prec_list:
+                    p = str((pr or {}).get('periodo') or (pr or {}).get('hora') or '')
+                    val = (pr or {}).get('value')
+                    if p and val is not None:
+                        prec_map[p.zfill(2)] = val
+
+                for t in temp_list:
+                    p = str((t or {}).get('periodo') or (t or {}).get('hora') or '')
+                    val = (t or {}).get('value')
+                    if not p:
+                        continue
+                    try:
+                        h = int(p[:2])
+                        dt_tramo = datetime.fromisoformat(fecha_str[:10]).replace(hour=h)
+                        if dt_tramo >= now.replace(minute=0, second=0, microsecond=0):
+                            tramos.append({
+                                'dt': dt_tramo,
+                                'hour': h,
+                                'temp': val,
+                                'cielo': cielo_map.get(str(h).zfill(2), ''),
+                                'prec': prec_map.get(str(h).zfill(2)),
+                            })
+                    except Exception:
+                        continue
+
+            if not tramos:
+                return None
+
+            # Ordenar y seleccionar los más cercanos
+            tramos.sort(key=lambda x: x['dt'])
+            # Si se piden muchas horas, muestreamos de 2 en 2 o de 3 en 3 para no saturar 200 bytes
+            step = 1 if clamped_hours <= 4 else (2 if clamped_hours <= 8 else 3)
+            selected = tramos[:clamped_hours:step]
+
+            partes_txt: List[str] = []
+            for tr in selected:
+                h_str = f"{tr['hour']:02d}h"
+                t_str = f"{tr['temp']}°C" if tr['temp'] is not None else ""
+                c_str = tr['cielo']
+                txt = f"{h_str} {t_str}"
+                if c_str:
+                    txt += f" {c_str}"
+                if tr['prec'] and float(tr['prec']) > 0:
+                    txt += f" (lluvia {tr['prec']}%)"
+                partes_txt.append(txt.strip())
+
+            return f"⏱️ {nombre} (próx {clamped_hours}h): " + ' | '.join(partes_txt)
+        except Exception:
+            return None
+
+    def format_maritime_coastal(self, data: Any, zone_keyword: Optional[str] = None) -> Optional[str]:
+        """Formatea el boletín marítimo costero de Andalucía Occidental / Cádiz."""
+        try:
+            if isinstance(data, str):
+                data = json.loads(data)
+            root = data[0] if isinstance(data, list) and data else data
+            if not isinstance(root, dict):
+                return None
+
+            zonas = (root.get('prediccion') or {}).get('zona') or []
+            kw = _normalize_name(zone_keyword or "CADIZ")
+            target_subzona = None
+            target_zona_nombre = "Costa de Cádiz"
+
+            for z in zonas:
+                z_name_norm = _normalize_name(z.get('nombre') or '')
+                if kw in z_name_norm or "CADIZ" in z_name_norm:
+                    subzonas = z.get('subzona') or []
+                    for sz in subzonas:
+                        sz_name_norm = _normalize_name(sz.get('nombre') or '')
+                        if "GUADALQUIVIR" in sz_name_norm or "ROCHE" in sz_name_norm:
+                            target_subzona = sz
+                            break
+                    if not target_subzona and subzonas:
+                        target_subzona = subzonas[0]
+                    target_zona_nombre = z.get('nombre') or target_zona_nombre
+                    break
+
+            if not target_subzona and zonas:
+                subzonas = zonas[0].get('subzona') or []
+                if subzonas:
+                    target_subzona = subzonas[0]
+
+            if not target_subzona:
+                return None
+
+            sz_nom = target_subzona.get('nombre') or target_zona_nombre
+            texto = target_subzona.get('texto') or ''
+            if texto:
+                return f"🌊 Mar ({sz_nom}): {texto}"
+
+            return None
+        except Exception:
+            return None
+
+    def format_station_observation(self, data: Any) -> Optional[str]:
+        """Formatea la última observación física registrada en una estación meteorológica."""
+        try:
+            if isinstance(data, str):
+                data = json.loads(data)
+            if not isinstance(data, list) or not data:
+                return None
+            # El último elemento suele ser el más reciente
+            obs = data[-1]
+            if not isinstance(obs, dict):
+                return None
+
+            ubi = obs.get('ubi') or 'Estación'
+            ta = obs.get('ta')  # Temperatura actual
+            tamax = obs.get('tamax')
+            tamin = obs.get('tamin')
+            vv = obs.get('vv')  # Velocidad viento (m/s o km/h)
+            vmax = obs.get('vmax')  # Racha máxima
+            hr = obs.get('hr')  # Humedad relativa
+            prec = obs.get('prec')  # Precipitación
+            pres = obs.get('pres')  # Presión barométrica
+
+            partes = [f"🌡️ {ubi}"]
+            if ta is not None:
+                partes.append(f"{ta}°C")
+            if vv is not None:
+                v_kmh = round(float(vv) * 3.6, 1) if float(vv) < 30 else vv
+                partes.append(f"viento {v_kmh}km/h")
+            if vmax is not None:
+                r_kmh = round(float(vmax) * 3.6, 1) if float(vmax) < 50 else vmax
+                partes.append(f"racha {r_kmh}km/h")
+            if hr is not None:
+                partes.append(f"HR {hr}%")
+            if prec is not None and float(prec) > 0:
+                partes.append(f"precipitación {prec}mm")
+            if pres is not None:
+                partes.append(f"{pres}hPa")
+
+            return ', '.join(partes[:2]) + '. ' + ', '.join(partes[2:])
+        except Exception:
+            return None
+

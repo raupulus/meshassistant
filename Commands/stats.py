@@ -7,6 +7,17 @@ def stats_callback(interface, args, msg, metadata):
     """
     from functions import reply_long, format_uptime
 
+    metadata = metadata or {}
+    is_direct = metadata.get("is_direct", False)
+    channel = metadata.get("channel", 0)
+
+    # Restricción: solo en privado o canal 'bots' (canal 4 por defecto)
+    from data import channels
+    ch_info = channels.get(channel, {})
+    ch_name = (ch_info.get("name") or "").lower()
+    if not is_direct and ch_name != "bots" and channel != 4:
+        return
+
     try:
         from Models.Database import Database
         s = Database().stats_summary()

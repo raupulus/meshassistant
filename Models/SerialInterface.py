@@ -968,6 +968,16 @@ class SerialInterface:
 
                 # Si el mensaje recibido es un comando, evaluar si se ejecuta la respuesta
                 if command:
+                    # Control de saturación y lista negra de nodos (Módulo 06)
+                    try:
+                        from Models.AntiAbuse import anti_abuse_manager
+                        node_name = fromNodeInfo.name if fromNodeInfo else None
+                        allowed, ban_reason = anti_abuse_manager.is_allowed(from_id, command=command, node_name=node_name)
+                        if not allowed:
+                            return
+                    except Exception as e:
+                        log_p(f"[AntiAbuse] Error en verificación: {e}", level="WARN")
+
                     # Directo responde siempre, en grupo solo a ciertos comandos
                     if not is_direct and not self.command_dict[command]['in_group']:
                         return

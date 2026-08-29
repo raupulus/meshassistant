@@ -1,3 +1,4 @@
+import time
 from datetime import datetime
 
 # Marca temporal de arranque del proceso. Se fija una sola vez al importar este
@@ -190,3 +191,108 @@ def sanitize_text(text: str) -> str:
             return ' '.join(str(text).split()).strip()
         except Exception:
             return ''
+
+
+def get_system_telemetry() -> dict:
+    """Recopila telemetría de hardware de la Raspberry Pi y del bot (CPU temp, carga, RAM, disco, uptime)."""
+    import os
+    import shutil
+
+    # 1. CPU Temp
+    cpu_temp = None
+    try:
+        thermal_path = "/sys/class/thermal/thermal_zone0/temp"
+        if os.path.exists(thermal_path):
+            with open(thermal_path, "r") as f:
+                cpu_temp = round(int(f.read().strip()) / 1000.0, 1)
+    except Exception:
+        cpu_temp = None
+
+    # 2. Carga CPU
+    load_1m, load_5m = 0.0, 0.0
+    try:
+        if hasattr(os, "getloadavg"):
+            l1, l5, _ = os.getloadavg()
+            load_1m, load_5m = round(l1, 2), round(l5, 2)
+    except Exception:
+        pass
+
+    # 3. Memoria RAM
+    ram_total_mb, ram_used_mb, ram_free_mb, ram_pct = 0, 0, 0, 0.0
+    try:
+        meminfo_path = "/proc/meminfo"
+        if os.path.exists(meminfo_path):
+            mem = {}
+            with open(meminfo_path, "r") as f:
+                for line in f:
+                    parts = line.split(":")
+                    if len(parts) == 2:
+                        k = parts[0].strip()
+                        v = parts[1].strip().split()[0]
+                        mem[k] = int(v)
+            total_kb = mem.get("MemTotal", 0)
+            avail_kb = mem.get("MemAvailable", mem.get("MemFree", 0))
+            used_kb = max(0, total_kb - avail_kb)
+            ram_total_mb = int(total_kb / 1024)
+            ram_used_mb = int(used_kb / 1024)
+            ram_free_mb = int(avail_kb / 1024)
+            if ram_total_mb > 0:
+                ram_pct = round((ram_used_mb / ram_total_mb) * 100, 1)
+    except Exception:
+        pass
+
+    # 4. Espacio en disco
+    disk_total_gb, disk_free_gb, disk_pct = 0.0, 0.0, 0.0
+    try:
+        usage = shutil.disk_usage("/")
+        disk_total_gb = round(usage.total / (1024 ** 3), 1)
+        disk_used_gb = round(usage.used / (1024 ** 3), 1)
+        disk_free_gb = round(usage.free / (1024 ** 3), 1)
+        if disk_total_gb > 0:
+            disk_pct = round((disk_used_gb / disk_total_gb) * 100, 1)
+    except Exception:
+        pass
+
+    # 5. Uptime del bot y del sistema
+    bot_uptime_sec = int(time.time() - STARTED_AT.timestamp())
+    bot_uptime = format_uptime(STARTED_AT)
+    sys_uptime_sec = bot_uptime_sec
+    sys_uptime_str = None
+    try:
+        uptime_path = "/proc/uptime"
+        if os.path.exists(uptime_path):
+            with open(uptime_path, "r") as f:
+                sec = float(f.read().split()[0])
+                sys_uptime_sec = int(sec)
+                days, rem = divmod(int(sec), 86400)
+                hours, rem = divmod(rem, 3600)
+                mins = rem // 60
+                u_parts = []
+                if days:
+                    u_parts.append(f"{days}d")
+                if hours or days:
+                    u_parts.append(f"{hours}h")
+                u_parts.append(f"{mins}m")
+                sys_uptime_str = " ".join(u_parts)
+    except Exception:
+        pass
+
+    return {
+        "cpu_temp": cpu_temp,
+        "load_1m": load_1m,
+        "load_5m": load_5m,
+        "ram_total_mb": ram_total_mb,
+        "ram_used_mb": ram_used_mb,
+        "ram_free_mb": ram_free_mb,
+        "ram_pct": ram_pct,
+        "ram_percent": ram_pct,
+        "disk_total_gb": disk_total_gb,
+        "disk_free_gb": disk_free_gb,
+        "disk_pct": disk_pct,
+        "bot_uptime": bot_uptime,
+        "bot_uptime_human": bot_uptime,
+        "bot_uptime_seconds": bot_uptime_sec,
+        "sys_uptime": sys_uptime_str or bot_uptime,
+        "system_uptime_human": sys_uptime_str or bot_uptime,
+        "system_uptime_seconds": sys_uptime_sec,
+    }

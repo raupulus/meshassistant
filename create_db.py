@@ -203,7 +203,98 @@ def _execute_schema(conn: sqlite3.Connection) -> None:
 
         CREATE INDEX IF NOT EXISTS idx_outbox_status ON outbox(status, created_at);
 
-        -- Tablas antiguas de control de traces eliminadas del esquema
+        -- Mensajes programados / cola de difusión periódica (Módulo 04)
+        CREATE TABLE IF NOT EXISTS scheduled_messages (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            message TEXT NOT NULL,
+            channels TEXT NOT NULL DEFAULT 'all',  -- JSON array '[0, 6]' o 'all'
+            period_type TEXT NOT NULL DEFAULT 'hours', -- 'hours' | 'days' | 'once'
+            period_value INTEGER NOT NULL DEFAULT 1,
+            start_at TEXT NULL,
+            last_sent_at TEXT NULL,
+            next_run_at TEXT NULL,
+            enabled INTEGER NOT NULL DEFAULT 1,
+            created_at TEXT NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_sched_msg_run ON scheduled_messages(enabled, next_run_at);
+
+        -- Nodos bloqueados (automático / manual permanente) (Módulo 06)
+        CREATE TABLE IF NOT EXISTS blocked_nodes (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            node_id TEXT NOT NULL UNIQUE,
+            node_name TEXT NULL,
+            block_type TEXT NOT NULL DEFAULT 'auto', -- 'auto' | 'manual'
+            reason TEXT NULL,
+            created_at TEXT NOT NULL,
+            expires_at TEXT NULL,                    -- NULL = permanente
+            active INTEGER NOT NULL DEFAULT 1
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_blocked_nodes_active ON blocked_nodes(node_id, active);
+
+        -- Predicción multi-día estructurada de AEMET (7 días)
+        CREATE TABLE IF NOT EXISTS aemet_forecast_daily (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            city_code TEXT NOT NULL,
+            city_name TEXT NOT NULL,
+            province TEXT NOT NULL,
+            data_json TEXT NOT NULL,
+            summary_3d TEXT NULL,
+            summary_7d TEXT NULL,
+            created_at TEXT NOT NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_aemet_forecast_daily_code ON aemet_forecast_daily(city_code, created_at);
+
+        -- Predicción horaria estructurada de AEMET (24-48 horas)
+        CREATE TABLE IF NOT EXISTS aemet_forecast_hourly (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            city_code TEXT NOT NULL,
+            city_name TEXT NOT NULL,
+            province TEXT NOT NULL,
+            data_json TEXT NOT NULL,
+            summary_24h TEXT NULL,
+            created_at TEXT NOT NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_aemet_forecast_hourly_code ON aemet_forecast_hourly(city_code, created_at);
+
+        -- Boletines marítimos costeros de AEMET (Costa 42 - Andalucía Occidental / Cádiz)
+        CREATE TABLE IF NOT EXISTS aemet_maritime (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            costa_code TEXT NOT NULL,
+            costa_name TEXT NOT NULL,
+            data_json TEXT NOT NULL,
+            summary TEXT NOT NULL,
+            created_at TEXT NOT NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_aemet_maritime_code ON aemet_maritime(costa_code, created_at);
+
+        -- Observaciones meteorológicas reales de estaciones convencionales AEMET
+        CREATE TABLE IF NOT EXISTS aemet_observation (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            station_id TEXT NOT NULL,
+            station_name TEXT NOT NULL,
+            data_json TEXT NOT NULL,
+            summary TEXT NOT NULL,
+            created_at TEXT NOT NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_aemet_observation_station ON aemet_observation(station_id, created_at);
+
+        -- Registro de auditoría de abusos / saturación (Módulo 06)
+        CREATE TABLE IF NOT EXISTS abuse_logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            node_id TEXT NOT NULL,
+            command TEXT NULL,
+            action_taken TEXT NOT NULL,              -- 'autoban_15m' | 'autoban_24h' | 'manual_block' | 'dropped'
+            reason TEXT NULL,
+            created_at TEXT NOT NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_abuse_logs_created ON abuse_logs(created_at, node_id);
         """
     )
     conn.commit()

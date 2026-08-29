@@ -1,14 +1,50 @@
-from functions import log_p
+from functions import log_p, reply_long
 
 
 def weather_callback(interface, args, msg, metadata):
+    """/tiempo /weather — Predicción meteorológica completa para el día actual.
+
+    - Sin argumentos: pronóstico oficial del día actual para la provincia / municipio.
+    - /tiempo real | ahora | estacion: última medición física registrada por estación meteorológica.
+    - /tiempo <provincia>: pronóstico para otra provincia andaluza (ej. Sevilla, Málaga).
+    """
     log_p('Comando /weather recibido')
     
     from Models.Database import Database
     from datetime import datetime, timedelta
     from Models.Aemet import PROV_NAME_TO_CODE, _normalize_name, Aemet
 
+    db = Database()
     aemet = Aemet()
+
+    # 1) Caso: /tiempo real | /tiempo estacion
+    if args and args[0].lower() in ('real', 'ahora', 'estacion', 'estación'):
+        rec_obs = db.aemet_observation_get_latest()
+        if rec_obs and rec_obs.get('summary'):
+            reply_long(interface, metadata, rec_obs.get('summary'))
+            return
+        # Intento on-demand si no hay en BD
+        try:
+            station_id = getattr(aemet, 'observation_station', '5972X')
+            obs_data = aemet.fetch_station_observation(station_id=station_id)
+            if obs_data:
+                summary_obs = aemet.format_station_observation(obs_data)
+                if summary_obs:
+                    db.aemet_observation_insert(
+                        station_id=station_id,
+                        station_name="Cádiz/Costa",
+                        data_json=obs_data,
+                        summary=summary_obs,
+                    )
+                    reply_long(interface, metadata, summary_obs)
+                    return
+        except Exception as e:
+            log_p(f"Error consulta estación meteorológica: {e}", level="WARN")
+
+        interface.reply_to_message("🌡️ Sin datos recientes de estación meteorológica.", metadata)
+        return
+
+    # 2) Caso: Provincia solicitada o por defecto
     requested_province_code = None
     requested_province_name = None
 
@@ -32,11 +68,9 @@ def weather_callback(interface, args, msg, metadata):
     else:
         # Si no hay argumentos, usar la provincia por defecto configurada en env.py
         requested_province_code = aemet.province_code()
-        requested_province_name = aemet.province.title() if aemet.province else None
+        requested_province_name = aemet.province.title() if aemet.province else 'Cádiz'
 
-    db = Database()
     record = None
-    
     try:
         record = db.aemet_weather_get_latest(province_code=requested_province_code)
     except Exception as e:
@@ -54,7 +88,6 @@ def weather_callback(interface, args, msg, metadata):
     # Fetch on-the-fly si no hay datos o están desactualizados
     if not record or not record.get('content') or is_old:
         try:
-            aemet = Aemet()
             if requested_province_code:
                 aemet.province = requested_province_name
             
@@ -80,13 +113,8 @@ def weather_callback(interface, args, msg, metadata):
         )
         return
 
-    scope = record.get('scope')
-    if scope == 'province':
-        label = record.get('province') or 'provincia'
-    else:
-        label = record.get('city') or 'tu zona'
-
     body = record.get('content') or ''
+
 
     # Añadir advertencia si el dato sigue siendo viejo (falló la petición al vuelo)
     if is_old:

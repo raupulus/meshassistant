@@ -27,6 +27,9 @@ class MeshDashboard {
     this.auditPage = 1;
     this.auditData = null;
     this.auditSearchQuery = "";
+    this.scheduledMessages = [];
+    this.blockedNodes = [];
+    this.abuseLogs = [];
 
     this.initElements();
     this.bindEvents();
@@ -47,6 +50,16 @@ class MeshDashboard {
     this.countMsgs = document.getElementById("count-msgs");
     this.countRouters = document.getElementById("count-routers");
     this.countNodes = document.getElementById("count-nodes");
+    this.countScheds = document.getElementById("count-scheds");
+    this.countBlocked = document.getElementById("count-blocked");
+
+    // Footer Telemetría Hardware (Módulo 05)
+    this.ftCpuTemp = document.getElementById("ft-cpu-temp");
+    this.ftLoad = document.getElementById("ft-load");
+    this.ftRam = document.getElementById("ft-ram");
+    this.ftDisk = document.getElementById("ft-disk");
+    this.ftUptime = document.getElementById("ft-uptime");
+    this.ftUart = document.getElementById("ft-uart");
 
     // Contenedores
     this.chatFeed = document.getElementById("chat-feed");
@@ -66,6 +79,34 @@ class MeshDashboard {
     this.weatherProvince = document.getElementById("weather-province");
     this.toastContainer = document.getElementById("toast-container");
 
+    // Elementos de Programación (Módulo 04)
+    this.btnToggleSchedForm = document.getElementById("btn-toggle-sched-form");
+    this.btnCloseSchedForm = document.getElementById("btn-close-sched-form");
+    this.btnCancelSched = document.getElementById("btn-cancel-sched");
+    this.schedFormCard = document.getElementById("sched-form-card");
+    this.schedFormTitle = document.getElementById("sched-form-title");
+    this.btnSubmitSched = document.getElementById("btn-submit-sched");
+    this.formCreateSched = document.getElementById("form-create-sched");
+    this.schedEditId = document.getElementById("sched-edit-id");
+    this.schedMsgText = document.getElementById("sched-msg-text");
+    this.schedMsgCharcount = document.getElementById("sched-msg-charcount");
+    this.schedMsgPartscount = document.getElementById("sched-msg-partscount");
+    this.schedChAll = document.getElementById("sched-ch-all");
+    this.schedPeriodType = document.getElementById("sched-period-type");
+    this.schedPeriodVal = document.getElementById("sched-period-val");
+    this.schedStartAt = document.getElementById("sched-start-at");
+    this.schedValWrap = document.getElementById("sched-val-wrap");
+    this.schedulesTbody = document.getElementById("schedules-tbody");
+
+    // Elementos de Seguridad y Bloqueos (Módulo 06)
+    this.formManualBlock = document.getElementById("form-manual-block");
+    this.blockNodeId = document.getElementById("block-node-id");
+    this.blockReason = document.getElementById("block-reason");
+    this.blockDuration = document.getElementById("block-duration");
+    this.btnRefreshSecurity = document.getElementById("btn-refresh-security");
+    this.blockedNodesTbody = document.getElementById("blocked-nodes-tbody");
+    this.abuseLogsTbody = document.getElementById("abuse-logs-tbody");
+
     // Elementos de Auditoría
     this.auditTotalCmds = document.getElementById("audit-total-cmds");
     this.auditTotalPeriod = document.getElementById("audit-total-period");
@@ -80,6 +121,10 @@ class MeshDashboard {
     this.btnAuditPrev = document.getElementById("btn-audit-prev");
     this.btnAuditNext = document.getElementById("btn-audit-next");
     this.lblAuditPage = document.getElementById("lbl-audit-page");
+
+    // Elementos de la Guía de Comandos
+    this.commandsContainer = document.getElementById("commands-container");
+    this.commandsSearchInput = document.getElementById("commands-search-input");
   }
 
   bindEvents() {
@@ -91,11 +136,118 @@ class MeshDashboard {
       });
     });
 
+    // Búsqueda en Guía de Comandos
+    if (this.commandsSearchInput) {
+      this.commandsSearchInput.addEventListener("input", (e) => {
+        this.renderCommandsGuide(e.target.value);
+      });
+    }
+    this.renderCommandsGuide();
+
     // Envío de Mensaje Chat
     if (this.chatForm) {
       this.chatForm.addEventListener("submit", (e) => {
         e.preventDefault();
         this.handleSendMessage();
+      });
+    }
+
+    // Toggle Formulario de Programación
+    if (this.btnToggleSchedForm && this.schedFormCard) {
+      this.btnToggleSchedForm.addEventListener("click", () => {
+        const isHidden = this.schedFormCard.style.display === "none";
+        if (isHidden) {
+          this.resetScheduleForm();
+          this.schedFormCard.style.display = "block";
+        } else {
+          this.schedFormCard.style.display = "none";
+        }
+      });
+    }
+    if (this.btnCloseSchedForm && this.schedFormCard) {
+      this.btnCloseSchedForm.addEventListener("click", () => {
+        this.resetScheduleForm();
+        this.schedFormCard.style.display = "none";
+      });
+    }
+    if (this.btnCancelSched && this.schedFormCard) {
+      this.btnCancelSched.addEventListener("click", () => {
+        this.resetScheduleForm();
+        this.schedFormCard.style.display = "none";
+      });
+    }
+
+    // Contador de caracteres y cálculo de partes LoRa en mensaje programado
+    if (this.schedMsgText) {
+      this.schedMsgText.addEventListener("input", (e) => {
+        const len = e.target.value.length;
+        if (this.schedMsgCharcount) this.schedMsgCharcount.textContent = `${len} / 500 caracteres`;
+        if (this.schedMsgPartscount) {
+          const parts = Math.max(1, Math.ceil(len / 190));
+          this.schedMsgPartscount.textContent = `${parts} ${parts === 1 ? "parte LoRa (~200B)" : "partes LoRa"}`;
+          this.schedMsgPartscount.style.color = parts > 3 ? "var(--danger)" : "var(--primary)";
+        }
+      });
+    }
+
+    // Checkbox "Todos los canales"
+    if (this.schedChAll) {
+      this.schedChAll.addEventListener("change", (e) => {
+        const checked = e.target.checked;
+        document.querySelectorAll(".sched-ch-item").forEach(cb => {
+          cb.checked = checked;
+        });
+      });
+      document.querySelectorAll(".sched-ch-item").forEach(cb => {
+        cb.addEventListener("change", () => {
+          const allItems = Array.from(document.querySelectorAll(".sched-ch-item"));
+          const allChecked = allItems.every(i => i.checked);
+          if (this.schedChAll) this.schedChAll.checked = allChecked;
+        });
+      });
+    }
+
+    // Periodicidad select
+    if (this.schedPeriodType && this.schedValWrap) {
+      this.schedPeriodType.addEventListener("change", (e) => {
+        const val = e.target.value;
+        this.schedValWrap.style.display = val === "once" ? "none" : "block";
+      });
+    }
+
+    // Envío de Formulario de Programación
+    if (this.formCreateSched) {
+      this.formCreateSched.addEventListener("submit", (e) => {
+        e.preventDefault();
+        this.handleCreateSchedule();
+      });
+    }
+
+    // Chips de inserción rápida de comandos dinámicos
+    document.querySelectorAll(".chip-cmd").forEach(chip => {
+      chip.addEventListener("click", () => {
+        const cmd = chip.getAttribute("data-cmd");
+        if (this.schedMsgText && cmd) {
+          this.schedMsgText.value = cmd;
+          this.schedMsgText.dispatchEvent(new Event("input"));
+          this.schedMsgText.focus();
+        }
+      });
+    });
+
+    // Formulario de Bloqueo Manual
+    if (this.formManualBlock) {
+      this.formManualBlock.addEventListener("submit", (e) => {
+        e.preventDefault();
+        this.handleManualBlock();
+      });
+    }
+
+    // Botón refrescar seguridad
+    if (this.btnRefreshSecurity) {
+      this.btnRefreshSecurity.addEventListener("click", () => {
+        this.loadSecurityData();
+        this.showToast("Listas de seguridad actualizadas");
       });
     }
 
@@ -289,6 +441,10 @@ class MeshDashboard {
 
     if (tabName === "audit") {
       this.loadAuditData();
+    } else if (tabName === "schedules") {
+      this.loadSchedules();
+    } else if (tabName === "security") {
+      this.loadSecurityData();
     }
   }
 
@@ -298,6 +454,15 @@ class MeshDashboard {
       limit: this.auditLimit,
       offset: this.auditOffset
     });
+  }
+
+  loadSchedules() {
+    this.sendAction("get_scheduled_messages");
+  }
+
+  loadSecurityData() {
+    this.sendAction("get_blocked_nodes");
+    this.sendAction("get_abuse_logs");
   }
 
   // ==========================================================================
@@ -367,6 +532,39 @@ class MeshDashboard {
   setUartStatus(online, port) {
     if (this.ledUart) this.ledUart.className = `led ${online ? "online" : "offline"}`;
     if (this.lblUart) this.lblUart.textContent = online ? `Activo (${port || "UART"})` : "Desconectado";
+    if (this.ftUart) {
+      this.ftUart.textContent = online ? "Conectado" : "Desconectado";
+      this.ftUart.style.color = online ? "var(--success)" : "var(--danger)";
+    }
+  }
+
+  updateTelemetryFooter(telem) {
+    if (!telem) return;
+    if (this.ftCpuTemp) {
+      this.ftCpuTemp.textContent = telem.cpu_temp ? `${Number(telem.cpu_temp).toFixed(1)}°C` : "--°C";
+      if (telem.cpu_temp > 70) this.ftCpuTemp.style.color = "var(--danger)";
+      else if (telem.cpu_temp > 55) this.ftCpuTemp.style.color = "var(--warning)";
+      else this.ftCpuTemp.style.color = "var(--success)";
+    }
+    if (this.ftLoad) {
+      const l1 = telem.load_1m !== undefined ? telem.load_1m : "--";
+      const l5 = telem.load_5m !== undefined ? telem.load_5m : "--";
+      this.ftLoad.textContent = `${l1} / ${l5}`;
+    }
+    if (this.ftRam) {
+      const used = telem.ram_used_mb !== undefined ? `${telem.ram_used_mb}MB` : "--";
+      const pct = telem.ram_percent !== undefined ? `${telem.ram_percent}%` : "--";
+      this.ftRam.textContent = `${used} (${pct})`;
+    }
+    if (this.ftDisk) {
+      this.ftDisk.textContent = telem.disk_free_gb !== undefined ? `${Number(telem.disk_free_gb).toFixed(1)} GB libre` : "--";
+    }
+    if (this.ftUptime) {
+      this.ftUptime.textContent = telem.bot_uptime_human || telem.system_uptime_human || "--";
+    }
+    if (telem.uart_connected !== undefined) {
+      this.setUartStatus(telem.uart_connected, telem.serial_port);
+    }
   }
 
   // ==========================================================================
@@ -403,6 +601,13 @@ class MeshDashboard {
     switch (eventName) {
       case "message_rx":
         this.addMessage(data, ts);
+        break;
+      case "system_telemetry":
+        this.updateTelemetryFooter(data);
+        break;
+      case "node_blocked":
+        this.showToast(`🚨 Bloqueo aplicado a ${data.node_name || data.node_id}: ${data.reason}`, "warning");
+        this.loadSecurityData();
         break;
       case "node_updated":
         if (data.id && String(data.id).trim() && data.id !== "None" && data.id !== "Desconocido") {
@@ -454,10 +659,12 @@ class MeshDashboard {
 
   requestFullSnapshot() {
     this.sendAction("get_snapshot", {
-      include: ["nodes", "routers", "recent_messages", "stats", "system_status", "local_node", "channel_metrics", "traces"]
+      include: ["nodes", "routers", "recent_messages", "stats", "system_status", "local_node", "channel_metrics", "traces", "system_telemetry"]
     });
     this.sendAction("get_polls");
     this.sendAction("get_weather");
+    this.sendAction("get_scheduled_messages");
+    this.sendAction("get_blocked_nodes");
   }
 
   handleActionResponse(resp) {
@@ -470,6 +677,11 @@ class MeshDashboard {
     if (!data) return;
 
     if (resp.action === "get_snapshot") {
+      // Telemetría de sistema hardware
+      if (data.system_telemetry) {
+        this.updateTelemetryFooter(data.system_telemetry);
+      }
+
       // 1. Mensajes: Reconciliación no destructiva
       if (data.recent_messages && Array.isArray(data.recent_messages)) {
         if (this.messages.length === 0) {
@@ -548,6 +760,35 @@ class MeshDashboard {
       this.renderWeather(data);
     } else if (resp.action === "get_commands_audit") {
       this.renderAuditData(data);
+    } else if (resp.action === "get_scheduled_messages") {
+      this.renderScheduledMessages(data.messages || []);
+    } else if (resp.action === "create_scheduled_message") {
+      this.showToast("Mensaje programado creado con éxito");
+      this.resetScheduleForm();
+      if (this.schedFormCard) this.schedFormCard.style.display = "none";
+      this.loadSchedules();
+    } else if (resp.action === "update_scheduled_message") {
+      this.showToast("Mensaje programado actualizado con éxito");
+      this.resetScheduleForm();
+      if (this.schedFormCard) this.schedFormCard.style.display = "none";
+      this.loadSchedules();
+    } else if (resp.action === "toggle_scheduled_message") {
+      this.showToast("Estado de mensaje programado actualizado");
+      this.loadSchedules();
+    } else if (resp.action === "delete_scheduled_message") {
+      this.showToast("Mensaje programado eliminado");
+      this.loadSchedules();
+    } else if (resp.action === "get_blocked_nodes") {
+      this.renderBlockedNodes(data.blocked_nodes || []);
+    } else if (resp.action === "block_node_manual") {
+      this.showToast("Nodo bloqueado correctamente");
+      if (this.formManualBlock) this.formManualBlock.reset();
+      this.loadSecurityData();
+    } else if (resp.action === "unblock_node") {
+      this.showToast("Nodo desbloqueado");
+      this.loadSecurityData();
+    } else if (resp.action === "get_abuse_logs") {
+      this.renderAbuseLogs(data.logs || []);
     } else if (resp.action === "set_node_favorite") {
       if (data.node_id && this.nodesMap.has(data.node_id)) {
         this.nodesMap.get(data.node_id).is_favorite = data.is_favorite;
@@ -815,8 +1056,11 @@ class MeshDashboard {
           signalDetails = `<div><strong>${this.escapeHtml(r.trace_snr_text || "")}</strong></div><div style="font-size: 0.75rem; color: var(--text-dim); margin-top: 2px;">Ruta: ${this.escapeHtml(routeStr)}</div>`;
         }
       } else if (r.snr !== undefined && r.snr !== null) {
-        const isDir = (r.hops === 0);
-        routeBadge = `<span class="badge badge-ch0">${isDir ? "Directo (RF)" : r.hops + " saltos (RF)"}</span>`;
+        let hopBadgeText = "Señal RF";
+        if (r.hops !== undefined && r.hops !== null) {
+          hopBadgeText = (r.hops === 0) ? "Directo (RF)" : `${r.hops} ${r.hops === 1 ? "salto" : "saltos"} (RF)`;
+        }
+        routeBadge = `<span class="badge badge-ch0">${hopBadgeText}</span>`;
         signalDetails = `<strong>${Number(r.snr).toFixed(1)} dB</strong>`;
       } else {
         signalDetails = "--";
@@ -867,7 +1111,7 @@ class MeshDashboard {
             <span>Última señal:</span>
             <span>${lastSeen}</span>
           </div>
-          <button class="btn-secondary" style="margin-top: 6px; width: 100%; font-weight: 600;" onclick="window.dashboard.requestTraceTo('${routerId}', this)">
+          <button class="btn-secondary card-action-btn" onclick="window.dashboard.requestTraceTo('${routerId}', this)">
             📍 Lanzar Traceroute
           </button>
         </div>
@@ -1312,6 +1556,323 @@ class MeshDashboard {
   }
 
   // ==========================================================================
+  // Módulo 04: Programación de Mensajes y Difusión
+  // ==========================================================================
+  resetScheduleForm() {
+    if (this.formCreateSched) this.formCreateSched.reset();
+    if (this.schedEditId) this.schedEditId.value = "";
+    if (this.schedFormTitle) this.schedFormTitle.textContent = "Nuevo Mensaje Programado";
+    if (this.btnSubmitSched) this.btnSubmitSched.textContent = "Guardar y Programar";
+    if (this.schedChAll) this.schedChAll.checked = true;
+    document.querySelectorAll(".sched-ch-item").forEach(cb => {
+      cb.checked = true;
+      cb.disabled = true;
+    });
+    if (this.schedValWrap) this.schedValWrap.style.display = "block";
+    if (this.schedPeriodType) this.schedPeriodType.value = "hours";
+    if (this.schedPeriodVal) this.schedPeriodVal.value = 6;
+    if (this.schedStartAt) this.schedStartAt.value = "";
+    if (this.schedMsgCharcount) this.schedMsgCharcount.textContent = "0 / 500 caracteres";
+    if (this.schedMsgPartscount) {
+      this.schedMsgPartscount.textContent = "1 parte LoRa (~200 bytes)";
+      this.schedMsgPartscount.style.color = "var(--primary)";
+    }
+  }
+
+  handleCreateSchedule() {
+    if (!this.schedMsgText) return;
+    const text = this.schedMsgText.value.trim();
+    if (!text) {
+      this.showToast("Debes escribir un mensaje o comando para programar", "warning");
+      return;
+    }
+
+    let channels = "all";
+    if (this.schedChAll && !this.schedChAll.checked) {
+      const selected = Array.from(document.querySelectorAll(".sched-ch-item:checked")).map(cb => parseInt(cb.value, 10));
+      channels = selected.length > 0 ? selected : [0];
+    }
+
+    const pType = this.schedPeriodType ? this.schedPeriodType.value : "hours";
+    const pVal = this.schedPeriodVal ? Math.max(1, parseInt(this.schedPeriodVal.value, 10) || 1) : 1;
+    const startAt = (this.schedStartAt && this.schedStartAt.value) ? this.schedStartAt.value : null;
+    const editId = this.schedEditId ? this.schedEditId.value : "";
+
+    if (editId) {
+      this.sendAction("update_scheduled_message", {
+        id: parseInt(editId, 10),
+        data: {
+          message: text,
+          channels: channels,
+          period_type: pType,
+          period_value: pVal,
+          start_at: startAt,
+          next_run_at: startAt,
+        }
+      });
+    } else {
+      this.sendAction("create_scheduled_message", {
+        message: text,
+        channels: channels,
+        period_type: pType,
+        period_value: pVal,
+        start_at: startAt,
+        enabled: true,
+      });
+    }
+  }
+
+  editSchedule(id) {
+    const m = (this.scheduledMessages || []).find(item => item.id === id);
+    if (!m) {
+      this.showToast("No se encontró la programación", "error");
+      return;
+    }
+
+    if (this.schedEditId) this.schedEditId.value = m.id;
+    if (this.schedFormTitle) this.schedFormTitle.textContent = `Editar Programación #${m.id}`;
+    if (this.btnSubmitSched) this.btnSubmitSched.textContent = "Guardar Cambios";
+
+    if (this.schedMsgText) {
+      this.schedMsgText.value = m.message || "";
+      this.schedMsgText.dispatchEvent(new Event("input"));
+    }
+
+    // Configurar selección de canales
+    const isAll = (m.channels === "all" || m.channels === "*" || m.channels === '["all"]');
+    if (this.schedChAll) {
+      this.schedChAll.checked = isAll;
+    }
+
+    let chList = [];
+    if (!isAll) {
+      try {
+        chList = typeof m.channels === "string" ? JSON.parse(m.channels) : m.channels;
+        if (!Array.isArray(chList)) chList = [parseInt(m.channels, 10)];
+      } catch (e) {
+        chList = String(m.channels).split(",").map(c => parseInt(c.trim(), 10)).filter(c => !isNaN(c));
+      }
+    }
+
+    document.querySelectorAll(".sched-ch-item").forEach(cb => {
+      const val = parseInt(cb.value, 10);
+      cb.disabled = isAll;
+      cb.checked = isAll || chList.includes(val);
+    });
+
+    // Periodicidad
+    if (this.schedPeriodType) {
+      this.schedPeriodType.value = m.period_type || "hours";
+    }
+    if (this.schedValWrap) {
+      this.schedValWrap.style.display = (m.period_type === "once") ? "none" : "block";
+    }
+    if (this.schedPeriodVal) {
+      this.schedPeriodVal.value = m.period_value || 1;
+    }
+
+    // Fecha/Hora de próximo disparo
+    if (this.schedStartAt) {
+      const targetDateStr = m.next_run_at || m.start_at || "";
+      if (targetDateStr) {
+        try {
+          const cleanIso = targetDateStr.replace(" ", "T").slice(0, 16);
+          this.schedStartAt.value = cleanIso;
+        } catch (e) {
+          this.schedStartAt.value = "";
+        }
+      } else {
+        this.schedStartAt.value = "";
+      }
+    }
+
+    if (this.schedFormCard) {
+      this.schedFormCard.style.display = "block";
+      this.schedFormCard.scrollIntoView({ behavior: "smooth" });
+    }
+  }
+
+  renderScheduledMessages(messages) {
+    this.scheduledMessages = messages || [];
+    if (!this.schedulesTbody) return;
+
+    const activeCount = this.scheduledMessages.filter(m => m.enabled).length;
+    if (this.countScheds) this.countScheds.textContent = activeCount;
+
+    if (this.scheduledMessages.length === 0) {
+      this.schedulesTbody.innerHTML = `
+        <tr><td colspan="7" style="text-align: center; color: var(--text-dim); padding: 20px;">No hay mensajes programados actualmente.</td></tr>
+      `;
+      return;
+    }
+
+    this.schedulesTbody.innerHTML = this.scheduledMessages.map(m => {
+      const isEnabled = !!m.enabled;
+      let chLabel = "Todos";
+      if (m.channels !== "all" && m.channels !== "*") {
+        try {
+          const parsed = typeof m.channels === "string" ? JSON.parse(m.channels) : m.channels;
+          if (Array.isArray(parsed)) chLabel = parsed.map(c => `Ch ${c}`).join(", ");
+          else chLabel = `Ch ${m.channels}`;
+        } catch (e) {
+          chLabel = String(m.channels);
+        }
+      }
+
+      let freqStr = "";
+      if (m.period_type === "hours") freqStr = `Cada ${m.period_value} h`;
+      else if (m.period_type === "days") freqStr = `Cada ${m.period_value} días`;
+      else freqStr = "Una sola vez";
+
+      const lastSent = m.last_sent_at ? this.formatRelativeOrDate(m.last_sent_at) : "Nunca";
+      const nextRun = m.next_run_at ? this.formatRelativeOrDate(m.next_run_at) : (isEnabled ? "Inmediato" : "Pausado");
+
+      const isCmd = (m.message || "").trim().startsWith("/") || (m.message || "").trim().startsWith("!");
+      const msgDisplay = isCmd
+        ? `<span class="badge" style="background: var(--warning-bg); color: var(--warning); margin-right: 6px; font-weight: 700;">⚡ COMANDO</span><code style="color: var(--warning); font-weight: 600; font-size: 0.9rem;">${this.escapeHtml(m.message)}</code>`
+        : `<strong>${this.escapeHtml(m.message)}</strong>`;
+
+      return `
+        <tr>
+          <td>
+            <button class="btn-secondary" style="padding: 2px 8px; font-size: 0.75rem; background: ${isEnabled ? "var(--success-bg)" : "var(--danger-bg)"}; color: ${isEnabled ? "var(--success)" : "var(--danger)"};" onclick="window.dashboard.toggleSchedule(${m.id}, ${!isEnabled})">
+              ${isEnabled ? "ACTIVO" : "PAUSADO"}
+            </button>
+          </td>
+          <td>
+            ${msgDisplay}
+          </td>
+          <td><span class="badge" style="background: var(--primary-bg); color: var(--primary);">${this.escapeHtml(chLabel)}</span></td>
+          <td>${this.escapeHtml(freqStr)}</td>
+          <td style="font-size: 0.8rem; color: var(--text-muted);">${lastSent}</td>
+          <td style="font-size: 0.8rem; color: var(--primary); font-weight: 600;">${nextRun}</td>
+          <td>
+            <div style="display: flex; gap: 6px; align-items: center;">
+              <button class="btn-secondary" style="padding: 3px 8px; font-size: 0.75rem; color: var(--primary);" title="Editar Programación" onclick="window.dashboard.editSchedule(${m.id})">
+                ✏️ Editar
+              </button>
+              <button class="btn-secondary" style="padding: 3px 8px; font-size: 0.75rem; color: var(--danger);" title="Eliminar Programación" onclick="window.dashboard.deleteSchedule(${m.id})">
+                🗑️ Borrar
+              </button>
+            </div>
+          </td>
+        </tr>
+      `;
+    }).join("");
+  }
+
+  toggleSchedule(id, enable) {
+    this.sendAction("toggle_scheduled_message", { id: id, enabled: enable });
+  }
+
+  deleteSchedule(id) {
+    if (confirm("¿Estás seguro de que deseas eliminar este mensaje programado?")) {
+      this.sendAction("delete_scheduled_message", { id: id });
+    }
+  }
+
+  // ==========================================================================
+  // Módulo 06: Seguridad, Anti-Abuso y Bloqueos
+  // ==========================================================================
+  handleManualBlock() {
+    if (!this.blockNodeId) return;
+    const nodeId = this.blockNodeId.value.trim();
+    if (!nodeId) {
+      this.showToast("Debes especificar un ID o nombre de nodo", "warning");
+      return;
+    }
+
+    const reason = this.blockReason ? this.blockReason.value.trim() : "Bloqueo manual administrativo";
+    const duration = this.blockDuration ? this.blockDuration.value : "permanent";
+
+    let expiresAt = null;
+    const now = Date.now();
+    if (duration === "1h") expiresAt = new Date(now + 3600 * 1000).toISOString();
+    else if (duration === "24h") expiresAt = new Date(now + 24 * 3600 * 1000).toISOString();
+    else if (duration === "7d") expiresAt = new Date(now + 7 * 24 * 3600 * 1000).toISOString();
+
+    this.sendAction("block_node_manual", {
+      node_id: nodeId,
+      reason: reason,
+      expires_at: expiresAt,
+    });
+  }
+
+  renderBlockedNodes(nodes) {
+    this.blockedNodes = nodes || [];
+    if (!this.blockedNodesTbody) return;
+
+    const activeCount = this.blockedNodes.filter(n => n.active).length;
+    if (this.countBlocked) this.countBlocked.textContent = activeCount;
+
+    if (this.blockedNodes.length === 0) {
+      this.blockedNodesTbody.innerHTML = `
+        <tr><td colspan="6" style="text-align: center; color: var(--text-dim); padding: 20px;">No hay nodos bloqueados actualmente.</td></tr>
+      `;
+      return;
+    }
+
+    this.blockedNodesTbody.innerHTML = this.blockedNodes.map(n => {
+      const isActive = !!n.active;
+      const typeBadge = n.block_type === "auto"
+        ? `<span class="badge" style="background: var(--warning-bg); color: var(--warning);">AUTO</span>`
+        : `<span class="badge" style="background: var(--danger-bg); color: var(--danger);">MANUAL</span>`;
+      
+      const createdStr = this.formatRelativeOrDate(n.created_at);
+      const expiresStr = n.expires_at ? this.formatRelativeOrDate(n.expires_at) : `<span style="color: var(--text-dim);">Permanente</span>`;
+
+      return `
+        <tr>
+          <td>${typeBadge}</td>
+          <td>
+            <strong>${this.escapeHtml(n.node_name || n.node_id)}</strong>
+            <div style="font-family: monospace; font-size: 0.75rem; color: var(--text-dim);">${this.escapeHtml(n.node_id)}</div>
+          </td>
+          <td style="font-size: 0.85rem; color: var(--text-muted);">${this.escapeHtml(n.reason || "--")}</td>
+          <td style="font-size: 0.8rem; color: var(--text-dim);">${createdStr}</td>
+          <td style="font-size: 0.8rem; color: var(--primary);">${expiresStr}</td>
+          <td>
+            ${isActive ? `
+              <button class="btn-secondary" style="padding: 3px 8px; font-size: 0.75rem; color: var(--success);" onclick="window.dashboard.unblockNode('${n.node_id}')">
+                Desbloquear
+              </button>
+            ` : `<span style="color: var(--text-dim); font-size: 0.8rem;">Inactivo</span>`}
+          </td>
+        </tr>
+      `;
+    }).join("");
+  }
+
+  unblockNode(nodeId) {
+    this.sendAction("unblock_node", { node_id: nodeId });
+  }
+
+  renderAbuseLogs(logs) {
+    this.abuseLogs = logs || [];
+    if (!this.abuseLogsTbody) return;
+
+    if (this.abuseLogs.length === 0) {
+      this.abuseLogsTbody.innerHTML = `
+        <tr><td colspan="5" style="text-align: center; color: var(--text-dim); padding: 20px;">No hay registros de abusos o saturación recientes.</td></tr>
+      `;
+      return;
+    }
+
+    this.abuseLogsTbody.innerHTML = this.abuseLogs.map(l => {
+      const timeStr = l.created_at ? l.created_at.replace("T", " ").substring(0, 19) : "--";
+      return `
+        <tr>
+          <td style="font-size: 0.8rem; color: var(--text-muted);">${timeStr}</td>
+          <td style="font-family: monospace; font-size: 0.85rem;">${this.escapeHtml(l.node_id)}</td>
+          <td><span class="badge" style="background: var(--danger-bg); color: var(--danger);">${this.escapeHtml(l.action_taken || "bloqueo")}</span></td>
+          <td>${l.command ? `<code style="color: var(--warning);">/${this.escapeHtml(l.command)}</code>` : "--"}</td>
+          <td style="font-size: 0.85rem; color: var(--text-muted);">${this.escapeHtml(l.reason || "--")}</td>
+        </tr>
+      `;
+    }).join("");
+  }
+
+  // ==========================================================================
   // Renderizado: Encuestas & Clima
   // ==========================================================================
   renderPolls(polls) {
@@ -1374,6 +1935,290 @@ class MeshDashboard {
     }
 
     this.weatherContent.textContent = weather.summary || weather.data_raw || "Predicción disponible.";
+  }
+
+  // ==========================================================================
+  // Guía Interactiva de Comandos (Pestaña 9)
+  // ==========================================================================
+  renderCommandsGuide(filterText = "") {
+    if (!this.commandsContainer) return;
+
+    const query = (filterText || "").toLowerCase().trim();
+
+    const categories = [
+      {
+        title: "🌦️ Meteorología, Marítimo y Naturaleza",
+        commands: [
+          {
+            name: "/tiempo",
+            alias: "/weather",
+            inGroup: true,
+            desc: "Predicción meteorológica del día actual para la provincia o municipio configurado.",
+            usage: "/tiempo",
+            examples: ["/tiempo", "/tiempo real", "/tiempo sevilla"],
+          },
+          {
+            name: "/prevision",
+            inGroup: true,
+            desc: "Previsión meteorológica por periodos: 3 días (defecto), mañana, 1-7 días o 1-12 horas.",
+            usage: "/prevision [mañana | X dias | X horas]",
+            examples: ["/prevision", "/prevision mañana", "/prevision 4 dias", "/prevision 6 horas"],
+          },
+          {
+            name: "/marea",
+            inGroup: true,
+            desc: "Pleamares y bajamares del día. Con /marea mar consulta el boletín marítimo costero de Cádiz.",
+            usage: "/marea [mar | costa]",
+            examples: ["/marea", "/marea mar"],
+          },
+          {
+            name: "/avisos",
+            inGroup: true,
+            desc: "Alertas meteorológicas oficiales vigentes emitidas por Meteoalerta / AEMET con color y vigencia.",
+            usage: "/avisos",
+            examples: ["/avisos"],
+          },
+          {
+            name: "/sol",
+            inGroup: true,
+            desc: "Horas de orto (amanecer), ocaso (atardecer) y duración solar del día (cálculo 100% offline).",
+            usage: "/sol",
+            examples: ["/sol"],
+          },
+          {
+            name: "/luna",
+            inGroup: true,
+            desc: "Fase lunar actual, porcentaje de iluminación y próximas fases lunares (100% offline).",
+            usage: "/luna",
+            examples: ["/luna"],
+          },
+          {
+            name: "/boletin",
+            inGroup: true,
+            desc: "Resumen consolidado en 2 partes: Sol, Luna, Tiempo Provincial, Mareas costeras y Avisos.",
+            usage: "/boletin [matinal | vespertino]",
+            examples: ["/boletin", "/boletin matinal", "/boletin vespertino"],
+          },
+          {
+            name: "/maremoto",
+            inGroup: true,
+            desc: "Contador histórico y efeméride del maremoto de 1755 en Chipiona y costas de Cádiz.",
+            usage: "/maremoto",
+            examples: ["/maremoto"],
+          },
+        ],
+      },
+      {
+        title: "📻 Red Meshtastic, Repetidores y Enlaces",
+        commands: [
+          {
+            name: "/ping",
+            alias: "/test",
+            inGroup: true,
+            desc: "Comprueba recepción, SNR, RSSI y número de saltos (hops) directos o repetidos.",
+            usage: "/ping",
+            examples: ["/ping", "/test"],
+          },
+          {
+            name: "/routers",
+            alias: "/repetidores",
+            inGroup: true,
+            desc: "Estado de repetidores y routers clave de la malla (tiempo desde último contacto, saltos y SNR).",
+            usage: "/routers",
+            examples: ["/routers", "/repetidores"],
+          },
+          {
+            name: "/snr",
+            inGroup: true,
+            desc: "Calidad de señal del nodo pasarela/base (RAU0) y media general de SNR de la malla RF.",
+            usage: "/snr",
+            examples: ["/snr"],
+          },
+          {
+            name: "/nodos",
+            inGroup: true,
+            desc: "Conteo total de nodos descubiertos en la base de datos (RF, MQTT y activos en las últimas 24h).",
+            usage: "/nodos",
+            examples: ["/nodos"],
+          },
+        ],
+      },
+      {
+        title: "🤖 Asistente de IA y Comunidad",
+        commands: [
+          {
+            name: "/ia",
+            inGroup: true,
+            desc: "Asistente de emergencias impulsado por IA mínima (RAG) con cola secuencial y memoria por nodo.",
+            usage: "/ia <pregunta> | /ia reset",
+            examples: ["/ia primeros auxilios", "/ia reset"],
+          },
+          {
+            name: "/chiste",
+            inGroup: true,
+            desc: "Cuenta un chiste aleatorio del repositorio o añade una nueva propuesta comunitaria.",
+            usage: "/chiste | /chiste add <texto>",
+            examples: ["/chiste", "/chiste add ¿Qué le dice un bit a otro? Nos vemos en el bus."],
+          },
+          {
+            name: "/encuesta",
+            inGroup: true,
+            desc: "Sistema de encuestas y votaciones comunitarias por radio en la malla LoRa.",
+            usage: "/encuesta [nueva | voto | ver | lista | cerrar]",
+            examples: ["/encuesta ver", "/encuesta voto 1", "/encuesta nueva ¿Quedada? | Sí | No"],
+          },
+          {
+            name: "/dado",
+            inGroup: true,
+            desc: "Tirada de dados aleatorios (1d6 por defecto, N caras o formato NdM).",
+            usage: "/dado [N | NdM]",
+            examples: ["/dado", "/dado 20", "/dado 2d6"],
+          },
+          {
+            name: "/bola8",
+            alias: "/8ball",
+            inGroup: true,
+            desc: "Bola mágica 8 para respuestas aleatorias de sí o no.",
+            usage: "/bola8 <pregunta>",
+            examples: ["/bola8 ¿Lloverá mañana?"],
+          },
+        ],
+      },
+      {
+        title: "⚙️ Sistema, Telemetría y Bot",
+        commands: [
+          {
+            name: "/help",
+            inGroup: false,
+            desc: "Muestra la lista de comandos disponibles o la ayuda detallada de un comando específico.",
+            usage: "/help [comando]",
+            examples: ["/help", "/help prevision", "/help marea"],
+          },
+          {
+            name: "/about",
+            inGroup: false,
+            desc: "Información técnica sobre el bot, hardware, software y autor.",
+            usage: "/about",
+            examples: ["/about"],
+          },
+          {
+            name: "/estado",
+            alias: "/status, /salud, /bot, /telemetria",
+            inGroup: true,
+            desc: "Telemetría hardware de la Raspberry Pi: temperatura CPU, carga, memoria RAM, disco y uptime.",
+            usage: "/estado",
+            examples: ["/estado", "/salud", "/bot"],
+          },
+          {
+            name: "/uptime",
+            inGroup: false,
+            desc: "Tiempo de encendido continuo y funcionamiento ininterrumpido del bot.",
+            usage: "/uptime",
+            examples: ["/uptime"],
+          },
+        ],
+      },
+    ];
+
+    let html = "";
+    let totalFound = 0;
+
+    categories.forEach(cat => {
+      const filtered = cat.commands.filter(c => {
+        if (!query) return true;
+        return (
+          c.name.toLowerCase().includes(query) ||
+          (c.alias && c.alias.toLowerCase().includes(query)) ||
+          c.desc.toLowerCase().includes(query) ||
+          c.usage.toLowerCase().includes(query) ||
+          (c.examples && c.examples.some(ex => ex.toLowerCase().includes(query)))
+        );
+      });
+
+      if (filtered.length > 0) {
+        totalFound += filtered.length;
+        html += `
+          <div class="commands-category">
+            <div class="commands-category-title">${cat.title} (${filtered.length})</div>
+            <div class="commands-grid">
+        `;
+
+        filtered.forEach(c => {
+          const badgeClass = c.inGroup ? "badge-channel" : "badge-dm";
+          const badgeText = c.inGroup ? "📢 Canal y Privado" : "💬 Solo Privado (DM)";
+          const aliasHtml = c.alias ? `<span style="font-size: 0.75rem; color: var(--text-dim); margin-left: 6px;">alias: ${this.escapeHtml(c.alias)}</span>` : "";
+
+          html += `
+            <div class="command-card">
+              <div>
+                <div class="command-header">
+                  <div style="display: flex; align-items: center; flex-wrap: wrap;">
+                    <span class="command-name" title="Haz clic para probar en el chat" onclick="dashboard.selectCommandForChat('${c.name}')">${c.name}</span>
+                    ${aliasHtml}
+                  </div>
+                  <span class="command-badge ${badgeClass}">${badgeText}</span>
+                </div>
+                <div class="command-desc" style="margin-top: 8px;">
+                  ${this.escapeHtml(c.desc)}
+                </div>
+              </div>
+
+              <div>
+                <div style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 4px;">Sintaxis y Ejemplos:</div>
+                <div class="command-usage-box" title="Haz clic para copiar" onclick="dashboard.copyCommandToClipboard('${c.usage}')">
+                  <span>${this.escapeHtml(c.usage)}</span>
+                  <button class="btn-try-cmd" title="Probar en el chat" onclick="event.stopPropagation(); dashboard.selectCommandForChat('${c.name}')">💬</button>
+                </div>
+                ${
+                  c.examples && c.examples.length > 1
+                    ? `<div style="display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px;">
+                        ${c.examples.map(ex => `<button class="filter-chip" style="font-size: 0.72rem; padding: 2px 6px;" onclick="dashboard.selectCommandForChat('${ex}')">${this.escapeHtml(ex)}</button>`).join("")}
+                       </div>`
+                    : ""
+                }
+              </div>
+            </div>
+          `;
+        });
+
+        html += `
+            </div>
+          </div>
+        `;
+      }
+    });
+
+    if (totalFound === 0) {
+      html = `
+        <div class="card" style="text-align: center; padding: 40px 20px; color: var(--text-muted);">
+          <div style="font-size: 2rem; margin-bottom: 8px;">🔍</div>
+          <p>No se encontraron comandos que coincidan con <strong>"${this.escapeHtml(query)}"</strong>.</p>
+          <button class="btn btn-secondary" style="margin-top: 10px;" onclick="document.getElementById('commands-search-input').value = ''; dashboard.renderCommandsGuide('');">Limpiar filtro</button>
+        </div>
+      `;
+    }
+
+    this.commandsContainer.innerHTML = html;
+  }
+
+  selectCommandForChat(cmdText) {
+    if (!this.chatText) return;
+    this.switchTab("chat");
+    this.chatText.value = cmdText;
+    this.chatText.focus();
+    this.showToast(`Comando "${cmdText}" insertado en el chat`, "info");
+  }
+
+  copyCommandToClipboard(text) {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(() => {
+        this.showToast(`Copiado: ${text}`, "info");
+      }).catch(() => {
+        this.selectCommandForChat(text);
+      });
+    } else {
+      this.selectCommandForChat(text);
+    }
   }
 
   // ==========================================================================

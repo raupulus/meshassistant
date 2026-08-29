@@ -1,104 +1,163 @@
-def prevision_callback(interface, args, msg, metadata):
-    """/prevision — Predicción meteorológica de varios días (municipio).
+import re
+from functions import log_p, reply_long
+from datetime import datetime, timedelta
+from Models.Database import Database
+from Models.Aemet import Aemet
 
-    Estrategia BD-first con fallback on-demand:
-    1. Lee la última previsión multi-día guardada por el cron (scope='forecast').
-    2. Si no hay dato o está obsoleto (>12 h), intenta descargarla en vivo de
-       AEMET en ese momento (requiere Internet en la Pi).
-    3. Si tampoco hay, cae al texto general de provincia disponible en BD.
+
+def _parse_prevision_args(args: list) -> tuple:
+    """Parsea los argumentos de /prevision.
+
+    Devuelve una tupla:
+      - ('daily', int_days) -> entre 1 y 7
+      - ('tomorrow', None)
+      - ('hourly', int_hours) -> entre 1 y 12
     """
-    from functions import reply_long
-    from datetime import datetime, timedelta
+    if not args:
+        return ('daily', 3)
+
+    raw = ' '.join(args).lower().strip()
+
+    if 'mañana' in raw or 'manana' in raw:
+        return ('tomorrow', None)
+
+    # Detección de horas: "6 horas", "6h", "horas 6", "12 horas", etc.
+    m_h = re.search(r'(\d+)\s*(?:h|horas?)|horas?\s*(\d+)', raw)
+    if m_h or 'hora' in raw:
+        val = 6
+        if m_h:
+            num_str = m_h.group(1) or m_h.group(2)
+            if num_str:
+                try:
+                    val = int(num_str)
+                except Exception:
+                    pass
+        clamped_h = max(1, min(12, val))
+        return ('hourly', clamped_h)
+
+    # Detección de días: "4 dias", "4d", "dias 4", "7 dias", etc.
+    m_d = re.search(r'(\d+)\s*(?:d|dias?)|dias?\s*(\d+)', raw)
+    if m_d or 'dia' in raw:
+        val = 3
+        if m_d:
+            num_str = m_d.group(1) or m_d.group(2)
+            if num_str:
+                try:
+                    val = int(num_str)
+                except Exception:
+                    pass
+        clamped_d = max(1, min(7, val))
+        return ('daily', clamped_d)
+
+    # Si se pasa un número suelto, ej. "/prevision 5"
+    if raw.isdigit():
+        val = int(raw)
+        return ('daily', max(1, min(7, val)))
+
+    return ('daily', 3)
+
+
+def prevision_callback(interface, args, msg, metadata):
+    """/prevision — Predicción meteorológica flexible de AEMET.
+
+    - Sin argumentos: 3 días (por defecto).
+    - /prevision mañana: predicción específica del día siguiente.
+    - /prevision <1-7> dias: previsión de 1 a 7 días.
+    - /prevision <1-12> horas: tramos horarios para las próximas 1 a 12 horas.
+    """
+    log_p(f"Comando /prevision recibido con args={args}")
+    db = Database()
+    aemet = Aemet()
+    mode, param = _parse_prevision_args(args)
 
     text = None
 
-    # 1) BD: última previsión multi-día
-    record = None
-    try:
-        from Models.Database import Database
-        record = Database().aemet_weather_get_latest(scope='forecast')
-    except Exception as e:
-        log_p(f"Error leyendo previsión: {e}", level="WARN")
+    # ---------- CASO 1: HORARIA (1 a 12 horas) ----------
+    if mode == 'hourly':
+        hours = param or 6
+        rec_h = db.aemet_forecast_hourly_get_latest()
+        if rec_h and rec_h.get('data'):
+            text = aemet.format_hourly_forecast(rec_h['data'], hours=hours)
 
-    stale = True
-    if record and record.get('content'):
-        try:
-            created = datetime.fromisoformat(record.get('created_at'))
-            stale = (datetime.now() - created) > timedelta(hours=12)
-        except Exception:
-            stale = True
-        if not stale:
-            text = record.get('content')
+        if not text:
+            # Fallback on-demand con timeout defensivo
+            try:
+                data_h = aemet.fetch_hourly_forecast()
+                if data_h:
+                    text = aemet.format_hourly_forecast(data_h, hours=hours)
+                    summary_24h = aemet.format_hourly_forecast(data_h, hours=12)
+                    db.aemet_forecast_hourly_insert(
+                        city_code=aemet.resolve_city_code() or '11016',
+                        city_name=aemet.city or 'Chipiona',
+                        province=aemet.province or 'Cádiz',
+                        data_json=data_h,
+                        summary_24h=summary_24h,
+                    )
+            except Exception as e:
+                log_p(f"Error previsión horaria on-demand: {e}", level="WARN")
 
-    # 2) Fallback on-demand (en vivo) si no hay dato fresco.
-    # Se limita la petición de red a una vez cada ONDEMAND_REFRESH_MIN minutos
-    # (def. 10) para no bloquear el hilo de recepción en cada /prevision, y con
-    # timeout bajo (4s, 1 intento) porque corre dentro del callback.
-    if text is None:
-        try:
-            import env
-            if getattr(env, 'AEMET_API_KEY', None):
-                from Models.Database import Database
-                db = Database()
-                refresh_min = int(getattr(env, 'ONDEMAND_REFRESH_MIN', 10) or 10)
-                last = db.get_task_last_run('prevision_ondemand')
-                allow_net = True
-                if last:
-                    try:
-                        if datetime.now() - datetime.fromisoformat(last) < timedelta(minutes=refresh_min):
-                            allow_net = False
-                    except Exception:
-                        pass
+    # ---------- CASO 2: MAÑANA ----------
+    elif mode == 'tomorrow':
+        rec_d = db.aemet_forecast_daily_get_latest()
+        if rec_d and rec_d.get('data'):
+            text = aemet.format_tomorrow_forecast(rec_d['data'])
 
-                if allow_net:
-                    from Models.Aemet import Aemet
-                    aemet = Aemet(timeout=4.0, retries=1)
-                    days = int(getattr(env, 'AEMET_FORECAST_DAYS', 4) or 4)
-                    db.set_task_run('prevision_ondemand')  # marca el intento
-                    live = aemet.fetch_city_forecast_multi(days=days)
-                    if live:
-                        text = live
-                        record = None # Limpiamos record porque tenemos dato fresco
-                        # Cachear para próximas consultas offline
-                        try:
-                            db.aemet_weather_insert(
-                                scope='forecast', content=live,
-                                province=aemet.province, city=aemet.city,
-                                city_code=aemet.resolve_city_code(), day='multi', data_raw=live,
-                            )
-                        except Exception:
-                            pass
-        except Exception as e:
-            log_p(f"Error previsión on-demand: {e}", level="WARN")
+        if not text:
+            # Fallback texto provincial de mañana si está en BD
+            rec_w = db.aemet_weather_get_latest(day='manana')
+            if rec_w and rec_w.get('content'):
+                text = f"🌦️ Cádiz (Mañana): {rec_w.get('content')}"
 
-    # 3) Último recurso: texto guardado de provincia/municipio (el de /weather)
-    if text is None and record and record.get('content'):
-        text = record.get('content')
-    if text is None:
-        try:
-            from Models.Database import Database
-            alt = Database().aemet_weather_get_latest()
-            if alt and alt.get('content'):
-                text = alt.get('content')
-                record = alt # Para validación de antigüedad
-        except Exception:
-            pass
+        if not text:
+            # Fallback on-demand
+            try:
+                data_d = aemet.fetch_daily_forecast()
+                if data_d:
+                    text = aemet.format_tomorrow_forecast(data_d)
+                    db.aemet_forecast_daily_insert(
+                        city_code=aemet.resolve_city_code() or '11016',
+                        city_name=aemet.city or 'Chipiona',
+                        province=aemet.province or 'Cádiz',
+                        data_json=data_d,
+                        summary_3d=aemet.format_daily_forecast(data_d, days=3),
+                        summary_7d=aemet.format_daily_forecast(data_d, days=7),
+                    )
+            except Exception as e:
+                log_p(f"Error previsión mañana on-demand: {e}", level="WARN")
+
+    # ---------- CASO 3: DIARIA MULTI-DÍA (1 a 7 días) ----------
+    else:
+        days = param or 3
+        rec_d = db.aemet_forecast_daily_get_latest()
+        if rec_d and rec_d.get('data'):
+            text = aemet.format_daily_forecast(rec_d['data'], days=days)
+
+        if not text:
+            # Fallback on-demand
+            try:
+                data_d = aemet.fetch_daily_forecast()
+                if data_d:
+                    text = aemet.format_daily_forecast(data_d, days=days)
+                    db.aemet_forecast_daily_insert(
+                        city_code=aemet.resolve_city_code() or '11016',
+                        city_name=aemet.city or 'Chipiona',
+                        province=aemet.province or 'Cádiz',
+                        data_json=data_d,
+                        summary_3d=aemet.format_daily_forecast(data_d, days=3),
+                        summary_7d=aemet.format_daily_forecast(data_d, days=7),
+                    )
+            except Exception as e:
+                log_p(f"Error previsión multi-día on-demand: {e}", level="WARN")
+
+    # ---------- FALLBACK RESIDUAL ----------
+    if not text:
+        # Último recurso: lo que haya en aemet_weather
+        rec_w = db.aemet_weather_get_latest()
+        if rec_w and rec_w.get('content'):
+            text = f"🌦️ Previsión: {rec_w.get('content')}"
 
     if not text:
         interface.reply_to_message('Sin previsión disponible todavía. Inténtalo más tarde.', metadata)
         return
 
-    # Añadir advertencia si es viejo
-    try:
-        if record and record.get('created_at'):
-            from datetime import datetime, timedelta
-            created = datetime.fromisoformat(record.get('created_at'))
-            diff = datetime.now() - created
-            if diff > timedelta(hours=24):
-                text += f" [⚠️ Info de hace {diff.days} días por fallo de internet]"
-    except Exception:
-        pass
-
-    reply_long(interface, metadata, f'Previsión: {text}')
-    # El registro en commands_sent se hace de forma centralizada en
-    # SerialInterface.on_receive_text tras ejecutar el callback.
+    reply_long(interface, metadata, text)
