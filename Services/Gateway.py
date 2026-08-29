@@ -237,6 +237,13 @@ class GatewayService:
                 outbox_id = self.db.enqueue_outbox("__REQ_NODEINFO__", dest=str(node_id), channel=0)
                 response["data"] = {"queued": True, "outbox_id": outbox_id, "node_id": str(node_id)}
 
+            elif action in ("request_telemetry", "request_battery"):
+                node_id = params.get("node_id") or params.get("dest")
+                if not node_id:
+                    raise ValueError("Parámetro 'node_id' o 'dest' obligatorio")
+                outbox_id = self.db.enqueue_outbox("__REQ_TELEMETRY__", dest=str(node_id), channel=0)
+                response["data"] = {"queued": True, "outbox_id": outbox_id, "node_id": str(node_id)}
+
             elif action == "get_polls":
                 polls = self.db.encuesta_list_active()
                 # Enriquecer con resultados de conteo

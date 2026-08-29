@@ -347,10 +347,34 @@ Emitido en tiempo real cuando llega un mensaje por radio (canal o privado).
     "channel": 0
   },
   "error": null
+### 3.4. `request_telemetry` (Solicitar Batería y Métricas a un Nodo/Router)
+- **Petición:**
+```json
+{
+  "action": "request_telemetry",
+  "req_id": "tel_01",
+  "params": {
+    "node_id": "!12345678"
+  }
+}
+```
+- **Respuesta:**
+```json
+{
+  "type": "response",
+  "action": "request_telemetry",
+  "req_id": "tel_01",
+  "success": true,
+  "data": {
+    "queued": true,
+    "outbox_id": 89,
+    "node_id": "!12345678"
+  },
+  "error": null
 }
 ```
 
-### 3.4. `get_polls` (Consultar Encuestas Comunitarias)
+### 3.5. `get_polls` (Consultar Encuestas Comunitarias)
 - **Petición:**
 ```json
 {

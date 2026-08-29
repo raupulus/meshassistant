@@ -1145,6 +1145,9 @@ class MeshDashboard {
             <span>Última señal:</span>
             <span>${lastSeen}</span>
           </div>
+          <button class="btn-secondary card-action-btn" style="margin-bottom: 6px;" onclick="window.dashboard.requestTelemetry('${routerId}', this)">
+            🔋 Pedir Batería
+          </button>
           <button class="btn-secondary card-action-btn" onclick="window.dashboard.requestTraceTo('${routerId}', this)">
             📍 Lanzar Traceroute
           </button>
@@ -1153,11 +1156,24 @@ class MeshDashboard {
     }).join("");
   }
 
+  requestTelemetry(nodeId, btn) {
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = "Pidiendo...";
+      setTimeout(() => {
+        btn.disabled = false;
+        btn.textContent = btn.classList.contains("card-action-btn") ? "🔋 Pedir Batería" : "🔋 Bat";
+      }, 3000);
+    }
+    this.sendAction("request_telemetry", { node_id: nodeId });
+    this.showToast(`Solicitud de batería enviada a ${nodeId}`);
+  }
+
   requestTraceTo(nodeId, btn) {
     if (btn) {
       btn.disabled = true;
       btn.textContent = "Encolando...";
-      setTimeout(() => { btn.disabled = false; btn.textContent = "📍 Lanzar Traceroute"; }, 3000);
+      setTimeout(() => { btn.disabled = false; btn.textContent = btn.classList.contains("card-action-btn") ? "📍 Lanzar Traceroute" : "Trace"; }, 3000);
     }
     this.sendAction("request_trace", { dest: nodeId });
     this.showToast(`Traceroute encolado hacia ${nodeId}`);
@@ -1372,6 +1388,9 @@ class MeshDashboard {
           <td style="font-size: 0.8rem; color: var(--text-dim);">${createdAtStr}</td>
           <td>
             <div style="display: flex; gap: 4px;">
+              <button class="btn-secondary" style="padding: 3px 6px; font-size: 0.75rem;" title="Pedir Batería / Telemetría por LoRa" onclick="window.dashboard.requestTelemetry('${nodeId}', this)">
+                🔋 Bat
+              </button>
               <button class="btn-secondary" style="padding: 3px 6px; font-size: 0.75rem;" title="Lanzar Traceroute" onclick="window.dashboard.requestTraceTo('${nodeId}', this)">
                 Trace
               </button>

@@ -136,7 +136,17 @@ class TestGatewayService(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(resp_fav["success"])
         self.assertTrue(resp_fav["data"]["is_favorite"])
 
-        # 5. get_weather y get_tides
+        # 5. request_telemetry / request_battery
+        resp_telem = await self.gateway._handle_action(mock_ws, {
+            "action": "request_telemetry",
+            "req_id": "req_05",
+            "params": {"node_id": "!testnode"},
+        })
+        self.assertTrue(resp_telem["success"])
+        self.assertTrue(resp_telem["data"]["queued"])
+        self.assertEqual(resp_telem["data"]["node_id"], "!testnode")
+
+        # 6. get_weather y get_tides
         resp_w = await self.gateway._handle_action(mock_ws, {"action": "get_weather"})
         self.assertTrue(resp_w["success"])
         resp_t = await self.gateway._handle_action(mock_ws, {"action": "get_tides"})

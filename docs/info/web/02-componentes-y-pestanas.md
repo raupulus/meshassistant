@@ -36,7 +36,9 @@ La aplicación web está estructurada como una SPA (Single Page Application) rea
   - **Directo a Base (RAU0):** Indicador verde con el SNR exterior del enlace.
   - **Vía Repetidores:** Indicador azul con la ruta completa y nombres legibles (`RAU0 ➔ CO01 ➔ CO04`).
 - **Telemetría de Batería:** Nivel de carga (`⚡ 100%`) y voltaje (`4.18V`) cuando está disponible.
-- **Acción Rápida:** Botón *"📍 Lanzar Traceroute"* con protección anti-doble clic.
+- **Acciones Rápidas:**
+  - Botón **`🔋 Pedir Batería`**: Solicita por radio LoRa la telemetría de batería y voltaje actualizada al router.
+  - Botón **`📍 Lanzar Traceroute`**: Encola un traceroute hacia el router con protección anti-doble clic.
 
 ---
 
@@ -64,7 +66,10 @@ La aplicación web está estructurada como una SPA (Single Page Application) rea
 - **Detalle de Columnas:**
   - **Primera Vez:** Fecha en que el nodo fue descubierto por primera vez (`DD/MM/YYYY`).
   - **Última Señal:** Formateo dinámico (`HH:MM:SS` para hoy / `DD/MM HH:MM` para días previos).
-  - **Acciones:** Botón **`Trace`** (lanzar traceroute) y botón **`ℹ️ Info`** (solicitar NodeInfo por radio LoRa bajo demanda).
+  - **Acciones:**
+    - Botón **`🔋 Bat`**: Solicita por radio LoRa la telemetría de batería y voltaje del nodo bajo demanda.
+    - Botón **`Trace`**: Lanza y encola un traceroute hacia el nodo.
+    - Botón **`ℹ️ Info`**: Solicita NodeInfo por radio LoRa bajo demanda.
 
 ---
 
