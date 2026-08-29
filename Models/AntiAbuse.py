@@ -35,6 +35,15 @@ class AntiAbuseManager:
         if not node_id:
             return True, None
 
+        # 0. Comprobar si está marcado como ignorado en el sistema de vigilancia
+        try:
+            from Models.MeshWatcher import MeshWatcher
+            if MeshWatcher.is_ignored(node_id):
+                log_p(f"[AntiAbuse] Descartado comando '{command}' de {node_id}: nodo ignorado en bot", level="DEBUG")
+                return False, "Nodo ignorado en bot"
+        except Exception:
+            pass
+
         # 1. Comprobar lista negra en base de datos (bloqueos manuales o automáticos activos)
         blocked, info = self.db.is_node_blocked(node_id)
         if blocked:
@@ -84,6 +93,13 @@ class AntiAbuseManager:
                 action_taken=ban_action,
                 reason=reason_str,
             )
+
+            # Auto-reportar en el sistema de vigilancia
+            try:
+                from Models.MeshWatcher import MeshWatcher
+                MeshWatcher.report_command_spam(node_id, len(q) + 1, name=node_name)
+            except Exception:
+                pass
 
             # Notificar en tiempo real por IPC a la interfaz web
             try:

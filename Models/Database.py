@@ -2288,3 +2288,140 @@ class Database:
                 (int(limit),),
             )
             return [dict(r) for r in cur.fetchall()]
+
+    # ---------- VIGILANCIA: NODOS AUTO-REPORTADOS (MALA PRAXIS / SATURACIÓN) ----------
+    def record_auto_reported_node(
+        self,
+        node_id: str,
+        reason_code: str,
+        reason_desc: str,
+        details: Optional[Dict[str, Any] | str] = None,
+        short_name: Optional[str] = None,
+        name: Optional[str] = None,
+    ) -> int:
+        """Registra o actualiza una incidencia de mala praxis para un nodo.
+        
+        Si ya existe la combinación (node_id, reason_code), incrementa event_count
+        y actualiza last_detected_at y last_details.
+        """
+        now_iso = datetime.now().isoformat(timespec="seconds")
+        details_str = json.dumps(details, ensure_ascii=False) if isinstance(details, dict) else (details or None)
+
+        with closing(self._connect()) as conn:
+            # Obtener nombres si no se pasaron
+            if not short_name or not name:
+                n_row = conn.execute(
+                    "SELECT short_name, name FROM nodes WHERE node_id = ? LIMIT 1",
+                    (str(node_id),)
+                ).fetchone()
+                if n_row:
+                    short_name = short_name or n_row["short_name"]
+                    name = name or n_row["name"]
+
+            cur = conn.execute(
+                """
+                INSERT INTO auto_reported_nodes (
+                    node_id, short_name, name, reason_code, reason_desc,
+                    event_count, first_detected_at, last_detected_at,
+                    last_details, updated_at
+                ) VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?, ?)
+                ON CONFLICT(node_id, reason_code) DO UPDATE SET
+                    short_name = COALESCE(excluded.short_name, auto_reported_nodes.short_name),
+                    name = COALESCE(excluded.name, auto_reported_nodes.name),
+                    reason_desc = excluded.reason_desc,
+                    event_count = auto_reported_nodes.event_count + 1,
+                    last_detected_at = excluded.last_detected_at,
+                    last_details = COALESCE(excluded.last_details, auto_reported_nodes.last_details),
+                    updated_at = excluded.updated_at
+                """,
+                (
+                    str(node_id), short_name, name, str(reason_code), str(reason_desc),
+                    now_iso, now_iso, details_str, now_iso
+                )
+            )
+            conn.commit()
+            return int(cur.lastrowid or 0)
+
+    def get_auto_reported_nodes(
+        self,
+        limit: int = 100,
+        offset: int = 0,
+        reason_code: Optional[str] = None
+    ) -> List[Dict[str, Any]]:
+        """Devuelve el listado de nodos auto-reportados ordenado por última detección."""
+        with closing(self._connect()) as conn:
+            query = """
+                SELECT a.id, a.node_id, a.short_name, a.name, a.reason_code, a.reason_desc,
+                       a.event_count, a.first_detected_at, a.last_detected_at, a.last_details,
+                       a.is_ignored_bot, a.is_blocked_fw, a.updated_at,
+                       n.snr, n.hops, n.via_mqtt, n.last_heard
+                FROM auto_reported_nodes a
+                LEFT JOIN nodes n ON n.node_id = a.node_id
+            """
+            params: List[Any] = []
+            if reason_code:
+                query += " WHERE a.reason_code = ?"
+                params.append(str(reason_code))
+            query += " ORDER BY a.last_detected_at DESC LIMIT ? OFFSET ?"
+            params.extend([int(limit), int(offset)])
+
+            cur = conn.execute(query, tuple(params))
+            return [dict(r) for r in cur.fetchall()]
+
+    def count_auto_reported_nodes(self) -> int:
+        """Devuelve el total de incidencias de auto-reporte activas."""
+        with closing(self._connect()) as conn:
+            cur = conn.execute("SELECT COUNT(*) AS c FROM auto_reported_nodes")
+            row = cur.fetchone()
+            return int(row["c"]) if row else 0
+
+    def set_node_bot_ignored(self, node_id: str, is_ignored: bool = True) -> bool:
+        """Marca un nodo para ser ignorado completamente por el bot (no guardar nada ni responder)."""
+        now_iso = datetime.now().isoformat(timespec="seconds")
+        val = 1 if is_ignored else 0
+        with closing(self._connect()) as conn:
+            conn.execute(
+                "UPDATE auto_reported_nodes SET is_ignored_bot = ?, updated_at = ? WHERE node_id = ?",
+                (val, now_iso, str(node_id))
+            )
+            # Sincronizar también con blocked_nodes si se ignora
+            if is_ignored:
+                conn.execute(
+                    """
+                    INSERT INTO blocked_nodes (node_id, block_type, reason, created_at, active)
+                    VALUES (?, 'manual', 'Ignorado manualmente en bot desde vigilancia', ?, 1)
+                    ON CONFLICT(node_id) DO UPDATE SET active = 1, reason = 'Ignorado manualmente en bot desde vigilancia'
+                    """,
+                    (str(node_id), now_iso)
+                )
+            else:
+                conn.execute(
+                    "UPDATE blocked_nodes SET active = 0 WHERE node_id = ?",
+                    (str(node_id),)
+                )
+            conn.commit()
+            return True
+
+    def get_ignored_node_ids(self) -> set[str]:
+        """Devuelve el conjunto de todos los node_id ignorados o bloqueados por el bot."""
+        with closing(self._connect()) as conn:
+            cur = conn.execute(
+                """
+                SELECT DISTINCT node_id FROM auto_reported_nodes WHERE is_ignored_bot = 1
+                UNION
+                SELECT DISTINCT node_id FROM blocked_nodes WHERE active = 1
+                """
+            )
+            return {str(r["node_id"]) for r in cur.fetchall() if r["node_id"]}
+
+    def set_node_fw_blocked(self, node_id: str, is_blocked: bool = True) -> bool:
+        """Marca en base de datos si el nodo fue bloqueado a nivel de firmware Meshtastic."""
+        now_iso = datetime.now().isoformat(timespec="seconds")
+        val = 1 if is_blocked else 0
+        with closing(self._connect()) as conn:
+            cur = conn.execute(
+                "UPDATE auto_reported_nodes SET is_blocked_fw = ?, updated_at = ? WHERE node_id = ?",
+                (val, now_iso, str(node_id))
+            )
+            conn.commit()
+            return (cur.rowcount or 0) > 0

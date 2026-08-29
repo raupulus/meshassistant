@@ -295,6 +295,27 @@ def _execute_schema(conn: sqlite3.Connection) -> None:
         );
 
         CREATE INDEX IF NOT EXISTS idx_abuse_logs_created ON abuse_logs(created_at, node_id);
+
+        -- Nodos auto-reportados por mala praxis / saturación de malla (Vigilancia)
+        CREATE TABLE IF NOT EXISTS auto_reported_nodes (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            node_id TEXT NOT NULL,
+            short_name TEXT NULL,
+            name TEXT NULL,
+            reason_code TEXT NOT NULL,               -- 'EXCESSIVE_HOPS', 'FAST_TELEMETRY', 'FAST_POSITION', 'FAST_NODEINFO', 'FAST_ENVIRONMENTAL', 'COMMAND_SPAM'
+            reason_desc TEXT NOT NULL,
+            event_count INTEGER NOT NULL DEFAULT 1,
+            first_detected_at TEXT NOT NULL,
+            last_detected_at TEXT NOT NULL,
+            last_details TEXT NULL,
+            is_ignored_bot INTEGER NOT NULL DEFAULT 0,
+            is_blocked_fw INTEGER NOT NULL DEFAULT 0,
+            updated_at TEXT NOT NULL,
+            UNIQUE(node_id, reason_code)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_auto_reported_node ON auto_reported_nodes(node_id);
+        CREATE INDEX IF NOT EXISTS idx_auto_reported_last ON auto_reported_nodes(last_detected_at DESC);
         """
     )
     conn.commit()

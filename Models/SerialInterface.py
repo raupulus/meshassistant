@@ -153,6 +153,15 @@ class SerialInterface:
             if user:
                 id = user.get('id', 'Desconocido')
 
+                # Comprobar vigilancia / ignorados
+                try:
+                    from Models.MeshWatcher import MeshWatcher
+                    if MeshWatcher.is_ignored(id):
+                        return
+                    MeshWatcher.inspect_packet(packet)
+                except Exception:
+                    pass
+
                 # Pedir info del nodo que envía
                 fromNodeInfo = self.node_dict.get(id, None)
 
@@ -210,6 +219,15 @@ class SerialInterface:
                     from_node_id = f"!{int(from_num):08x}"
                 except Exception:
                     from_node_id = str(from_num)
+
+            # Comprobar vigilancia y descarte de ignorados
+            try:
+                from Models.MeshWatcher import MeshWatcher
+                from_info = self.node_dict.get(from_node_id) if from_node_id else None
+                if MeshWatcher.inspect_packet(packet, from_info):
+                    return
+            except Exception:
+                pass
 
             # Extraer telemetría flexible
             telemetry = decoded.get('telemetry') or decoded.get('deviceMetrics') or decoded.get('device_metrics') or packet.get('telemetry') or packet.get('deviceMetrics') or {}
@@ -916,6 +934,14 @@ class SerialInterface:
                 if from_id and not fromNodeInfo:
                     fromNodeInfo = Node(from_id)
                     self.node_dict[from_id] = fromNodeInfo
+
+                # Comprobar vigilancia y descarte de ignorados
+                try:
+                    from Models.MeshWatcher import MeshWatcher
+                    if MeshWatcher.inspect_packet(packet, fromNodeInfo):
+                        return
+                except Exception:
+                    pass
 
                 if fromNodeInfo:
                     fromNodeInfo.update_metadata({

@@ -481,6 +481,46 @@
         <button class="btn-secondary" id="btn-refresh-security">Actualizar Listas</button>
       </div>
 
+      <!-- Tabla de Nodos Auto-reportados por Mala Praxis (Vigilancia) -->
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; flex-wrap: wrap; gap: 8px;">
+        <h3 style="font-size: 1.05rem; display: flex; align-items: center; gap: 8px;">
+          <span>🚨 Nodos Auto-reportados (Vigilancia de Malla)</span>
+          <span class="badge-count" id="count-reported-badge" style="font-size: 0.75rem;">0</span>
+        </h3>
+        <div style="display: flex; gap: 8px;">
+          <select id="filter-autoreport-reason" class="select-custom" style="padding: 4px 8px; font-size: 0.8rem;">
+            <option value="all">Todos los motivos</option>
+            <option value="EXCESSIVE_HOPS">🔀 Exceso de Saltos (≥6)</option>
+            <option value="FAST_TELEMETRY">⚡ Telemetría Rápida (&lt;30m)</option>
+            <option value="FAST_POSITION">📍 Posición GPS Rápida (&lt;30m)</option>
+            <option value="FAST_NODEINFO">👥 NodeInfo Rápido (&lt;30m)</option>
+            <option value="FAST_ENVIRONMENTAL">🌡️ Sensores Clima (&lt;30m)</option>
+            <option value="COMMAND_SPAM">🛑 Spam de Comandos</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="table-container" style="margin-bottom: 24px;">
+        <table>
+          <thead>
+            <tr>
+              <th>Infracción</th>
+              <th>Nodo</th>
+              <th>Detalles Medidos</th>
+              <th style="text-align: center;">Veces</th>
+              <th>Última Detección</th>
+              <th>Estado</th>
+              <th style="width: 220px; text-align: center;">Acciones Directas</th>
+            </tr>
+          </thead>
+          <tbody id="auto-reported-tbody">
+            <tr>
+              <td colspan="7" style="text-align: center; color: var(--text-dim); padding: 20px;">No hay nodos auto-reportados por mala praxis.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
       <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 20px; margin-bottom: 20px;">
         <!-- Formulario Bloqueo Manual -->
         <div class="card">
@@ -511,18 +551,18 @@
 
         <!-- Resumen de Política de Seguridad -->
         <div class="card">
-          <div class="card-header"><span>⚙️ Política de Protección Activa</span></div>
+          <div class="card-header"><span>⚙️ Política de Vigilancia Activa</span></div>
           <div style="font-size: 0.85rem; color: var(--text-muted); display: flex; flex-direction: column; gap: 8px; line-height: 1.5;">
+            <div>🔀 <strong>Saltos excesivos:</strong> Alerta automática si un paquete nace con ≥ 6 saltos configurados.</div>
+            <div>⏱️ <strong>Telemetrías frecuentes:</strong> Alerta si se emite batería, GPS, NodeInfo o clima en menos de 30 min.</div>
             <div>⚡ <strong>Límite de velocidad:</strong> Máximo 10 comandos por minuto por nodo.</div>
-            <div>⏱️ <strong>Auto-bloqueo temporal:</strong> 15 minutos al primer exceso detectado.</div>
-            <div>🚨 <strong>Reincidencias:</strong> Bloqueo de 24 horas si supera límites repetidamente.</div>
-            <div>🔇 <strong>Silencio de radio:</strong> Las peticiones de nodos bloqueados se descartan sin responder para evitar generar tráfico LoRa.</div>
+            <div>🔇 <strong>Ignorar en Bot:</strong> Descarta en memoria todo tráfico del nodo, sin guardar en BD ni responder.</div>
           </div>
         </div>
       </div>
 
       <!-- Tabla Nodos Bloqueados -->
-      <h3 style="font-size: 1rem; margin-bottom: 10px;">🚫 Nodos Bloqueados (Activos e Históricos)</h3>
+      <h3 style="font-size: 1rem; margin-bottom: 10px;">🚫 Lista Negra de Bloqueos</h3>
       <div class="table-container" style="margin-bottom: 24px;">
         <table>
           <thead>

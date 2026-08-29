@@ -164,6 +164,9 @@ class GatewayService:
                     snapshot_data["traces"] = self.db.get_recent_traces(limit=10)
                 if "stats" in include:
                     snapshot_data["stats"] = self.db.stats_summary()
+                snapshot_data["auto_reported_count"] = self.db.count_auto_reported_nodes()
+                if "auto_reported" in include or "security" in include:
+                    snapshot_data["auto_reported_nodes"] = self.db.get_auto_reported_nodes(limit=50)
                 if "routers" in include:
                     router_ids = getattr(env, "ROUTER_NODES", []) or getattr(env, "ROUTERS_LIST", [])
                     if isinstance(router_ids, str):
@@ -381,6 +384,34 @@ class GatewayService:
                 limit = int(params.get("limit", 50))
                 logs = self.db.get_abuse_logs(limit=limit)
                 response["data"] = {"logs": logs}
+
+            elif action == "get_auto_reported_nodes":
+                limit = int(params.get("limit", 100))
+                offset = int(params.get("offset", 0))
+                reason = params.get("reason_code")
+                nodes = self.db.get_auto_reported_nodes(limit=limit, offset=offset, reason_code=reason)
+                total = self.db.count_auto_reported_nodes()
+                response["data"] = {"auto_reported_nodes": nodes, "total": total}
+
+            elif action == "set_node_bot_ignored":
+                node_id = params.get("node_id")
+                if not node_id:
+                    raise ValueError("Parámetro 'node_id' obligatorio")
+                is_ignored = bool(params.get("is_ignored", True))
+                try:
+                    from Models.MeshWatcher import MeshWatcher
+                    MeshWatcher.set_ignored(str(node_id), is_ignored)
+                except Exception:
+                    self.db.set_node_bot_ignored(str(node_id), is_ignored)
+                response["data"] = {"node_id": node_id, "is_ignored": is_ignored, "success": True}
+
+            elif action == "set_node_fw_blocked":
+                node_id = params.get("node_id")
+                if not node_id:
+                    raise ValueError("Parámetro 'node_id' obligatorio")
+                is_blocked = bool(params.get("is_blocked", True))
+                ok = self.db.set_node_fw_blocked(str(node_id), is_blocked)
+                response["data"] = {"node_id": node_id, "is_blocked": is_blocked, "success": ok}
 
             elif action == "restart_serial":
                 response["data"] = {"requested": True, "message": "Solicitud de reinicio de enlace serie registrada"}

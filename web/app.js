@@ -106,6 +106,9 @@ class MeshDashboard {
     this.btnRefreshSecurity = document.getElementById("btn-refresh-security");
     this.blockedNodesTbody = document.getElementById("blocked-nodes-tbody");
     this.abuseLogsTbody = document.getElementById("abuse-logs-tbody");
+    this.autoReportedTbody = document.getElementById("auto-reported-tbody");
+    this.filterAutoreportReason = document.getElementById("filter-autoreport-reason");
+    this.countReportedBadge = document.getElementById("count-reported-badge");
 
     // Elementos de Auditoría
     this.auditTotalCmds = document.getElementById("audit-total-cmds");
@@ -248,6 +251,13 @@ class MeshDashboard {
       this.btnRefreshSecurity.addEventListener("click", () => {
         this.loadSecurityData();
         this.showToast("Listas de seguridad actualizadas");
+      });
+    }
+
+    // Filtro por motivo en Nodos Auto-reportados
+    if (this.filterAutoreportReason) {
+      this.filterAutoreportReason.addEventListener("change", () => {
+        this.loadAutoReportedNodes();
       });
     }
 
@@ -461,6 +471,7 @@ class MeshDashboard {
   }
 
   loadSecurityData() {
+    this.loadAutoReportedNodes();
     this.sendAction("get_blocked_nodes");
     this.sendAction("get_abuse_logs");
   }
@@ -651,6 +662,10 @@ class MeshDashboard {
       case "poll_created":
         this.sendAction("get_polls");
         break;
+      case "auto_report_event":
+      case "node_ignore_toggled":
+        this.loadAutoReportedNodes();
+        break;
       case "message_ack":
         this.showToast(`Mensaje entregado con éxito a ${data.dest}`);
         break;
@@ -665,6 +680,7 @@ class MeshDashboard {
     this.sendAction("get_weather");
     this.sendAction("get_scheduled_messages");
     this.sendAction("get_blocked_nodes");
+    this.sendAction("get_auto_reported_nodes");
   }
 
   handleActionResponse(resp) {
@@ -780,6 +796,14 @@ class MeshDashboard {
       this.loadSchedules();
     } else if (resp.action === "get_blocked_nodes") {
       this.renderBlockedNodes(data.blocked_nodes || []);
+    } else if (resp.action === "get_auto_reported_nodes") {
+      this.renderAutoReportedNodes(data.auto_reported_nodes || [], data.total);
+    } else if (resp.action === "set_node_bot_ignored") {
+      this.showToast(data.is_ignored ? `Nodo ${data.node_id} ignorado en el bot` : `Nodo ${data.node_id} deja de ser ignorado`);
+      this.loadSecurityData();
+    } else if (resp.action === "set_node_fw_blocked") {
+      this.showToast(data.is_blocked ? `Nodo ${data.node_id} bloqueado en radio` : `Nodo ${data.node_id} desbloqueado en radio`);
+      this.loadSecurityData();
     } else if (resp.action === "block_node_manual") {
       this.showToast("Nodo bloqueado correctamente");
       if (this.formManualBlock) this.formManualBlock.reset();
@@ -1796,6 +1820,81 @@ class MeshDashboard {
       reason: reason,
       expires_at: expiresAt,
     });
+  }
+
+  loadAutoReportedNodes() {
+    const reason = (this.filterAutoreportReason && this.filterAutoreportReason.value !== "all") ? this.filterAutoreportReason.value : null;
+    this.sendAction("get_auto_reported_nodes", { reason_code: reason });
+  }
+
+  renderAutoReportedNodes(nodes, total) {
+    this.autoReportedNodes = nodes || [];
+    if (!this.autoReportedTbody) return;
+
+    const count = (total !== undefined && total !== null) ? total : this.autoReportedNodes.length;
+    if (this.countReportedBadge) this.countReportedBadge.textContent = count;
+
+    if (this.autoReportedNodes.length === 0) {
+      this.autoReportedTbody.innerHTML = `
+        <tr><td colspan="7" style="text-align: center; color: var(--text-dim); padding: 20px;">No hay incidencias de mala praxis registradas.</td></tr>
+      `;
+      return;
+    }
+
+    const reasonBadges = {
+      "EXCESSIVE_HOPS": { icon: "🔀", label: "Saltos Excesivos", bg: "var(--danger-bg)", color: "var(--danger)" },
+      "FAST_TELEMETRY": { icon: "⚡", label: "Telemetría Rápida", bg: "var(--warning-bg)", color: "var(--warning)" },
+      "FAST_POSITION": { icon: "📍", label: "Posición GPS Rápida", bg: "var(--warning-bg)", color: "var(--warning)" },
+      "FAST_NODEINFO": { icon: "👥", label: "NodeInfo Rápido", bg: "var(--primary-bg)", color: "var(--primary)" },
+      "FAST_ENVIRONMENTAL": { icon: "🌡️", label: "Sensores Clima", bg: "var(--warning-bg)", color: "var(--warning)" },
+      "COMMAND_SPAM": { icon: "🛑", label: "Spam Comandos", bg: "var(--danger-bg)", color: "var(--danger)" },
+    };
+
+    this.autoReportedTbody.innerHTML = this.autoReportedNodes.map(n => {
+      const bInfo = reasonBadges[n.reason_code] || { icon: "⚠️", label: n.reason_code || "Alerta", bg: "var(--bg-input)", color: "var(--text-muted)" };
+      const badgeHtml = `<span class="badge" style="background: ${bInfo.bg}; color: ${bInfo.color}; font-size: 0.75rem;">${bInfo.icon} ${bInfo.label}</span>`;
+      
+      const lastSeenStr = this.formatRelativeOrDate(n.last_detected_at);
+      const isIgnored = !!n.is_ignored_bot;
+      const isFwBlocked = !!n.is_blocked_fw;
+
+      let statusBadges = [];
+      if (isIgnored) statusBadges.push(`<span class="badge" style="background: var(--danger-bg); color: var(--danger);">Ignorado Bot</span>`);
+      if (isFwBlocked) statusBadges.push(`<span class="badge" style="background: var(--warning-bg); color: var(--warning);">Bloqueado Radio</span>`);
+      if (statusBadges.length === 0) statusBadges.push(`<span class="badge" style="background: var(--bg-input); color: var(--text-dim);">Vigilado</span>`);
+
+      return `
+        <tr>
+          <td>${badgeHtml}</td>
+          <td>
+            <strong>${this.escapeHtml(n.name || n.short_name || n.node_id)}</strong>
+            <div style="font-family: monospace; font-size: 0.75rem; color: var(--text-dim);">${this.escapeHtml(n.node_id)}</div>
+          </td>
+          <td style="font-size: 0.85rem; color: var(--text-muted);">${this.escapeHtml(n.reason_desc || "--")}</td>
+          <td style="text-align: center; font-weight: 700; color: ${n.event_count > 5 ? "var(--danger)" : "var(--primary)"};">${n.event_count}</td>
+          <td style="font-size: 0.8rem; color: var(--text-dim);">${lastSeenStr}</td>
+          <td><div style="display: flex; gap: 4px; flex-wrap: wrap;">${statusBadges.join("")}</div></td>
+          <td>
+            <div style="display: flex; gap: 6px; justify-content: center; flex-wrap: wrap;">
+              <button class="btn-secondary" style="padding: 3px 8px; font-size: 0.75rem; ${isIgnored ? "color: var(--success);" : "color: var(--danger);"}" onclick="window.dashboard.toggleIgnoreNode('${n.node_id}', ${!isIgnored})">
+                ${isIgnored ? "✅ Atender" : "🚫 Ignorar"}
+              </button>
+              <button class="btn-secondary" style="padding: 3px 8px; font-size: 0.75rem; ${isFwBlocked ? "color: var(--success);" : "color: var(--warning);"}" onclick="window.dashboard.toggleFwBlockNode('${n.node_id}', ${!isFwBlocked})">
+                ${isFwBlocked ? "🔓 Desbloquear" : "🔒 Bloquear Radio"}
+              </button>
+            </div>
+          </td>
+        </tr>
+      `;
+    }).join("");
+  }
+
+  toggleIgnoreNode(nodeId, isIgnored) {
+    this.sendAction("set_node_bot_ignored", { node_id: nodeId, is_ignored: isIgnored });
+  }
+
+  toggleFwBlockNode(nodeId, isBlocked) {
+    this.sendAction("set_node_fw_blocked", { node_id: nodeId, is_blocked: isBlocked });
   }
 
   renderBlockedNodes(nodes) {
