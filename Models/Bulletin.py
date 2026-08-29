@@ -40,7 +40,11 @@ class BulletinGenerator:
         # 2. Información Meteorológica (AEMET o en caché)
         clima_txt = "🌦️ Tiempo: Despejado / Sin datos."
         try:
-            w = db.aemet_weather_get_latest()
+            w = db.aemet_weather_get_latest(province=prov_name, day="hoy")
+            if not w:
+                w = db.aemet_weather_get_latest(province=prov_name)
+            if not w:
+                w = db.aemet_weather_get_latest(day="hoy")
             if w and w.get("content"):
                 raw_c = w["content"].strip()
                 # Extraer resumen conciso (primera frase o hasta 85 caracteres)

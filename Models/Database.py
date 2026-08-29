@@ -1192,11 +1192,18 @@ class Database:
             conn.commit()
             return int(cur.lastrowid)
 
-    def aemet_weather_get_latest(self, scope: Optional[str] = None, province_code: Optional[str] = None) -> Optional[Dict[str, Any]]:
+    def aemet_weather_get_latest(
+        self,
+        scope: Optional[str] = None,
+        province_code: Optional[str] = None,
+        province: Optional[str] = None,
+        day: Optional[str] = None,
+    ) -> Optional[Dict[str, Any]]:
         """Devuelve el último registro de clima descargado o None.
 
         Si se indica `scope` ('province' | 'city' | 'forecast'), filtra por él.
-        Si se indica `province_code`, filtra por ese código de provincia.
+        Si se indica `province_code` o `province`, filtra por esa provincia.
+        Si se indica `day` ('hoy' | 'manana'), filtra por ese día.
         Sin scope, devuelve el más reciente independientemente del tipo, pero
         excluye los de previsión multi-día ('forecast') para no mezclarlos con
         el tiempo actual de /weather.
@@ -1205,22 +1212,49 @@ class Database:
             query = "SELECT id, scope, province, province_code, city, city_code, day, content, created_at FROM aemet_weather WHERE "
             params = []
             conditions = []
-            
+
             if scope:
                 conditions.append("scope = ?")
                 params.append(scope)
             else:
                 conditions.append("scope != 'forecast'")
-                
+
             if province_code:
                 conditions.append("province_code = ?")
-                params.append(province_code)
-                
+                params.append(str(province_code))
+            elif province:
+                conditions.append("(province LIKE ? OR province_code = ?)")
+                params.extend([f"%{province}%", str(province)])
+
+            if day:
+                conditions.append("day = ?")
+                params.append(str(day))
+
             query += " AND ".join(conditions) + " ORDER BY created_at DESC, id DESC LIMIT 1"
-            
+
             cur = conn.execute(query, tuple(params))
             row = cur.fetchone()
-            return dict(row) if row else None
+            if row:
+                return dict(row)
+
+            # Fallback si no había para ese día específico pero sí para esa provincia
+            if day and (province_code or province):
+                query_fallback = "SELECT id, scope, province, province_code, city, city_code, day, content, created_at FROM aemet_weather WHERE "
+                f_params = []
+                f_conds = ["scope != 'forecast'"]
+                if province_code:
+                    f_conds.append("province_code = ?")
+                    f_params.append(str(province_code))
+                elif province:
+                    f_conds.append("(province LIKE ? OR province_code = ?)")
+                    f_params.extend([f"%{province}%", str(province)])
+                query_fallback += " AND ".join(f_conds) + " ORDER BY created_at DESC, id DESC LIMIT 1"
+                cur = conn.execute(query_fallback, tuple(f_params))
+                row = cur.fetchone()
+                if row:
+                    return dict(row)
+
+            return None
 
     def aemet_get_recent_alerts(self, limit: int = 3, hours: Optional[int] = 48) -> List[Dict[str, Any]]:
         """Devuelve las alertas AEMET más recientes (para el comando /avisos).

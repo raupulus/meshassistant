@@ -79,16 +79,19 @@ def loop():
                                 'rssi': (hrow or {}).get('rssi') if hrow else None,
                             })
 
-                        # Marcar trace como completado en la MISMA fila, guardando el texto en data_raw
+                        # Validar si el trace fue realmente exitoso (alcanzó algún salto y no abortó en error)
+                        is_success = bool(forward or backward) and ("max_retransmit" not in text.lower() or "route traced back to us" in text.lower())
+
+                        # Marcar trace en la MISMA fila, guardando el texto en data_raw
                         db.mark_trace_done_with_route(
-                            pending['id'], True,
+                            pending['id'], is_success,
                             text=text,
                             to_name=to_name,
                             to_name_short=to_short,
                             hops=hops,
                             return_hops=return_hops,
                         )
-                        log_p(f"[traceroute] Trace #{pending['id']} completado con éxito: {text[:60]}")
+                        log_p(f"[traceroute] Trace #{pending['id']} finalizado (éxito={is_success}): {text[:60]}")
 
                         # Notificar a la pasarela WiFi
                         try:
