@@ -541,11 +541,13 @@ class MeshDashboard {
   }
 
   setUartStatus(online, port) {
-    if (this.ledUart) this.ledUart.className = `led ${online ? "online" : "offline"}`;
-    if (this.lblUart) this.lblUart.textContent = online ? `Activo (${port || "UART"})` : "Desconectado";
+    if (online === undefined || online === null) return;
+    const isOnline = Boolean(online);
+    if (this.ledUart) this.ledUart.className = `led ${isOnline ? "online" : "offline"}`;
+    if (this.lblUart) this.lblUart.textContent = isOnline ? `Activo (${port || "UART"})` : "Desconectado";
     if (this.ftUart) {
-      this.ftUart.textContent = online ? "Conectado" : "Desconectado";
-      this.ftUart.style.color = online ? "var(--success)" : "var(--danger)";
+      this.ftUart.textContent = isOnline ? "Conectado" : "Desconectado";
+      this.ftUart.style.color = isOnline ? "var(--success)" : "var(--danger)";
     }
   }
 

@@ -69,7 +69,11 @@ class GatewayService:
         self.recent_messages: deque = deque(maxlen=MAX_RECENT_MESSAGES)
 
         # Último estado conocido en memoria
-        self.last_system_status: Dict[str, Any] = {}
+        serial_path = getattr(env, 'SERIAL_DEVICE_PATH', '/dev/serial0')
+        self.last_system_status: Dict[str, Any] = {
+            "uart_connected": os.path.exists(serial_path) if isinstance(serial_path, str) else True,
+            "serial_port": serial_path,
+        }
         self.last_system_telemetry: Dict[str, Any] = {}
         self.last_local_node: Dict[str, Any] = {}
         self.last_channel_metrics: Dict[str, Any] = {}

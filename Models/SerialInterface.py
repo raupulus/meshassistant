@@ -72,6 +72,15 @@ class SerialInterface:
     def on_connection_closed(self, interface):
         log_p("on_connection_closed", level="WARN")
         self._needs_reconnect = True
+        try:
+            from Models.EventBroadcaster import broadcast_event
+            broadcast_event("system_status", {
+                "uart_connected": False,
+                "serial_port": self.serial_port,
+                "nodes_in_memory": 0,
+            })
+        except Exception:
+            pass
 
     def on_connection_lost(self, interface):
         # CRÍTICO: este callback corre en el hilo 'publishing' de Meshtastic, el
@@ -79,6 +88,15 @@ class SerialInterface:
         # aquí: solo marca la bandera y retorna. La reconexión la hace main.loop().
         log_p("on_connection_lost", level="WARN")
         self._needs_reconnect = True
+        try:
+            from Models.EventBroadcaster import broadcast_event
+            broadcast_event("system_status", {
+                "uart_connected": False,
+                "serial_port": self.serial_port,
+                "nodes_in_memory": 0,
+            })
+        except Exception:
+            pass
 
     def reconnect_if_needed(self):
         """Reconexión ordenada, pensada para llamarse desde el hilo principal.
@@ -553,6 +571,20 @@ class SerialInterface:
         self.get_nodes()
         try:
             from Models.EventBroadcaster import broadcast_event
+            from functions import get_system_telemetry
+            
+            telem = get_system_telemetry()
+            telem["uart_connected"] = True
+            telem["serial_port"] = self.serial_port
+            telem["nodes_in_memory"] = len(self.node_dict)
+            
+            broadcast_event("system_status", {
+                "uart_connected": True,
+                "serial_port": self.serial_port,
+                "nodes_in_memory": len(self.node_dict),
+            })
+            broadcast_event("system_telemetry", telem)
+
             my_info = getattr(interface, 'myInfo', None)
             my_num = getattr(my_info, 'my_node_num', None)
             if my_num:
@@ -787,9 +819,12 @@ class SerialInterface:
             start = time.time()
             last_len = 0
             while time.time() - start < timeout:
-                # Si el callback recibe algo, reseteamos el contador para
-                # volver a esperar 'timeout' completo desde la última actividad
-                # (de lo contrario los sleep extra no prolongan la ventana real).
+                curr_text = (buf_out.getvalue() or '') + (buf_err.getvalue() or '')
+                # Si ya se imprimió la ruta de regreso completa o se recibió el resultado final
+                if ("Route traced back to us:" in curr_text or "Route traced towards destination:" in curr_text) and (len(results) > 0 or "-->" in curr_text):
+                    time.sleep(0.5)
+                    break
+
                 if len(results) != last_len:
                     last_len = len(results)
                     start = time.time()
