@@ -70,6 +70,16 @@ db = Database(db_path="...")    # ruta explícita (tests)
 | `aemet_mark_published(alert_id)` | Marca publicada con timestamp. |
 | `aemet_fix_legacy_rows(limit=500)` | Migra filas antiguas que guardaron XML crudo. |
 | `_parse_cap_es(xml_text)` *(static)* | Extrae texto ES de un XML CAP 1.2. |
+| `aemet_weather_insert(scope, content, province, province_code, city, city_code, day, data_raw)` | Inserta texto provincial o municipal (`day='hoy'|'manana'`). |
+| `aemet_weather_get_latest(scope=None, province_code=None, province=None, day=None)` | Devuelve la última predicción en texto filtrada por provincia y día con fallback. |
+| `aemet_forecast_daily_insert(city_code, city_name, province, data_json, summary_3d, summary_7d)` | Inserta predicción estructurada a 7 días. |
+| `aemet_forecast_daily_get_latest(city_code=None)` | Devuelve la última predicción multi-día estructurada. |
+| `aemet_forecast_hourly_insert(city_code, city_name, province, data_json, summary_24h)` | Inserta predicción estructurada horaria. |
+| `aemet_forecast_hourly_get_latest(city_code=None)` | Devuelve la última predicción horaria estructurada. |
+| `aemet_maritime_insert(costa_code, costa_name, data_json, summary)` | Inserta boletín costero oficial. |
+| `aemet_maritime_get_latest(costa_code=None)` | Devuelve el último boletín marítimo costero. |
+| `aemet_observation_insert(station_id, station_name, data_json, summary)` | Inserta mediciones físicas de estación meteorológica. |
+| `aemet_observation_get_latest(station_id=None)` | Devuelve la última observación meteorológica física. |
 
 ### Log y Auditoría de Comandos
 | Método | Descripción |

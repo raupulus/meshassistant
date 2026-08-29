@@ -104,6 +104,63 @@ Hace de **cola** (`status='pending'`) y de **resultado** a la vez.
 | `published` | INTEGER | 0/1. |
 | `published_at` | TEXT NULL | |
 
+### `aemet_weather` — predicción de texto provincial / municipal
+| Columna | Tipo | Notas |
+|---|---|---|
+| `id` | INTEGER PK | |
+| `scope` | TEXT | `province` \| `city`. |
+| `province` | TEXT NULL | Nombre de provincia. |
+| `province_code` | TEXT NULL | Código INE de 2 dígitos. |
+| `city` | TEXT NULL | Nombre de municipio. |
+| `city_code` | TEXT NULL | Código INE de 5 dígitos. |
+| `day` | TEXT | `hoy` \| `manana`. |
+| `content` | TEXT NOT NULL | Texto listo para responder. |
+| `data_raw` | TEXT NULL | Texto original completo. |
+| `created_at` | TEXT | ISO 8601. |
+
+### `aemet_forecast_daily` — predicción estructurada multi-día (7 días)
+| Columna | Tipo | Notas |
+|---|---|---|
+| `id` | INTEGER PK | |
+| `city_code` | TEXT NOT NULL | Código INE de 5 dígitos. |
+| `city_name` | TEXT NOT NULL | Nombre del municipio (ej. Chipiona). |
+| `province` | TEXT NOT NULL | Provincia. |
+| `data_json` | TEXT NOT NULL | JSON estructurado oficial de AEMET a 7 días. |
+| `summary_3d` | TEXT NULL | Resumen pre-renderizado para 3 días. |
+| `summary_7d` | TEXT NULL | Resumen pre-renderizado para 7 días. |
+| `created_at` | TEXT | ISO 8601. |
+
+### `aemet_forecast_hourly` — predicción estructurada horaria (24-48 h)
+| Columna | Tipo | Notas |
+|---|---|---|
+| `id` | INTEGER PK | |
+| `city_code` | TEXT NOT NULL | Código INE de 5 dígitos. |
+| `city_name` | TEXT NOT NULL | Nombre del municipio. |
+| `province` | TEXT NOT NULL | Provincia. |
+| `data_json` | TEXT NOT NULL | JSON horario oficial de AEMET. |
+| `summary_24h` | TEXT NULL | Resumen pre-renderizado para 12-24 horas. |
+| `created_at` | TEXT | ISO 8601. |
+
+### `aemet_maritime` — boletín meteorológico costero
+| Columna | Tipo | Notas |
+|---|---|---|
+| `id` | INTEGER PK | |
+| `costa_code` | TEXT NOT NULL | Código de costa (ej. `42` para Andalucía Occidental / Cádiz). |
+| `costa_name` | TEXT NOT NULL | Nombre de la zona costera. |
+| `data_json` | TEXT NOT NULL | JSON oficial del boletín costero con subzonas. |
+| `summary` | TEXT NOT NULL | Resumen formateado para LoRa (ej. Guadalquivir a Roche). |
+| `created_at` | TEXT | ISO 8601. |
+
+### `aemet_observation` — mediciones físicas de estaciones meteorológicas
+| Columna | Tipo | Notas |
+|---|---|---|
+| `id` | INTEGER PK | |
+| `station_id` | TEXT NOT NULL | Código indicativo de estación (ej. `5972X` Cádiz / San Fernando). |
+| `station_name` | TEXT NOT NULL | Nombre descriptivo de la estación. |
+| `data_json` | TEXT NOT NULL | JSON con las últimas observaciones horarias. |
+| `summary` | TEXT NOT NULL | Resumen en formato LoRa (temp, viento, rachas, HR, presión). |
+| `created_at` | TEXT | ISO 8601. |
+
 ### `agenda` — avisos programados por nodo
 | Columna | Tipo | Notas |
 |---|---|---|

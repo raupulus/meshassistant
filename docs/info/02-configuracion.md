@@ -56,10 +56,17 @@ que las variables ausentes no rompen la ejecución.
 |---|---|---|
 | `AEMET_API_KEY` | str | Clave de AEMET OpenData. **Si está vacía, AEMET no se usa.** |
 | `AEMET_CHANNELS` | list[int] | Canales donde publicar alertas (p. ej. `[6]`). |
-| `AEMET_PROVINCE` | str | Provincia o CCAA vigilada (p. ej. `Cádiz`, `Galicia`). |
+| `AEMET_PROVINCE` | str | Provincia o CCAA vigilada (p. ej. `Cádiz`, `Cadiz`). |
+| `AEMET_CITY` | str | Municipio de fallback si no hay texto provincial (p. ej. `Chipiona`). |
+| `AEMET_CITY_CODE` | str | Código INE de 5 dígitos del municipio (`11016`). |
 | `AEMET_PERIOD` | str | Periodicidad mínima por canal: `Hour`, `Three_hour`, `Six_hour`, `Twelve_hour`, `Day`. |
-| `AEMET_HOUR_MIN` | int (0-23) | Hora mínima a partir de la cual publicar. |
-| `AEMET_HOUR_MAX` | int (0-23) | Hora máxima hasta la cual publicar. |
+| `AEMET_HOUR_MIN` | int (0-23) | Hora mínima a partir de la cual publicar (def. 8). |
+| `AEMET_HOUR_MAX` | int (0-23) | Hora máxima hasta la cual publicar (def. 22). |
+| `AEMET_FORECAST_DAYS` | int (1-7) | Días de predicción municipal a descargar (def. 4). |
+| `AEMET_EXPIRY_WARNING_DAYS` | int | Días antes de la caducidad del JWT para empezar a alertar (def. 10). |
+| `AEMET_EXPIRY_WARNING_CHANNELS` | list[str\|int] | Canales donde enviar la alerta diaria de caducidad (`['raupulus']`). |
+| `AEMET_MARITIME_COAST_CODE` | str | Código de costa AEMET (`42` = Andalucía Occidental / Cádiz). |
+| `AEMET_OBSERVATION_STATION` | str | Código de estación meteorológica física (`5972X` Cádiz / San Fernando). |
 
 > `AEMET_PERIOD` se traduce a minutos en `Aemet.period_to_minutes`: 60, 180, 360,
 > 720 y 1440 respectivamente. La ventana horaria admite cruzar medianoche (si

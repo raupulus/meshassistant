@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import shutil
 import tempfile
+import time
 import unittest
 from unittest.mock import patch
 
@@ -27,6 +28,8 @@ class TestMeshWatcher(unittest.TestCase):
         # Resetear estado estático del MeshWatcher
         MeshWatcher._last_telemetry = {}
         MeshWatcher._ignored_nodes = set()
+        MeshWatcher._local_node_ids = set()
+        MeshWatcher._local_node_names = set()
         MeshWatcher._initialized = False
 
     def tearDown(self):
@@ -48,6 +51,7 @@ class TestMeshWatcher(unittest.TestCase):
         self.assertEqual(len(reported), 1)
         self.assertEqual(reported[0]["node_id"], "!badhop1")
         self.assertEqual(reported[0]["reason_code"], "EXCESSIVE_HOPS")
+        self.assertEqual(reported[0]["reason_desc"], "Configurado con 7 saltos iniciales")
         self.assertEqual(reported[0]["event_count"], 1)
 
         # Repetir el mismo paquete para comprobar incremento de event_count
@@ -70,7 +74,10 @@ class TestMeshWatcher(unittest.TestCase):
         reported = self.db.get_auto_reported_nodes()
         self.assertEqual(len(reported), 0)
 
-    def test_fast_telemetry_cadence(self):
+    @patch("time.time")
+    def test_fast_telemetry_cadence(self, mock_time):
+        mock_time.return_value = 1000.0
+
         packet_telemetry = {
             "fromId": "!fastnode",
             "from": 333333,
@@ -81,12 +88,18 @@ class TestMeshWatcher(unittest.TestCase):
             },
         }
 
-        # Primer paquete: establece la marca de tiempo base
+        # Primer paquete (t=1000s): establece la marca de tiempo base
         discard1 = MeshWatcher.inspect_packet(packet_telemetry)
         self.assertFalse(discard1)
         self.assertEqual(len(self.db.get_auto_reported_nodes()), 0)
 
-        # Segundo paquete recibido 10 segundos después: debe saltar infracción
+        # Retransmisión/rebote en menos de 15s (t=1005s): debe ser ignorado silenciosamente
+        mock_time.return_value = 1005.0
+        MeshWatcher.inspect_packet(packet_telemetry)
+        self.assertEqual(len(self.db.get_auto_reported_nodes()), 0)
+
+        # Segundo paquete recibido 120 segundos después (t=1120s): debe saltar infracción limpia
+        mock_time.return_value = 1120.0
         discard2 = MeshWatcher.inspect_packet(packet_telemetry)
         self.assertFalse(discard2)
 
@@ -94,8 +107,12 @@ class TestMeshWatcher(unittest.TestCase):
         self.assertEqual(len(reported), 1)
         self.assertEqual(reported[0]["node_id"], "!fastnode")
         self.assertEqual(reported[0]["reason_code"], "FAST_TELEMETRY")
+        self.assertEqual(reported[0]["reason_desc"], "Telemetría de batería recibida en 2m")
 
-    def test_multiple_reasons_for_same_node(self):
+    @patch("time.time")
+    def test_multiple_reasons_for_same_node(self, mock_time):
+        mock_time.return_value = 1000.0
+
         # Infracción 1: Saltos excesivos
         MeshWatcher.inspect_packet({
             "fromId": "!multinode",
@@ -109,6 +126,7 @@ class TestMeshWatcher(unittest.TestCase):
             "hopStart": 3,
             "decoded": {"portnum": "POSITION_APP", "position": {"latitudeI": 367000000}},
         })
+        mock_time.return_value = 1060.0  # 60s después
         MeshWatcher.inspect_packet({
             "fromId": "!multinode",
             "hopStart": 3,
@@ -120,6 +138,21 @@ class TestMeshWatcher(unittest.TestCase):
         reason_codes = {r["reason_code"] for r in reported}
         self.assertIn("EXCESSIVE_HOPS", reason_codes)
         self.assertIn("FAST_POSITION", reason_codes)
+
+    def test_local_node_exclusion(self):
+        MeshWatcher.set_local_node(node_id="!63ca1feb", node_name="Raupulus PicoBot 2", short_name="RauF")
+
+        # Intentar reportar saltos o telemetría del propio bot -> Debe ser ignorado por completo
+        packet = {
+            "fromId": "!63ca1feb",
+            "hopStart": 7,
+            "decoded": {"portnum": "TELEMETRY_APP", "telemetry": {}},
+        }
+        discard = MeshWatcher.inspect_packet(packet)
+        self.assertFalse(discard)
+
+        reported = self.db.get_auto_reported_nodes()
+        self.assertEqual(len(reported), 0)
 
     def test_ignored_node_discard(self):
         node_id = "!spammer99"

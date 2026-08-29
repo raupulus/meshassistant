@@ -109,11 +109,20 @@ La aplicación web está estructurada como una SPA (Single Page Application) rea
 - **Lista Negra de Bloqueos:** Histórico y bloqueos manuales activos con tiempo de expiración.
 - **Auditoría Anti-Abuso:** Registro detallado de disparos automáticos del limitador de tasa de comandos.
 
+## 10. Pestaña 9 · Guía de Comandos
+
+- **Catálogo Interactivo Clasificado:**
+  - Agrupación temática: *🌦️ Meteorología, Marítimo y Naturaleza*, *📻 Red Meshtastic y Repetidores*, *🤖 Asistente de IA y Comunidad*, *⚙️ Sistema y Telemetría*.
+  - **Buscador en Tiempo Real:** Filtra al instante por nombre de comando, alias, descripción o ejemplos.
+  - **Badges de Ámbito:** Distinción visual clara entre comandos públicos (`📢 Canal y Privado`) y comandos restringidos (`💬 Solo Privado (DM)`).
+  - **Prueba Rápida & Copia al Portapapeles:** Al hacer clic en un comando o ejemplo, se inserta automáticamente en el campo de texto del chat o se copia al portapapeles.
+
 ---
 
-## 10. Navegación y Diseño Adaptativo
+## 11. Navegación y Diseño Adaptativo
 
 - **Barra Lateral Izquierda:**
   - **Pantallas > 900px:** Barra fija de `120px` de ancho con icono y texto en salto de línea natural (`overflow-wrap: break-word`).
   - **Pantallas ≤ 900px:** Modo compacto automático de `58px` con solo iconos visibles y badges flotantes.
+
 

@@ -504,11 +504,11 @@
         <table>
           <thead>
             <tr>
-              <th>Infracción</th>
-              <th>Nodo</th>
+              <th style="cursor: pointer; user-select: none;" onclick="window.dashboard.sortAutoReported('reason_code')">Infracción <span id="sort-icon-reason_code"></span></th>
+              <th style="cursor: pointer; user-select: none;" onclick="window.dashboard.sortAutoReported('name')">Nodo <span id="sort-icon-name"></span></th>
               <th>Detalles Medidos</th>
-              <th style="text-align: center;">Veces</th>
-              <th>Última Detección</th>
+              <th style="text-align: center; cursor: pointer; user-select: none;" onclick="window.dashboard.sortAutoReported('event_count')">Veces <span id="sort-icon-event_count"></span></th>
+              <th style="cursor: pointer; user-select: none;" onclick="window.dashboard.sortAutoReported('last_detected_at')">Última Detección <span id="sort-icon-last_detected_at">▼</span></th>
               <th>Estado</th>
               <th style="width: 220px; text-align: center;">Acciones Directas</th>
             </tr>

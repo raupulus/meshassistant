@@ -1827,19 +1827,74 @@ class MeshDashboard {
     this.sendAction("get_auto_reported_nodes", { reason_code: reason });
   }
 
+  sortAutoReported(col) {
+    if (!this.autoReportSortCol) {
+      this.autoReportSortCol = "last_detected_at";
+      this.autoReportSortDir = "desc";
+    }
+    if (this.autoReportSortCol === col) {
+      this.autoReportSortDir = this.autoReportSortDir === "asc" ? "desc" : "asc";
+    } else {
+      this.autoReportSortCol = col;
+      this.autoReportSortDir = (col === "event_count" || col === "last_detected_at") ? "desc" : "asc";
+    }
+    this.renderAutoReportedNodes(this.autoReportedNodes, this._totalAutoReported);
+  }
+
   renderAutoReportedNodes(nodes, total) {
-    this.autoReportedNodes = nodes || [];
+    if (nodes) this.autoReportedNodes = nodes;
     if (!this.autoReportedTbody) return;
 
-    const count = (total !== undefined && total !== null) ? total : this.autoReportedNodes.length;
-    if (this.countReportedBadge) this.countReportedBadge.textContent = count;
+    if (!this.autoReportSortCol) {
+      this.autoReportSortCol = "last_detected_at";
+      this.autoReportSortDir = "desc";
+    }
 
-    if (this.autoReportedNodes.length === 0) {
+    if (total !== undefined && total !== null) {
+      this._totalAutoReported = total;
+    } else if (this._totalAutoReported === undefined) {
+      this._totalAutoReported = (this.autoReportedNodes || []).length;
+    }
+
+    const count = this._totalAutoReported;
+    if (this.countReportedBadge) this.countReportedBadge.textContent = count;
+    if (this.countBlocked) this.countBlocked.textContent = count;
+
+    // Actualizar iconos indicadores de ordenación
+    ["reason_code", "name", "event_count", "last_detected_at"].forEach(c => {
+      const el = document.getElementById("sort-icon-" + c);
+      if (el) {
+        el.textContent = (this.autoReportSortCol === c) ? (this.autoReportSortDir === "asc" ? " ▲" : " ▼") : "";
+      }
+    });
+
+    if (!this.autoReportedNodes || this.autoReportedNodes.length === 0) {
       this.autoReportedTbody.innerHTML = `
         <tr><td colspan="7" style="text-align: center; color: var(--text-dim); padding: 20px;">No hay incidencias de mala praxis registradas.</td></tr>
       `;
       return;
     }
+
+    // Ordenar nodos según columna activa
+    const sorted = [...this.autoReportedNodes].sort((a, b) => {
+      let vA, vB;
+      if (this.autoReportSortCol === "name") {
+        vA = (a.name || a.short_name || a.node_id || "").toLowerCase();
+        vB = (b.name || b.short_name || b.node_id || "").toLowerCase();
+      } else if (this.autoReportSortCol === "event_count") {
+        vA = Number(a.event_count || 0);
+        vB = Number(b.event_count || 0);
+      } else if (this.autoReportSortCol === "reason_code") {
+        vA = (a.reason_code || "").toLowerCase();
+        vB = (b.reason_code || "").toLowerCase();
+      } else {
+        vA = a.last_detected_at || "";
+        vB = b.last_detected_at || "";
+      }
+      if (vA < vB) return this.autoReportSortDir === "asc" ? -1 : 1;
+      if (vA > vB) return this.autoReportSortDir === "asc" ? 1 : -1;
+      return 0;
+    });
 
     const reasonBadges = {
       "EXCESSIVE_HOPS": { icon: "🔀", label: "Saltos Excesivos", bg: "var(--danger-bg)", color: "var(--danger)" },
@@ -1850,7 +1905,7 @@ class MeshDashboard {
       "COMMAND_SPAM": { icon: "🛑", label: "Spam Comandos", bg: "var(--danger-bg)", color: "var(--danger)" },
     };
 
-    this.autoReportedTbody.innerHTML = this.autoReportedNodes.map(n => {
+    this.autoReportedTbody.innerHTML = sorted.map(n => {
       const bInfo = reasonBadges[n.reason_code] || { icon: "⚠️", label: n.reason_code || "Alerta", bg: "var(--bg-input)", color: "var(--text-muted)" };
       const badgeHtml = `<span class="badge" style="background: ${bInfo.bg}; color: ${bInfo.color}; font-size: 0.75rem;">${bInfo.icon} ${bInfo.label}</span>`;
       

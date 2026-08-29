@@ -153,12 +153,11 @@ class SerialInterface:
             if user:
                 id = user.get('id', 'Desconocido')
 
-                # Comprobar vigilancia / ignorados
+                # Comprobar si el nodo está ignorado
                 try:
                     from Models.MeshWatcher import MeshWatcher
                     if MeshWatcher.is_ignored(id):
                         return
-                    MeshWatcher.inspect_packet(packet)
                 except Exception:
                     pass
 
@@ -553,6 +552,17 @@ class SerialInterface:
                 my_id = f"!{my_num:08x}"
                 local_node = getattr(interface, 'nodes', {}).get(my_id) or getattr(interface, 'nodesByNum', {}).get(my_num) or {}
                 user = local_node.get('user', {}) if isinstance(local_node, dict) else {}
+                # Registrar identificadores locales en MeshWatcher y AntiAbuse
+                try:
+                    from Models.MeshWatcher import MeshWatcher
+                    MeshWatcher.set_local_node(
+                        node_id=user.get('id') or my_id,
+                        node_name=user.get('longName'),
+                        short_name=user.get('shortName'),
+                    )
+                except Exception:
+                    pass
+
                 broadcast_event("local_node_info", {
                     "my_node_id": user.get('id') or my_id,
                     "my_num": my_num,

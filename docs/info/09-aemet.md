@@ -98,18 +98,44 @@ la sirva **offline** desde BD (sin llamar a la API en tiempo de comando).
 - **Comando `/weather`**: lee el último registro de `aemet_weather` y responde
   troceando el texto en **1–2 mensajes de ~200 caracteres** (límite Meshtastic).
 
-### Variables de entorno (clima)
+### Variables de entorno (clima y marítimo)
 
 | Variable | Ejemplo | Descripción |
 |---|---|---|
-| `AEMET_PROVINCE` | `Cadiz` | Provincia (nombre o código INE 2 dígitos) |
-| `AEMET_CITY` | `Chipiona` | Municipio de fallback (nombre para mostrar) |
-| `AEMET_CITY_CODE` | `11015` | Código INE de 5 dígitos del municipio (`''` = autodetectar) |
-| `AEMET_PERIOD` | `Hour` | Cadencia de descarga del clima y de publicación de avisos |
+| `AEMET_PROVINCE` | `Cadiz` | Provincia (nombre o código INE 2 dígitos). |
+| `AEMET_CITY` | `Chipiona` | Municipio de fallback (nombre para mostrar). |
+| `AEMET_CITY_CODE` | `11016` | Código INE de 5 dígitos del municipio (`''` = autodetectar). |
+| `AEMET_PERIOD` | `Hour` | Cadencia de descarga del clima y de publicación de avisos. |
+| `AEMET_EXPIRY_WARNING_DAYS` | `10` | Días antes de la caducidad del JWT para emitir alerta. |
+| `AEMET_EXPIRY_WARNING_CHANNELS` | `['raupulus']` | Canales donde avisar de la caducidad de la clave. |
+| `AEMET_MARITIME_COAST_CODE` | `'42'` | Código de costa AEMET (42 = Andalucía Occidental / Cádiz). |
+| `AEMET_OBSERVATION_STATION` | `'5972X'` | Código de estación meteorológica física de observación. |
+
+---
+
+## 8. Módulos y Comandos Extendidos de AEMET
+
+### 8.1. Control de Caducidad de API Key (JWT)
+* La API Key de AEMET OpenData es un token JWT que caduca a los 100 días.
+* `Models/Aemet.py::check_api_key_expiry()` decodifica el payload en base64 de forma offline para obtener la fecha exacta de expiración.
+* La tarea cron `check_aemet_key_expiry()` envía un aviso diario por los canales configurados cuando quedan $\le 10$ días para expirar o si ya caducó.
+
+### 8.2. Predicción Multi-día y Horaria (`/prevision`)
+* Descargada cada 3 horas (`weather_forecast_aemet`) en `aemet_forecast_daily` y `aemet_forecast_hourly`.
+* Soporta: `/prevision` (3 días), `/prevision mañana`, `/prevision <1-7> dias` y `/prevision <1-12> horas`.
+
+### 8.3. Boletín Marítimo Costero (`/marea mar`)
+* Descargado a las **12:05 y 20:05** (5 min tras la emisión oficial) con **3 reintentos** cada 10 min en caso de error.
+* Extrae viento (Beaufort), estado de la mar, mar de fondo y visibilidad de la subzona gaditana (*Del Guadalquivir al Cabo Roche*).
+
+### 8.4. Medición Física en Tiempo Real (`/tiempo real`)
+* Descarga horaria de la estación física configurada (`5972X` Cádiz / San Fernando o `5960X` Rota).
+* Muestra temperatura real, velocidad del viento, racha máxima, humedad relativa y presión barométrica.
+
+---
 
 ## Notas
 
-- La provincia puede ser nombre (`Cádiz`) o, para Galicia, una CCAA con mapa a sus
-  provincias. Para otras CCAA habría que ampliar los mapas en `cron_tasks.py`.
-- `Aemet` usa la cabecera `api_key`; los timeouts son cortos (5–20 s) y hay
-  reintentos.
+- La provincia puede ser nombre (`Cádiz`) o código INE (`11`).
+- `Aemet` usa la cabecera `api_key`; los timeouts son cortos (5–20 s) con reintentos y monitorización de cuota con `Remaining-request-endpoint`.
+
