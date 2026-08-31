@@ -38,10 +38,18 @@ def loop():
                 pending = db.get_next_pending_trace(router_identifiers=_rcfg)
                 if pending:
                     node_id = pending.get('to')
-                    log_p(f"[traceroute] Iniciando trace #{pending['id']} hacia {node_id}")
+                    now_hour = datetime.now().hour
+                    peak_start = int(getattr(env, 'TRACES_PEAK_START_HOUR', 8) or 8)
+                    peak_end = int(getattr(env, 'TRACES_PEAK_END_HOUR', 23) or 23)
+                    if peak_start <= now_hour < peak_end:
+                        trace_timeout = float(getattr(env, 'TRACES_TIMEOUT_PEAK', 30.0) or 30.0)
+                    else:
+                        trace_timeout = float(getattr(env, 'TRACES_TIMEOUT_OFFPEAK', 60.0) or 60.0)
+
+                    log_p(f"[traceroute] Iniciando trace #{pending['id']} hacia {node_id} (timeout={trace_timeout:.0f}s)")
                     try:
                         # Ejecutar traceroute y capturar texto + hops hacia destino
-                        result = interface.traceroute(node_id)
+                        result = interface.traceroute(node_id, timeout=trace_timeout)
                         text = (result or {}).get('text', '')
                         forward = (result or {}).get('forward', []) or []
                         backward = (result or {}).get('backward', []) or []

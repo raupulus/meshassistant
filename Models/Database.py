@@ -736,7 +736,7 @@ class Database:
         self,
         *,
         hops_limit: int = 2,
-        reload_hours: int = 72,
+        reload_hours: int = 120,
         router_reload_hours: int = 24,
         router_max_hops: int = 2,
         router_retry_short_hours: int = 1,
@@ -744,7 +744,7 @@ class Database:
         router_retry_long_hours: int = 24,
         retry_hours: int = 24,
         max_inactive_days: int = 7,
-        router_start_hour: int = 5,
+        router_start_hour: int = 6,
         router_identifiers: Optional[List[str]] = None,
     ) -> Optional[str]:
         """Devuelve el próximo node_id candidato para traceroute.
@@ -756,12 +756,14 @@ class Database:
 
         Prioridad 1: Nodos routers cercanos (en router_identifiers o con role ROUTER/ROUTER_LATE/REPEATER)
                     con hops <= router_max_hops + 1 (<=3 brutos).
-                    - Se ejecutan preferentemente a partir de router_start_hour (05:00 AM).
+                    - Se ejecutan preferentemente a partir de router_start_hour (06:00 AM).
                     - Éxito previo ('done'): re-trazar cada router_reload_hours (24h).
                     - Fallo previo ('error') con < router_max_retries (5): reintentar cada router_retry_short_hours (1h).
                     - Fallo previo ('error') con >= router_max_retries (5): enfriamiento de router_retry_long_hours (24h).
         Prioridad 2: Nodos normales y routers más lejanos (hops <= hops_limit + 1, no MQTT, activos en 7 días)
-                    cuya última traza exitosa tenga ≥ reload_hours (72h) o reintento de retry_hours (24h).
+                    - Éxito previo: cada reload_hours (120h = 5 días).
+                    - Fallo puntual: reintento tras retry_hours (24h).
+                    - Tras 5 fallos consecutivos sin respuesta, se descarta definitivamente hasta recibir un update en 'nodes'.
         """
         router_idents = [str(r) for r in (router_identifiers or [])]
         eff_router_hops = int(router_max_hops) + 1
@@ -861,7 +863,7 @@ class Database:
             if row:
                 return row['node_id']
 
-            # 2. Si ningún router cercano necesita trace, seleccionar nodo normal o router lejano cumpliendo reload_hours (72h) y activo en 7 días
+            # 2. Si ningún router cercano necesita trace, seleccionar nodo normal o router lejano cumpliendo reload_hours (120h = 5 días) y activo en 7 días
             query_clients = '''
                 WITH last_processed AS (
                     SELECT "to" AS node_id, MAX(updated_at) AS last_updated
@@ -876,6 +878,15 @@ class Database:
                         SELECT MAX(t2.updated_at) FROM traces t2
                         WHERE t2."to" = t."to" AND t2.updated_at IS NOT NULL AND t2.status IN ('done','error')
                     )
+                ), consecutive_errors AS (
+                    SELECT t1."to" AS node_id, COUNT(*) AS err_count, MAX(t1.updated_at) AS last_err_time
+                    FROM traces t1
+                    WHERE t1.status = 'error'
+                      AND t1.id > COALESCE(
+                          (SELECT MAX(t2.id) FROM traces t2 WHERE t2."to" = t1."to" AND t2.status = 'done'),
+                          0
+                      )
+                    GROUP BY t1."to"
                 ), pend AS (
                     SELECT "to" AS node_id, COUNT(*) AS pendings
                     FROM traces
@@ -886,6 +897,7 @@ class Database:
                 FROM nodes n
                 LEFT JOIN last_processed lp ON lp.node_id = n.node_id
                 LEFT JOIN last_status ls ON ls.node_id = n.node_id
+                LEFT JOIN consecutive_errors ce ON ce.node_id = n.node_id
                 LEFT JOIN pend p ON p.node_id = n.node_id
                 WHERE COALESCE(n.via_mqtt, 0) = 0
                   AND (n.hops IS NULL OR n.hops <= ?)
@@ -902,6 +914,13 @@ class Database:
                        OR UPPER(COALESCE(n.node_id, '')) IN ({ro_placeholders})
                       )
                       AND (n.hops IS NULL OR n.hops <= ?)
+                  )
+                  AND (
+                      COALESCE(ce.err_count, 0) < 5
+                   OR (
+                       (n.last_heard IS NOT NULL AND n.last_heard > strftime('%s', ce.last_err_time))
+                    OR (strftime('%s', n.updated_at) > strftime('%s', ce.last_err_time))
+                   )
                   )
                   AND (
                         lp.last_updated IS NULL
@@ -934,6 +953,23 @@ class Database:
             cur = conn.execute(query_clients, params_clients)
             row = cur.fetchone()
             return row['node_id'] if row else None
+
+    def is_router_node(self, node_id: str, router_identifiers: Optional[List[str]] = None) -> bool:
+        """Determina si un nodo es un router/repetidor de la red."""
+        if not node_id:
+            return False
+        router_idents = [str(r).upper() for r in (router_identifiers or [])]
+        node = self.get_node(node_id)
+        if not node:
+            return str(node_id).upper() in router_idents
+
+        role = node.get('role')
+        if role in (2, 4, 9) or str(role).upper() in ('ROUTER', 'ROUTER_LATE', 'REPEATER'):
+            return True
+
+        s_name = str(node.get('short_name') or '').upper()
+        n_id = str(node.get('node_id') or '').upper()
+        return s_name in router_idents or n_id in router_idents
 
     # ---------- AEMET ALERTS ----------
     def _hash_text(self, text: str) -> str:

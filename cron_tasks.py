@@ -135,9 +135,11 @@ def chiste_download() -> None:
 def send_trace() -> None:
     """Encola la ejecución de un traceroute para que lo procese el proceso principal.
 
-    Restricciones:
-    - Throttle global: 1 intento cada TRACES_INTERVAL minutos medido con traces.updated_at del último procesado
-    - Ventanas por nodo configurables: TRACES_RELOAD_INTERVAL (éxito) y TRACES_RETRY_INTERVAL (error)
+    Restricciones y cadencias:
+    - Routers: 40 segundos entre trazas matinales (a partir de las 06:00 AM).
+    - Clientes diurnos (08:00 - 23:00): 1 trace por hora (60 minutos).
+    - Clientes nocturnos (23:00 - 08:00): 1 trace cada 5 minutos.
+    - Los traces manuales desde la web se encolan directamente y se ejecutan de inmediato en main.py.
     """
     # Permitir deshabilitar traces por configuración
     if not getattr(env, 'ENABLE_TRACES', False):
@@ -151,34 +153,21 @@ def send_trace() -> None:
     if cleaned > 0:
         log_p(f"[cron] send_trace: expiradas {cleaned} trazas pendientes obsoletas")
 
-    # Si ya hay una traza pendiente en cola siendo procesada por main.py, no encolar otra
+    # Si ya hay una traza pendiente en cola siendo procesada por main.py (ej. lanzada desde la web), no encolar otra
     pending = db.get_next_pending_trace()
     if pending:
         log_p(f"[cron] send_trace: omitido (ya hay un trace pendiente en proceso: id={pending['id']})")
         return
 
-    # Throttle global 5 minutos basado en el último trace realizado (updated_at)
-    last_done_iso = db.get_last_trace_updated_at()
-    log_p(f"[cron] send_trace: last_done={last_done_iso}")
-    interval_min = int(getattr(env, 'TRACES_INTERVAL', 5) or 5)
-    if last_done_iso:
-        try:
-            last_dt = datetime.fromisoformat(last_done_iso)
-            if datetime.now() - last_dt < timedelta(minutes=interval_min):
-                log_p(f"[cron] send_trace: omitido (cooldown global {interval_min}min)")
-                return
-        except Exception:
-            pass
-
-    # Seleccionar próximo nodo candidato respetando configuración y prioridad a routers cada 24h desde las 05:00 AM
+    # Parámetros de selección de candidatos
     hops_limit = int(getattr(env, 'TRACES_HOPS', 2) or 2)
-    reload_hours = int(getattr(env, 'TRACES_RELOAD_INTERVAL', 72) or 72)
+    reload_hours = int(getattr(env, 'TRACES_RELOAD_INTERVAL', 120) or 120)
     router_reload_hours = int(getattr(env, 'ROUTER_TRACE_INTERVAL_HOURS', 24) or 24)
     router_max_hops = int(getattr(env, 'ROUTER_MAX_HOPS', 2) or 2)
     router_retry_short_hours = int(getattr(env, 'ROUTER_RETRY_SHORT_HOURS', 1) or 1)
     router_max_retries = int(getattr(env, 'ROUTER_MAX_RETRIES', 5) or 5)
     router_retry_long_hours = int(getattr(env, 'ROUTER_RETRY_LONG_HOURS', 24) or 24)
-    router_start_hour = int(getattr(env, 'ROUTER_TRACE_START_HOUR', 5) or 5)
+    router_start_hour = int(getattr(env, 'ROUTER_TRACE_START_HOUR', 6) or 6)
     max_inactive_days = int(getattr(env, 'TRACES_MAX_INACTIVE_DAYS', 7) or 7)
     retry_hours = int(getattr(env, 'TRACES_RETRY_INTERVAL', 24) or 24)
 
@@ -199,12 +188,49 @@ def send_trace() -> None:
         router_start_hour=router_start_hour,
         router_identifiers=routers_cfg,
     )
-    if node_id:
-        # Encolar petición en la propia tabla traces (status='pending')
-        trace_id = db.enqueue_trace(node_id)
-        log_p(f"[cron] send_trace: encolado trace id={trace_id} para nodo {node_id}")
-    else:
+    if not node_id:
         log_p(f"[cron] send_trace: ningún nodo candidato (≤{hops_limit} hops, activos en {max_inactive_days}d, no MQTT, ventanas cumplidas)")
+        return
+
+    # Throttle dinámico según tipo de nodo y franja horaria
+    is_router = db.is_router_node(node_id, routers_cfg)
+    last_done_iso = db.get_last_trace_updated_at()
+    now = datetime.now()
+
+    if last_done_iso:
+        try:
+            last_dt = datetime.fromisoformat(last_done_iso)
+            elapsed = (now - last_dt).total_seconds()
+
+            if is_router:
+                router_sec = int(getattr(env, 'ROUTER_TRACE_INTERVAL_SECONDS', 40) or 40)
+                if elapsed < router_sec:
+                    log_p(f"[cron] send_trace: omitido (cooldown router {router_sec}s, faltan {int(router_sec - elapsed)}s)")
+                    return
+            else:
+                peak_start = int(getattr(env, 'TRACES_PEAK_START_HOUR', 8) or 8)
+                peak_end = int(getattr(env, 'TRACES_PEAK_END_HOUR', 23) or 23)
+                is_peak = (peak_start <= now.hour < peak_end)
+
+                if is_peak:
+                    interval_min = int(getattr(env, 'TRACES_INTERVAL_PEAK', 60) or 60)
+                    if elapsed < interval_min * 60:
+                        rem_min = int((interval_min * 60 - elapsed) / 60)
+                        log_p(f"[cron] send_trace: omitido (cooldown diurno {interval_min}min [1/h], faltan ~{rem_min}m)")
+                        return
+                else:
+                    interval_min = int(getattr(env, 'TRACES_INTERVAL_OFFPEAK', 5) or 5)
+                    if elapsed < interval_min * 60:
+                        rem_min = int((interval_min * 60 - elapsed) / 60)
+                        log_p(f"[cron] send_trace: omitido (cooldown nocturno {interval_min}min, faltan ~{rem_min}m)")
+                        return
+        except Exception:
+            pass
+
+    # Encolar petición en la propia tabla traces (status='pending')
+    trace_id = db.enqueue_trace(node_id)
+    node_type_str = "router" if is_router else "cliente"
+    log_p(f"[cron] send_trace: encolado trace #{trace_id} para {node_type_str} {node_id}")
 
 
 def request_router_telemetry() -> None:

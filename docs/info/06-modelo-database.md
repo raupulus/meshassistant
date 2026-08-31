@@ -33,7 +33,8 @@ db = Database(db_path="...")    # ruta explícita (tests)
 | `mark_trace_done_with_route(trace_id, ok, *, text, to_name, to_name_short, hops, return_hops, from_='local')` | Marca y guarda hasta 7 saltos ida/vuelta con SNR y nombres. |
 | `get_latest_trace_snr(identifier, base_identifiers=None)` | Obtiene el primer SNR exterior hacia/desde el router y la base (`RAU0`). |
 | `get_latest_trace_route_info(identifier, base_identifiers=None)` | Obtiene la información completa de la ruta exterior (saltos reales desde la base, lista de SNRs tramo a tramo, repetidores intermedios y texto formateado, ej. `9.0dB, 9.2dB`). |
-| `get_next_node_to_trace(*, hops_limit, reload_hours, router_reload_hours, router_max_hops, router_retry_short_hours, router_max_retries, router_retry_long_hours, retry_hours, router_identifiers)` | Selecciona el próximo candidato con **prioridad 1 a routers cercanos (hops <= 2, cada 6h tras éxito, reintentos cada 1h hasta 5 veces y 24h tras 5 fallos)** y prioridad 2 a clientes normales/routers lejanos (72h). |
+| `get_next_node_to_trace(*, hops_limit, reload_hours, router_reload_hours, router_max_hops, router_retry_short_hours, router_max_retries, router_retry_long_hours, retry_hours, router_start_hour, router_identifiers)` | Selecciona el próximo candidato con **prioridad 1 a routers cercanos (hops <= 2, cada 24h tras éxito a partir de las 06:00 AM, reintentos cada 1h hasta 5 veces y 24h tras 5 fallos)** y prioridad 2 a clientes normales (cada 5 días / 120h tras éxito, 24h tras fallo, y descarte definitivo tras 5 fallos consecutivos hasta nueva actividad). |
+| `is_router_node(node_id, router_identifiers)` | Comprueba si un `node_id` es router/repetidor por rol o lista configurada. |
 
 ### Pings
 | Método | Descripción |

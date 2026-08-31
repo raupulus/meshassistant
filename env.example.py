@@ -5,12 +5,16 @@ DEBUG = False
 SERIAL_DEVICE_PATH = '/dev/cu.usbserial-212110'
 
 ## Traces (configurables por variables de entorno)
-ENABLE_TRACES = False              # Si es False, el cron no encola traces
-TRACES_HOPS = 2                    # Hops máximos permitidos para traces (<=)
-TRACES_INTERVAL = 15                # Intervalo en minutos entre traces (global)
-TRACES_RETRY_INTERVAL = 24         # Horas para reintentar tras un fallo
-TRACES_RELOAD_INTERVAL = 72        # Horas para repetir nodos generales tras un éxito (3 días)
-ROUTER_TRACE_INTERVAL_HOURS = 6    # Cadencia prioritaria para routers (cada 6 horas)
+ENABLE_TRACES = False                 # Si es False, el cron no encola traces automáticos
+TRACES_HOPS = 2                       # Hops máximos permitidos para traces (<=)
+TRACES_RELOAD_INTERVAL = 120          # Horas para repetir nodos normales tras un éxito (5 días)
+TRACES_RETRY_INTERVAL = 24            # Horas para reintentar un nodo normal tras un fallo (24h)
+TRACES_PEAK_START_HOUR = 8            # Inicio de franja diurna de alta actividad (08:00 AM)
+TRACES_PEAK_END_HOUR = 23             # Fin de franja diurna de alta actividad (23:00 PM)
+TRACES_INTERVAL_PEAK = 60             # Intervalo diurno entre trazas a clientes (60 min = 1 por hora)
+TRACES_INTERVAL_OFFPEAK = 5           # Intervalo nocturno entre trazas a clientes (5 min)
+TRACES_TIMEOUT_PEAK = 30.0            # Timeout de radio para traces durante el día (segundos)
+TRACES_TIMEOUT_OFFPEAK = 60.0         # Timeout de radio para traces durante la noche (segundos)
 
 ## Api para Chistes, habilitado solo si tiene API key
 CHISTES_API_ENABLED = False
@@ -58,14 +62,15 @@ BASE_NODE_ID = ''  # Opcional: '!xxxxxxxx'
 ## Lista de routers/repetidores a vigilar con el comando /routers (nombres cortos o IDs)
 ROUTER_NODES = ['RAU0', 'CA12', 'CA13', 'CA01', 'CA02', 'CA03', 'CA04', 'CA05', 'CA16', 'CA23']
 ROUTER_MAX_HOPS = 2  # Hops máximos exteriores respecto al nodo base para considerar un router cercano prioritario
-ROUTER_TRACE_INTERVAL_HOURS = 24  # Cadencia diaria tras éxito (horas)
-ROUTER_TRACE_START_HOUR = 5       # Hora de inicio preferente para trazas diarias a routers (05:00 AM)
-ROUTER_TELEMETRY_START_HOUR = 7   # Hora para solicitar telemetría de batería a routers cercanos (07:00 AM)
-TRACES_MAX_INACTIVE_DAYS = 7      # Días sin señales cercanas para descartar un nodo de la cola automática
-ROUTER_RETRY_SHORT_HOURS = 1      # Reintento rápido ante fallo puntual (horas)
-ROUTER_MAX_RETRIES = 5            # Máximo de reintentos rápidos (1h) antes de penalizar
-ROUTER_RETRY_LONG_HOURS = 24      # Enfriamiento tras 5 fallos consecutivos (horas)
-ROUTERS_MAX_PARTS = 5             # Límite máximo de mensajes para la respuesta de /routers (def. 5)
+ROUTER_TRACE_START_HOUR = 6           # Hora de inicio preferente para trazas diarias a routers (06:00 AM)
+ROUTER_TRACE_INTERVAL_HOURS = 24      # Cadencia diaria tras éxito (24 horas)
+ROUTER_TRACE_INTERVAL_SECONDS = 40    # Intervalo entre trazas a routers en la rutina matinal (40 segundos)
+ROUTER_TELEMETRY_START_HOUR = 7       # Hora para solicitar telemetría de batería a routers cercanos (07:00 AM)
+TRACES_MAX_INACTIVE_DAYS = 7          # Días sin señales cercanas para descartar un nodo de la cola automática
+ROUTER_RETRY_SHORT_HOURS = 1          # Reintento rápido ante fallo puntual (horas)
+ROUTER_MAX_RETRIES = 5                # Máximo de reintentos rápidos (1h) antes de penalizar
+ROUTER_RETRY_LONG_HOURS = 24          # Enfriamiento tras 5 fallos consecutivos (horas)
+ROUTERS_MAX_PARTS = 5                 # Límite máximo de mensajes para la respuesta de /routers (def. 5)
 
 ## Mareas (/marea)
 ## Fuente de descarga vía cron: si TIDES_API_KEY está vacío se usa Open-Meteo
