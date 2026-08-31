@@ -360,17 +360,7 @@ class SerialInterface:
                     'text': msg,
                     'channelIndex': channel,
                 }
-                if reply_id is not None:
-                    try:
-                        kwargs['replyId'] = int(reply_id)
-                    except (ValueError, TypeError):
-                        pass
-                try:
-                    self.interface.sendText(**kwargs)
-                except TypeError:
-                    kwargs.pop('replyId', None)
-                    self.interface.sendText(**kwargs)
-
+                self.interface.sendText(**kwargs)
                 log_p("✅ Mensaje enviado al canal público")
                 return True
 
@@ -464,9 +454,9 @@ class SerialInterface:
             log_p(f"Respondiendo en privado al nodo {from_id}")
             return self.send(msg, dest=from_id, channel=channel, reply_id=reply_id)
         else:
-            # Responder en el mismo canal
+            # Responder en el mismo canal (broadcast público limpio)
             log_p(f"↩️ Respondiendo en el canal {channel}")
-            return self.send(msg, dest="^all", channel=channel, reply_id=reply_id)
+            return self.send(msg, dest="^all", channel=channel)
 
     def request_node_info(self, destination_id: str) -> bool:
         """Solicita NodeInfo a un nodo remoto a través de la radio Meshtastic."""

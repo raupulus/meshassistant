@@ -12,7 +12,7 @@ class TestReplyId(unittest.TestCase):
         self.serial.interface = MagicMock()
         self.serial.node_dict = {}
 
-    def test_reply_to_message_channel_with_reply_id(self):
+    def test_reply_to_message_channel_without_reply_id(self):
         metadata = {
             "id": 987654,
             "reply_id": 987654,
@@ -25,7 +25,6 @@ class TestReplyId(unittest.TestCase):
         self.serial.interface.sendText.assert_called_once_with(
             text="Respuesta de prueba",
             channelIndex=2,
-            replyId=987654,
         )
 
     def test_reply_to_message_direct_with_reply_id(self):
