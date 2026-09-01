@@ -721,12 +721,12 @@ class SerialInterface:
         buf_out = io.StringIO()
         buf_err = io.StringIO()
 
-        # Configurar un timeout ágil en la librería (por defecto 15s) para no bloquear
-        # 20 minutos (300s x waitFactor) si el nodo está inalcanzable u offline.
+        # Configurar un timeout ágil en la librería teniendo en cuenta que Meshtastic
+        # multiplica expireTimeout por waitFactor (hopLimit + 1 = 4).
         orig_expire = getattr(getattr(self.interface, '_timeout', None), 'expireTimeout', 300)
         if hasattr(self.interface, '_timeout'):
             try:
-                self.interface._timeout.expireTimeout = int(timeout)
+                self.interface._timeout.expireTimeout = max(1, int(timeout / 4))
             except Exception:
                 pass
 
