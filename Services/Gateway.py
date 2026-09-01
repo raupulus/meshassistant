@@ -692,7 +692,7 @@ class GatewayService:
                 offset = int(params.get("offset", 0))
                 reason = params.get("reason_code")
                 nodes = self.db.get_auto_reported_nodes(limit=limit, offset=offset, reason_code=reason)
-                total = self.db.count_auto_reported_nodes()
+                total = self.db.count_auto_reported_nodes(reason_code=reason)
                 response["data"] = {"auto_reported_nodes": nodes, "total": total}
 
             elif action == "set_node_bot_ignored":

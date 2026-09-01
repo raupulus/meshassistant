@@ -296,6 +296,7 @@ class MeshDashboard {
     // Filtro por motivo en Nodos Auto-reportados
     if (this.filterAutoreportReason) {
       this.filterAutoreportReason.addEventListener("change", () => {
+        this.renderAutoReportedNodes();
         this.loadAutoReportedNodes();
       });
     }
@@ -873,7 +874,7 @@ class MeshDashboard {
     this.sendAction("get_weather");
     this.sendAction("get_scheduled_messages");
     this.sendAction("get_blocked_nodes");
-    this.sendAction("get_auto_reported_nodes");
+    this.loadAutoReportedNodes();
   }
 
   handleActionResponse(resp) {
@@ -2152,13 +2153,17 @@ class MeshDashboard {
       this.autoReportSortDir = "desc";
     }
 
-    if (total !== undefined && total !== null) {
-      this._totalAutoReported = total;
-    } else if (this._totalAutoReported === undefined) {
-      this._totalAutoReported = (this.autoReportedNodes || []).length;
+    // Filtrar localmente según el select activo para evitar desbordes al recibir updates globales
+    const selectedReason = (this.filterAutoreportReason && this.filterAutoreportReason.value !== "all")
+      ? this.filterAutoreportReason.value
+      : null;
+
+    let listToDisplay = [...(this.autoReportedNodes || [])];
+    if (selectedReason) {
+      listToDisplay = listToDisplay.filter(n => (n.reason_code || "").toUpperCase() === selectedReason.toUpperCase());
     }
 
-    const count = this._totalAutoReported;
+    const count = selectedReason ? listToDisplay.length : (total !== undefined && total !== null ? total : listToDisplay.length);
     if (this.countReportedBadge) this.countReportedBadge.textContent = count;
     if (this.countBlocked) this.countBlocked.textContent = count;
 
@@ -2170,15 +2175,18 @@ class MeshDashboard {
       }
     });
 
-    if (!this.autoReportedNodes || this.autoReportedNodes.length === 0) {
+    if (!listToDisplay || listToDisplay.length === 0) {
+      const msg = selectedReason
+        ? "No hay incidencias para el motivo de reporte seleccionado."
+        : "No hay incidencias de mala praxis registradas.";
       this.autoReportedTbody.innerHTML = `
-        <tr><td colspan="7" style="text-align: center; color: var(--text-dim); padding: 20px;">No hay incidencias de mala praxis registradas.</td></tr>
+        <tr><td colspan="7" style="text-align: center; color: var(--text-dim); padding: 20px;">${msg}</td></tr>
       `;
       return;
     }
 
     // Ordenar nodos según columna activa
-    const sorted = [...this.autoReportedNodes].sort((a, b) => {
+    const sorted = listToDisplay.sort((a, b) => {
       let vA, vB;
       if (this.autoReportSortCol === "name") {
         vA = (a.name || a.short_name || a.node_id || "").toLowerCase();

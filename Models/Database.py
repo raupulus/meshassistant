@@ -2521,10 +2521,13 @@ class Database:
             cur = conn.execute(query, tuple(params))
             return [dict(r) for r in cur.fetchall()]
 
-    def count_auto_reported_nodes(self) -> int:
-        """Devuelve el total de incidencias de auto-reporte activas."""
+    def count_auto_reported_nodes(self, reason_code: Optional[str] = None) -> int:
+        """Devuelve el total de incidencias de auto-reporte activas (opcionalmente filtrado por motivo)."""
         with closing(self._connect()) as conn:
-            cur = conn.execute("SELECT COUNT(*) AS c FROM auto_reported_nodes")
+            if reason_code:
+                cur = conn.execute("SELECT COUNT(*) AS c FROM auto_reported_nodes WHERE reason_code = ?", (str(reason_code),))
+            else:
+                cur = conn.execute("SELECT COUNT(*) AS c FROM auto_reported_nodes")
             row = cur.fetchone()
             return int(row["c"]) if row else 0
 
