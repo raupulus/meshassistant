@@ -138,6 +138,7 @@ Emitido en tiempo real cuando llega un mensaje por radio (canal o privado).
 ```
 
 ### 2.5. `device_telemetry` (Batería y Energía de Nodo)
+Emitido cuando un nodo envía métricas de estado, batería o mediciones de potencia externa (sensores INA219/INA3221).
 ```json
 {
   "event": "device_telemetry",
@@ -146,12 +147,16 @@ Emitido en tiempo real cuando llega un mensaje por radio (canal o privado).
     "id": "!12345678",
     "battery": 94,
     "voltage": 4.15,
+    "power_ina1": 3.72,
+    "power_ina2": 4.11,
+    "power_ina3": 3.50,
     "channel_util": 3.8,
     "air_util_tx": 0.12,
     "uptime_seconds": 36000
   }
 }
 ```
+*Nota: Los campos `power_ina1`, `power_ina2` y `power_ina3` son opcionales y solo se incluyen cuando el nodo emite telemetría `powerMetrics` con lecturas de canales analógicos/I2C de sensores de potencia.*
 
 ### 2.6. `channel_metrics` (Salud y Ocupación del Espectro LoRa)
 ```json
@@ -348,6 +353,7 @@ Emitido en tiempo real cuando llega un mensaje por radio (canal o privado).
   },
   "error": null
 ### 3.4. `request_telemetry` (Solicitar Batería y Métricas a un Nodo/Router)
+Encola una solicitud `TELEMETRY_APP` por radio LoRa dirigida al nodo especificado para que emita sus métricas actualizadas (batería, voltaje y canales de sensores INA si dispone de ellos). Utilizado en la web por los botones `🔋 Bat` y `🔌 PWR`.
 - **Petición:**
 ```json
 {

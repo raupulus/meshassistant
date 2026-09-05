@@ -25,7 +25,7 @@ tópicos de `pubsub`:
 | `meshtastic.receive.nodeinfo` | `on_receive_nodeinfo` | (placeholder). |
 | `meshtastic.node.updated` | `on_node_update` | Actualización de nodo. |
 | `meshtastic.receive.user` | `on_receive_user` | Actualiza metadatos del nodo emisor. |
-| `meshtastic.receive.data` | `on_receive_data` | (debug). |
+| `meshtastic.receive.data` | `on_receive_data` | Telemetría (batería, métricas y sensores INA), vigilancia y emisión en tiempo real. |
 | `meshtastic.connection.lost` | `on_connection_lost` | Reconexión. |
 | `meshtastic.connection.closed` | `on_connection_closed` | Cierre. |
 
@@ -69,6 +69,22 @@ reply_to_message(msg, metadata)                # responde citando el mensaje ori
    ancho de banda en la malla, registrándolo en el log.
 8. Si procede (`is_direct` o `in_group`), invoca `command_dict[cmd]['callback'](...)` y
    registra el comando en `commands_sent`.
+
+## Recepción de datos y telemetría — `on_receive_data`
+
+Maneja los paquetes de datos que circulan por la malla Meshtastic (`meshtastic.receive.data`):
+
+1. **Vigilancia e Inspección (`MeshWatcher`):**
+   - Comprueba si el nodo emisor está en la lista de ignorados para descartar el paquete.
+   - Detecta si el paquete es de traceroute (`TRACEROUTE_APP` o `ROUTING_APP`) e incrementa la tasa de actividad y detección de trazas del nodo.
+2. **Extracción y Decodificación de Telemetría:**
+   - **Métricas de dispositivo (`deviceMetrics`):** Nivel de batería (`batteryLevel`), voltaje (`voltage`), tiempo de actividad (`uptimeSeconds`), ocupación del canal (`channelUtilization`) y del aire (`airUtilTx`).
+   - **Métricas de potencia / Sensores INA (`powerMetrics` / `power_metrics`):** Captura lecturas de sensores de corriente/tensión externos (ej. INA219, INA3221 de hasta 3 canales) vía `ch1Voltage`, `ch2Voltage`, `ch3Voltage` o `voltage`.
+   - **Métricas ambientales (`environmentMetrics`):** Voltaje adicional o lecturas climáticas si están presentes.
+3. **Persistencia en Base de Datos:**
+   - Si el nodo emisor está identificado, actualiza en `nodes` los campos de batería, voltaje, tiempo de actividad y los voltajes `power_ina1`, `power_ina2`, `power_ina3` mediante `Database.update_node`.
+4. **Emisión en Tiempo Real (Gateway):**
+   - Emite el evento IPC/WebSocket `device_telemetry` con todos los datos extraídos (incluyendo `power_ina1/2/3`) para su visualización reactiva e inmediata en el panel web.
 
 ## Carga de nodos — `get_nodes`
 
