@@ -255,9 +255,24 @@ class SerialInterface:
 
             # Extraer telemetría flexible
             telemetry = decoded.get('telemetry') or decoded.get('deviceMetrics') or decoded.get('device_metrics') or packet.get('telemetry') or packet.get('deviceMetrics') or {}
-            dev_m = telemetry.get('deviceMetrics') or telemetry.get('device_metrics') or telemetry if isinstance(telemetry, dict) else {}
+            dev_m = telemetry.get('deviceMetrics') or telemetry.get('device_metrics') or (telemetry if isinstance(telemetry, dict) and ('batteryLevel' in telemetry or 'battery' in telemetry or ('voltage' in telemetry and 'ch1Voltage' not in telemetry)) else {})
+            power_m = telemetry.get('powerMetrics') or telemetry.get('power_metrics') or decoded.get('powerMetrics') or decoded.get('power_metrics') or packet.get('powerMetrics') or packet.get('power_metrics') or (telemetry if isinstance(telemetry, dict) and ('ch1Voltage' in telemetry or 'ch1_voltage' in telemetry) else {})
+            env_m = telemetry.get('environmentMetrics') or telemetry.get('environment_metrics') or decoded.get('environmentMetrics') or decoded.get('environment_metrics') or {}
 
-            if isinstance(dev_m, dict) and dev_m:
+            # Extraer métricas de potencia / sensor INA
+            ina1 = None
+            ina2 = None
+            ina3 = None
+            if isinstance(power_m, dict) and power_m:
+                ina1 = power_m.get('ch1Voltage') if power_m.get('ch1Voltage') is not None else power_m.get('ch1_voltage')
+                if ina1 is None:
+                    ina1 = power_m.get('voltage')
+                ina2 = power_m.get('ch2Voltage') if power_m.get('ch2Voltage') is not None else power_m.get('ch2_voltage')
+                ina3 = power_m.get('ch3Voltage') if power_m.get('ch3Voltage') is not None else power_m.get('ch3_voltage')
+            elif isinstance(env_m, dict) and env_m:
+                ina1 = env_m.get('voltage')
+
+            if (isinstance(dev_m, dict) and dev_m) or ina1 is not None or ina2 is not None or ina3 is not None:
                 battery_lvl = dev_m.get('batteryLevel') if dev_m.get('batteryLevel') is not None else dev_m.get('battery')
                 voltage_val = dev_m.get('voltage')
                 uptime_val = dev_m.get('uptimeSeconds') if dev_m.get('uptimeSeconds') is not None else dev_m.get('uptime')
@@ -276,6 +291,12 @@ class SerialInterface:
                             db_data['voltage'] = voltage_val
                         if uptime_val is not None:
                             db_data['uptime'] = uptime_val
+                        if ina1 is not None:
+                            db_data['power_ina1'] = round(float(ina1), 2)
+                        if ina2 is not None:
+                            db_data['power_ina2'] = round(float(ina2), 2)
+                        if ina3 is not None:
+                            db_data['power_ina3'] = round(float(ina3), 2)
                         if packet.get('rxSnr') is not None:
                             db_data['snr'] = packet.get('rxSnr')
                         if packet.get('rxRssi') is not None:
@@ -289,14 +310,22 @@ class SerialInterface:
                     except Exception:
                         pass
 
-                broadcast_event("device_telemetry", {
+                telem_payload = {
                     "id": from_node_id,
                     "battery": battery_lvl,
                     "voltage": voltage_val,
                     "channel_util": ch_util,
                     "air_util_tx": air_tx,
                     "uptime_seconds": uptime_val,
-                })
+                }
+                if ina1 is not None:
+                    telem_payload["power_ina1"] = round(float(ina1), 2)
+                if ina2 is not None:
+                    telem_payload["power_ina2"] = round(float(ina2), 2)
+                if ina3 is not None:
+                    telem_payload["power_ina3"] = round(float(ina3), 2)
+
+                broadcast_event("device_telemetry", telem_payload)
                 if ch_util is not None or air_tx is not None:
                     broadcast_event("channel_metrics", {
                         "channel_util": ch_util,

@@ -54,15 +54,11 @@ avisos rutinarios de **`nivel verde` (sin riesgo)** se descartan automáticament
 Solo si hay `AEMET_API_KEY` y la hora está dentro de la ventana
 (`Aemet.is_within_hour_window`, admite cruce de medianoche):
 
-1. `aemet_get_next_unpublished()` — siguiente alerta `published=0`.
-2. Para cada canal de `AEMET_CHANNELS`, comprueba el **periodo por canal** mirando
-   `tasks_control['aemet_publish_ch_<canal>']` vs. `period_to_minutes(AEMET_PERIOD)`.
-3. Construye el mensaje respetando **~200 caracteres**: 1 mensaje si cabe, o **2
-   partes** (`AEMET 1/2:` / `AEMET 2/2:`) con enlace a aemet.es en la segunda, con 5 s
-   entre partes.
-4. Envía con `interface.send(msg, dest='^all', channel=ch)`.
-5. Marca el periodo por canal (`set_task_run`) y, si se envió a algún canal, marca la
-   alerta como publicada (`aemet_mark_published`).
+1. **Cadencia entre emisiones (`AEMET_PERIOD`):** Para cada canal en `AEMET_CHANNELS`, comprueba `tasks_control['aemet_publish_ch_<canal>']` contra el periodo configurado (`Hour`, `Three_hour`, `Six_hour`, `Day`).
+2. **Deduplicación diaria de alertas idénticas:** Al procesar la cola de alertas pendientes, si una alerta contiene el mismo fenómeno meteorológico (`data_raw`) que ya fue publicado hoy en esa provincia/canal (`aemet_is_same_alert_published_today`), se marca como procesada automáticamente sin re-emitir duplicados por la radio.
+3. **Emisión de alertas diferentes:** Todas las alertas de fenómenos, zonas o niveles distintos (ej. lluvia en Grazalema y viento en Litoral, o escalado a naranja) **se emiten íntegramente**, respetando la cadencia de `AEMET_PERIOD` entre emisiones para no saturar la malla.
+4. **Formato multi-mensaje LoRa:** Se construyen mensajes respetando el estándar Meshtastic de **hasta ~200 bytes por paquete** (hasta 3 partes con cabecera `AEMET i/n:` y pausa de 2.5s entre partes).
+5. Tras completar la emisión a los canales configurados, marca la alerta como publicada (`aemet_mark_published`) y registra la marca de tiempo por canal (`set_task_run`).
 
 ## Periodicidad — `Aemet.period_to_minutes`
 

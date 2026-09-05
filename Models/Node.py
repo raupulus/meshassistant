@@ -19,6 +19,9 @@ class Node:
     via_mqtt = False
     battery = None
     voltage = None
+    power_ina1 = None
+    power_ina2 = None
+    power_ina3 = None
     last_heard = None
 
 
@@ -47,6 +50,9 @@ class Node:
                 self.via_mqtt = bool(row.get('via_mqtt')) if row.get('via_mqtt') is not None else self.via_mqtt
                 self.battery = row.get('battery', self.battery)
                 self.voltage = row.get('voltage', self.voltage)
+                self.power_ina1 = row.get('power_ina1', self.power_ina1)
+                self.power_ina2 = row.get('power_ina2', self.power_ina2)
+                self.power_ina3 = row.get('power_ina3', self.power_ina3)
                 self.last_heard = row.get('last_heard', self.last_heard)
             else:
                 db.create_node_if_not_exists(self.id)
@@ -82,6 +88,28 @@ class Node:
         if node_info.get('voltage') is not None:
             self.voltage = node_info.get('voltage')
 
+        # Telemetría de potencia / sensores INA externos
+        power_m = node_info.get('powerMetrics') or node_info.get('power_metrics') or {}
+        if isinstance(power_m, dict):
+            ina1_v = power_m.get('ch1Voltage') if power_m.get('ch1Voltage') is not None else power_m.get('ch1_voltage')
+            if ina1_v is None:
+                ina1_v = power_m.get('voltage')
+            if ina1_v is not None:
+                self.power_ina1 = ina1_v
+            ina2_v = power_m.get('ch2Voltage') if power_m.get('ch2Voltage') is not None else power_m.get('ch2_voltage')
+            if ina2_v is not None:
+                self.power_ina2 = ina2_v
+            ina3_v = power_m.get('ch3Voltage') if power_m.get('ch3Voltage') is not None else power_m.get('ch3_voltage')
+            if ina3_v is not None:
+                self.power_ina3 = ina3_v
+
+        if node_info.get('power_ina1') is not None:
+            self.power_ina1 = node_info.get('power_ina1')
+        if node_info.get('power_ina2') is not None:
+            self.power_ina2 = node_info.get('power_ina2')
+        if node_info.get('power_ina3') is not None:
+            self.power_ina3 = node_info.get('power_ina3')
+
         self.snr = node_info.get('snr', self.snr)
         self.rssi = node_info.get('rssi', self.rssi)
 
@@ -100,7 +128,7 @@ class Node:
         try:
             db = Database()
             db.create_node_if_not_exists(self.id)
-            db.update_node(self.id, {
+            db_update = {
                 "name": self.name,
                 "num": self.num,
                 "short_name": self.short_name,
@@ -118,17 +146,19 @@ class Node:
                 "battery": self.battery,
                 "voltage": self.voltage,
                 "last_heard": self.last_heard,
-            })
+            }
+            if self.power_ina1 is not None:
+                db_update["power_ina1"] = self.power_ina1
+            if self.power_ina2 is not None:
+                db_update["power_ina2"] = self.power_ina2
+            if self.power_ina3 is not None:
+                db_update["power_ina3"] = self.power_ina3
+            db.update_node(self.id, db_update)
         except Exception:
             # En caso de error al guardar, continuar sin interrumpir
             pass
 
     def update_positions(self):
-        # al cargar nodos:
-        #{'num': 1674190827, 'user': {'id': '!63ca1feb', 'longName': 'Raupulus PicoBot', 'shortName': 'rau5', 'macaddr': 'KT9jyh/r', 'hwModel': 79, 'role': 'CLIENT_MUTE'}, 'position': {'time': 1762114855}, 'lastHeard': 1762114855, 'deviceMetrics': {'batteryLevel': 101, 'voltage': 4.348, 'channelUtilization': 5.636667, 'airUtilTx': 0.18047222, 'uptimeSeconds': 245}, 'isFavorite': True}
-
-        #self.last_heard = node_info.get('last_heard', self.last_heard)
-        #
         pass
 
     def update_metrics(self):
@@ -150,6 +180,11 @@ class Node:
             "hop_start": self.hop_start,
             "uptime": self.uptime,
             "via_mqtt": self.via_mqtt,
+            "battery": self.battery,
+            "voltage": self.voltage,
+            "power_ina1": self.power_ina1,
+            "power_ina2": self.power_ina2,
+            "power_ina3": self.power_ina3,
             "last_heard": self.last_heard,
         }
 
@@ -172,6 +207,11 @@ class Node:
                     "hop_start": row.get('hop_start', None),
                     "uptime": row.get('uptime', None),
                     "via_mqtt": bool(row.get('via_mqtt')) if row.get('via_mqtt') is not None else None,
+                    "battery": row.get('battery', None),
+                    "voltage": row.get('voltage', None),
+                    "power_ina1": row.get('power_ina1', None),
+                    "power_ina2": row.get('power_ina2', None),
+                    "power_ina3": row.get('power_ina3', None),
                     "last_heard": row.get('last_heard', None),
                 })
         except Exception:

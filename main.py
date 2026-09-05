@@ -186,45 +186,36 @@ def loop():
             except (Exception, SystemExit) as e:
                 log_p(f"[outbox] Error procesando mensaje saliente: {e}", level="WARN")
 
-            # Publicación de alertas AEMET mínima (si hay API key y dentro de ventana horaria)
+            # Publicación de alertas AEMET (si hay API key y dentro de ventana horaria)
             try:
                 if getattr(__import__('env'), 'AEMET_API_KEY', None):
-                    # Respetar ventana horaria
-                    now_hour = __import__('datetime').datetime.now().hour
+                    now_dt = datetime.now()
+                    now_hour = now_dt.hour
                     if aemet.is_within_hour_window(now_hour):
-                        # Comprobar siguiente alerta sin publicar
-                        alert = db.aemet_get_next_unpublished()
-                        if alert:
-                            # Comprobar período por canal
-                            period_min = aemet.period_to_minutes(getattr(aemet, 'period', 'Hour'))
-                            publish_channels = []
-                            for ch in (aemet.channels or []):
-                                last = db.get_task_last_run(f'aemet_publish_ch_{ch}')
-                                if not last:
-                                    publish_channels.append(ch)
-                                else:
-                                    try:
-                                        last_dt = __import__('datetime').datetime.fromisoformat(last)
-                                        if __import__('datetime').datetime.now() - last_dt >= __import__('datetime').timedelta(minutes=period_min):
-                                            publish_channels.append(ch)
-                                    except Exception:
-                                        publish_channels.append(ch)
+                        target_channels = aemet.channels or []
+                        if target_channels:
+                            # Procesar todas las alertas pendientes nuevas/distintas
+                            while True:
+                                candidate = db.aemet_get_next_unpublished()
+                                if not candidate:
+                                    break
 
-                            if publish_channels:
-                                # Preparar mensajes respetando límite de 200 caracteres y encabezados
-                                # Usar mensaje preparado para publicación si existe; fallback a data_raw
-                                raw_msg = (alert.get('message') or alert.get('data_raw') or '').strip()
-                                # Normalizar y sanear texto base (evitar artefactos de XML)
+                                # Si ya se ha emitido una alerta con el mismo fenómeno hoy en esa provincia,
+                                # marcarla como publicada y saltarla sin re-emitir duplicados
+                                if db.aemet_is_same_alert_published_today(candidate.get('data_raw', ''), candidate.get('province')):
+                                    db.aemet_mark_published(candidate['id'])
+                                    continue
+
+                                # Alerta nueva/diferente encontrada -> emitirla inmediatamente
+                                raw_msg = (candidate.get('message') or candidate.get('data_raw') or '').strip()
                                 base_text = sanitize_text(raw_msg)
 
                                 def build_aemet_messages(text: str) -> list[str]:
-                                    # Mensajería Meshtastic: máx 200 caracteres por
-                                    # mensaje. Hasta 3 partes (regla común con los
-                                    # comandos básicos) con cabecera 'AEMET i/n:'.
+                                    # Mensajería Meshtastic: máx 200 caracteres por mensaje.
+                                    # Hasta 3 partes con cabecera 'AEMET i/n:'.
                                     from functions import split_messages, MESH_MAX_BYTES, MESH_MAX_PARTS
 
                                     hdr_single = 'AEMET:'
-                                    # Cabecera más larga posible: 'AEMET 3/3:' (10) + espacio
                                     hdr_reserve = len('AEMET 3/3: ')
 
                                     # Caso 1: cabe en un único mensaje
@@ -245,33 +236,28 @@ def loop():
                                 messages = build_aemet_messages(base_text)
 
                                 sent_any = False
-                                for ch_idx, ch in enumerate(publish_channels):
-                                    # Enviar hasta 3 mensajes con 5s entre cada parte,
-                                    # ignorando cooldown intra-alerta.
+                                for ch_idx, ch in enumerate(target_channels):
                                     part_ok = False
                                     for idx, msg in enumerate(messages):
                                         ok = interface.send(msg, dest='^all', channel=ch)
                                         if ok:
                                             part_ok = True
-                                        # Esperar 1s entre partes (no tras la última)
                                         if idx < len(messages) - 1:
                                             sleep(2.5)
                                     if part_ok:
                                         sent_any = True
-                                        # Marcar periodo por canal tras completar el envío (1 o 2 partes)
                                         db.set_task_run(f'aemet_publish_ch_{ch}')
-                                    # Esperar también entre canales: si no, la 1ª parte
-                                    # del siguiente canal saldría pegada a la última del
-                                    # anterior, lanzando 2 mensajes masivos seguidos y
-                                    # pudiendo saturar la radio. No esperar tras el último.
-                                    if ch_idx < len(publish_channels) - 1:
+                                    if ch_idx < len(target_channels) - 1:
                                         sleep(2.5)
 
                                 if sent_any:
-                                    db.aemet_mark_published(alert['id'])
+                                    db.aemet_mark_published(candidate['id'])
+                                    # Pausa breve de 3s entre alertas distintas consecutivas para no colisionar en radio
+                                    sleep(3.0)
+                                else:
+                                    # Si no se pudo enviar, salir del bucle para no bloquear el loop
+                                    break
             except Exception as e:
-                # No romper el loop por AEMET, pero dejar rastro para poder
-                # diagnosticar fallos en la publicación de alertas de emergencia.
                 log_p(f"Error publicando alerta AEMET: {e}", level="WARN")
 
             # Despacho de mensajes programados / cola de difusión periódica (Módulo 04)

@@ -826,6 +826,9 @@ class MeshDashboard {
           const node = this.nodesMap.get(data.id);
           if (data.battery !== undefined && data.battery !== null) node.battery = data.battery;
           if (data.voltage !== undefined && data.voltage !== null) node.voltage = data.voltage;
+          if (data.power_ina1 !== undefined) node.power_ina1 = data.power_ina1;
+          if (data.power_ina2 !== undefined) node.power_ina2 = data.power_ina2;
+          if (data.power_ina3 !== undefined) node.power_ina3 = data.power_ina3;
           this.renderNodesTable();
         }
         break;
@@ -1352,9 +1355,17 @@ class MeshDashboard {
         signalDetails = "--";
       }
 
-      // Batería si está disponible
+      // Batería si está disponible (preferir medición INA si existe)
       let batteryStr = "";
-      if (r.battery !== undefined && r.battery !== null) {
+      const hasInaRouter = (r.power_ina1 !== undefined && r.power_ina1 !== null) ||
+                           (r.power_ina2 !== undefined && r.power_ina2 !== null) ||
+                           (r.power_ina3 !== undefined && r.power_ina3 !== null);
+      if (hasInaRouter) {
+        const rInaVals = [r.power_ina1, r.power_ina2, r.power_ina3]
+          .filter(v => v !== undefined && v !== null)
+          .map(v => Number(v).toFixed(1));
+        batteryStr = `<div class="card-row"><span>Batería (INA):</span><span style="color: var(--primary); font-weight: 600;">🔌 ${rInaVals.join("/")}</span></div>`;
+      } else if (r.battery !== undefined && r.battery !== null) {
         const bVal = r.battery > 100 ? "⚡ 100%" : `${r.battery}%`;
         const vVal = (r.voltage !== undefined && r.voltage !== null) ? ` (${Number(r.voltage).toFixed(2)}V)` : "";
         batteryStr = `<div class="card-row"><span>Batería:</span><span style="color: var(--success); font-weight: 600;">${bVal}${vVal}</span></div>`;
@@ -1397,9 +1408,16 @@ class MeshDashboard {
             <span>Última señal:</span>
             <span>${lastSeen}</span>
           </div>
-          <button class="btn-secondary card-action-btn" style="margin-bottom: 6px;" onclick="window.dashboard.requestTelemetry('${routerId}', this)">
-            🔋 Pedir Batería
-          </button>
+          <div style="display: flex; gap: 6px; margin-bottom: 6px;">
+            <button class="btn-secondary card-action-btn" style="flex: 1;" onclick="window.dashboard.requestTelemetry('${routerId}', this)">
+              🔋 Pedir Batería
+            </button>
+            ${hasInaRouter ? `
+            <button class="btn-secondary card-action-btn" style="flex: 1;" title="Pedir Telemetría de Potencia (INA) por LoRa" onclick="window.dashboard.requestTelemetry('${routerId}', this, 'pwr')">
+              🔌 Pedir PWR
+            </button>
+            ` : ""}
+          </div>
           <button class="btn-secondary card-action-btn" onclick="window.dashboard.requestTraceTo('${routerId}', this)">
             📍 Lanzar Traceroute
           </button>
@@ -1408,17 +1426,19 @@ class MeshDashboard {
     }).join("");
   }
 
-  requestTelemetry(nodeId, btn) {
+  requestTelemetry(nodeId, btn, type) {
     if (btn) {
       btn.disabled = true;
+      const origHtml = btn.innerHTML;
       btn.textContent = "Pidiendo...";
       setTimeout(() => {
         btn.disabled = false;
-        btn.textContent = btn.classList.contains("card-action-btn") ? "🔋 Pedir Batería" : "🔋 Bat";
+        btn.innerHTML = origHtml;
       }, 3000);
     }
     this.sendAction("request_telemetry", { node_id: nodeId });
-    this.showToast(`Solicitud de batería enviada a ${nodeId}`);
+    const label = type === "pwr" ? "potencia (INA)" : "batería";
+    this.showToast(`Solicitud de ${label} enviada a ${nodeId}`);
   }
 
   requestTraceTo(nodeId, btn) {
@@ -1500,7 +1520,7 @@ class MeshDashboard {
     } else if (this.currentNodeFilter === "fav") {
       nodes = nodes.filter(n => n.is_favorite);
     } else if (this.currentNodeFilter === "battery") {
-      nodes = nodes.filter(n => (n.battery !== undefined && n.battery !== null) || (n.voltage !== undefined && n.voltage !== null));
+      nodes = nodes.filter(n => (n.battery !== undefined && n.battery !== null) || (n.voltage !== undefined && n.voltage !== null) || (n.power_ina1 !== undefined && n.power_ina1 !== null) || (n.power_ina2 !== undefined && n.power_ina2 !== null) || (n.power_ina3 !== undefined && n.power_ina3 !== null));
     } else if (this.currentNodeFilter === "traces") {
       nodes = nodes.filter(n => (Number(n.traces_detected) || 0) > 0);
     }
@@ -1517,14 +1537,14 @@ class MeshDashboard {
         valA = valA ? 1 : 0;
         valB = valB ? 1 : 0;
       } else if (field === "battery") {
-        const hasA = (a.battery !== undefined && a.battery !== null) || (a.voltage !== undefined && a.voltage !== null);
-        const hasB = (b.battery !== undefined && b.battery !== null) || (b.voltage !== undefined && b.voltage !== null);
+        const hasA = (a.battery !== undefined && a.battery !== null) || (a.voltage !== undefined && a.voltage !== null) || (a.power_ina1 !== undefined && a.power_ina1 !== null);
+        const hasB = (b.battery !== undefined && b.battery !== null) || (b.voltage !== undefined && b.voltage !== null) || (b.power_ina1 !== undefined && b.power_ina1 !== null);
         if (hasA !== hasB) {
           // El que no tiene telemetría de batería va siempre al final
           return hasA ? -1 : 1;
         }
-        valA = (a.battery !== undefined && a.battery !== null) ? Number(a.battery) : ((a.voltage !== undefined && a.voltage !== null) ? Number(a.voltage) : 0);
-        valB = (b.battery !== undefined && b.battery !== null) ? Number(b.battery) : ((b.voltage !== undefined && b.voltage !== null) ? Number(b.voltage) : 0);
+        valA = (a.battery !== undefined && a.battery !== null) ? Number(a.battery) : ((a.voltage !== undefined && a.voltage !== null) ? Number(a.voltage) : ((a.power_ina1 !== undefined && a.power_ina1 !== null) ? Number(a.power_ina1) : 0));
+        valB = (b.battery !== undefined && b.battery !== null) ? Number(b.battery) : ((b.voltage !== undefined && b.voltage !== null) ? Number(b.voltage) : ((b.power_ina1 !== undefined && b.power_ina1 !== null) ? Number(b.power_ina1) : 0));
       } else if (field === "traces_detected") {
         const tA = Number(a.traces_detected) || 0;
         const tB = Number(b.traces_detected) || 0;
@@ -1610,9 +1630,19 @@ class MeshDashboard {
     this.nodesTbody.innerHTML = pageNodes.map(n => {
       const isFav = !!n.is_favorite;
       
-      // Formateo de Batería y Voltaje
+      // Formateo de Batería y Voltaje (preferir medición INA si existe)
       let battery = "--";
-      if (n.battery !== undefined && n.battery !== null) {
+      const hasIna = (n.power_ina1 !== undefined && n.power_ina1 !== null) ||
+                     (n.power_ina2 !== undefined && n.power_ina2 !== null) ||
+                     (n.power_ina3 !== undefined && n.power_ina3 !== null);
+
+      if (hasIna) {
+        const inaVals = [n.power_ina1, n.power_ina2, n.power_ina3]
+          .filter(v => v !== undefined && v !== null)
+          .map(v => Number(v).toFixed(1));
+        const inaStr = inaVals.join("/");
+        battery = `<span title="Alimentado por USB / Medición INA: ${inaStr}V" style="color: var(--primary); font-weight: 600;">🔌 ${inaStr}</span>`;
+      } else if (n.battery !== undefined && n.battery !== null) {
         if (n.battery > 100) battery = "⚡ 100%";
         else battery = `${n.battery}%`;
         if (n.voltage !== undefined && n.voltage !== null) {
@@ -1660,10 +1690,16 @@ class MeshDashboard {
           <td style="font-size: 0.8rem; color: var(--text-muted);">${lastHeardStr}</td>
           <td style="font-size: 0.8rem; color: var(--text-dim);">${createdAtStr}</td>
           <td>
-            <div style="display: flex; gap: 4px;">
+            <div style="display: flex; gap: 4px; align-items: center;">
               <button class="btn-secondary" style="padding: 3px 6px; font-size: 0.75rem;" title="Pedir Batería / Telemetría por LoRa" onclick="window.dashboard.requestTelemetry('${nodeId}', this)">
                 🔋 Bat
               </button>
+              ${hasIna ? `
+              <button class="btn-secondary" style="padding: 2px 6px; font-size: 0.7rem; display: inline-flex; flex-direction: column; align-items: center; line-height: 1.1;" title="Pedir Telemetría de Potencia (INA) por LoRa" onclick="window.dashboard.requestTelemetry('${nodeId}', this, 'pwr')">
+                <span>🔌</span>
+                <span style="font-size: 0.65rem; font-weight: 700; margin-top: 1px;">PWR</span>
+              </button>
+              ` : ""}
               <button class="btn-secondary" style="padding: 3px 6px; font-size: 0.75rem;" title="Lanzar Traceroute" onclick="window.dashboard.requestTraceTo('${nodeId}', this)">
                 Trace
               </button>

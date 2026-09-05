@@ -35,9 +35,10 @@ La aplicación web está estructurada como una SPA (Single Page Application) rea
 - **Ruta Intermedia y Calidad:**
   - **Directo a Base (RAU0):** Indicador verde con el SNR exterior del enlace.
   - **Vía Repetidores:** Indicador azul con la ruta completa y nombres legibles (`RAU0 ➔ CO01 ➔ CO04`).
-- **Telemetría de Batería:** Nivel de carga (`⚡ 100%`) y voltaje (`4.18V`) cuando está disponible.
+- **Telemetría de Batería y Sensores INA:** Nivel de carga (`⚡ 100%`) y voltaje (`4.18V`), o mediciones externas de potencia con sensor INA (`🔌 3.7/4.1/3.5`) cuando el router está alimentado por USB o monitorizado externamente.
 - **Acciones Rápidas:**
   - Botón **`🔋 Pedir Batería`**: Solicita por radio LoRa la telemetría de batería y voltaje actualizada al router.
+  - Botón **`🔌 Pedir PWR`**: Si el router cuenta con sensor INA, solicita de forma directa la telemetría de potencia/batería externa.
   - Botón **`📍 Lanzar Traceroute`**: Encola un traceroute hacia el router con protección anti-doble clic.
 
 ---
@@ -48,6 +49,7 @@ La aplicación web está estructurada como una SPA (Single Page Application) rea
   - **Texto:** Búsqueda instantánea por nombre, alias o ID hexadecimal.
   - **Rol:** Selector de roles completo (`CLIENT`, `CLIENT_BASE`, `ROUTER`, `REPEATER`, `ROUTER_CLIENT`, `TRACKER`, `TAK_TRACKER`, `SENSOR`, `CLIENT_MUTE`, `CLIENT_HIDDEN`, `LOST_FOUND`).
   - **Preservación de Batería en Vivo:** Las actualizaciones reactivas de nodo (`node_updated`) preservan la última telemetría de batería y voltaje conocida, evitando que paquetes sin métricas borren temporalmente el estado en la tabla.
+  - **Soporte de Sensores de Potencia INA (INA219/INA3221):** Si el nodo cuenta con mediciones de sensor INA, en lugar de mostrar `⚡ 100%` por estar conectado a USB, se muestra el icono `🔌` junto con los canales de voltaje disponibles (ej. `🔌 3.7/4.1/3.5`).
   - **Última Señal (Tiempo):** Selector desplegable junto al de roles para filtrar por ventanas de actividad o inactividad:
     - `Última señal: Todos` (sin límite temporal).
     - `Vistos hoy (≤ 24h)`: Nodos que han emitido en las últimas 24 horas.
@@ -58,18 +60,19 @@ La aplicación web está estructurada como una SPA (Single Page Application) rea
     - `Apagados > 1 mes`: Nodos desaparecidos hace más de 30 días.
 - **Filtros Rápidos:**
   - `Todos`: Censo íntegro de la red.
-  - `Con Batería 🔋`: Muestra exclusivamente los nodos con telemetría de batería/voltaje reportada, activando por defecto la ordenación ascendente para identificar nodos con batería baja (ideal para monitorizar repetidores solares en días nublados).
+  - `Con Batería 🔋`: Muestra exclusivamente los nodos con telemetría de batería/voltaje o medición INA reportada, activando por defecto la ordenación ascendente para identificar nodos con batería baja (ideal para monitorizar repetidores solares en días nublados).
   - `Con Traceroutes 📍`: Filtra de inmediato los nodos a los que se les ha detectado emisión de traceroutes (`traces_detected > 0`) ordenando de mayor a menor actividad.
   - `Solo RF`: Excluye tráfico que llega por pasarelas MQTT.
   - `Favoritos ⭐`: Nodos destacados persistidos en SQLite.
 - **Paginación Ágil:** Selector de 50, 100, 250 por página o "Ver todos", manteniendo el censo completo en memoria.
-- **Ordenación Multidimensional Inteligente:** Posibilidad de ordenar por favoritos, rol, nombre, alias, saltos, batería, SNR, Traceroutes detectados (`traces_detected`), última señal o primera vez visto, manteniendo siempre los nodos con dato real arriba y los nulos al final.
+- **Ordenación Multidimensional Inteligente:** Posibilidad de ordenar por favoritos, rol, nombre, alias, saltos, batería (incluyendo mediciones INA), SNR, Traceroutes detectados (`traces_detected`), última señal o primera vez visto, manteniendo siempre los nodos con dato real arriba y los nulos al final.
 - **Detalle de Columnas:**
   - **Traces:** Contador de paquetes de traceroute emitidos por ese nodo (`📍 X`), ordenable directamente haciendo clic en la cabecera.
   - **Primera Vez:** Fecha en que el nodo fue descubierto por primera vez (`DD/MM/YYYY`).
   - **Última Señal:** Formateo dinámico (`HH:MM:SS` para hoy / `DD/MM HH:MM` para días previos).
   - **Acciones:**
     - Botón **`🔋 Bat`**: Solicita por radio LoRa la telemetría de batería y voltaje del nodo bajo demanda.
+    - Botón **`🔌 PWR`**: Presente en nodos con telemetría de potencia/INA para solicitar actualización de potencia externa bajo demanda.
     - Botón **`Trace`**: Lanza y encola un traceroute hacia el nodo.
     - Botón **`ℹ️ Info`**: Solicita NodeInfo por radio LoRa bajo demanda.
 

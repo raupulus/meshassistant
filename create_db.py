@@ -101,6 +101,12 @@ def _execute_schema(conn: sqlite3.Connection) -> None:
             via_mqtt INTEGER,
             last_heard INTEGER,
             traces_detected INTEGER NOT NULL DEFAULT 0,
+            battery REAL,
+            voltage REAL,
+            power_ina1 REAL,
+            power_ina2 REAL,
+            power_ina3 REAL,
+            created_at TEXT,
             updated_at TEXT
         );
 
@@ -360,6 +366,15 @@ def _execute_schema(conn: sqlite3.Connection) -> None:
         conn.commit()
     if not _has_column('nodes', 'traces_detected'):
         conn.execute('ALTER TABLE nodes ADD COLUMN traces_detected INTEGER NOT NULL DEFAULT 0')
+        conn.commit()
+    if not _has_column('nodes', 'power_ina1'):
+        conn.execute('ALTER TABLE nodes ADD COLUMN power_ina1 REAL NULL')
+        conn.commit()
+    if not _has_column('nodes', 'power_ina2'):
+        conn.execute('ALTER TABLE nodes ADD COLUMN power_ina2 REAL NULL')
+        conn.commit()
+    if not _has_column('nodes', 'power_ina3'):
+        conn.execute('ALTER TABLE nodes ADD COLUMN power_ina3 REAL NULL')
         conn.commit()
 
     # Create indexes if not exist

@@ -372,7 +372,7 @@ class Database:
                 """
                 SELECT node_id, name, num, short_name, mac_addr, hw_model, role, is_favorite,
                        snr, rssi, public_key, hops, hop_start, uptime, via_mqtt,
-                       battery, voltage, last_heard, traces_detected, updated_at
+                       battery, voltage, power_ina1, power_ina2, power_ina3, last_heard, traces_detected, created_at, updated_at
                 FROM nodes
                 WHERE node_id = ?
                 """,
@@ -390,7 +390,7 @@ class Database:
                 """
                 SELECT node_id, name, num, short_name, mac_addr, hw_model, role, is_favorite,
                        snr, rssi, public_key, hops, hop_start, uptime, via_mqtt,
-                       battery, voltage, last_heard, traces_detected, updated_at
+                       battery, voltage, power_ina1, power_ina2, power_ina3, last_heard, traces_detected, created_at, updated_at
                 FROM nodes
                 WHERE UPPER(node_id) = UPPER(?)
                    OR UPPER(short_name) = UPPER(?)
@@ -436,7 +436,7 @@ class Database:
             query = """
                 SELECT node_id, name, num, short_name, mac_addr, hw_model, role, is_favorite,
                        snr, rssi, public_key, hops, hop_start, uptime, via_mqtt, battery, voltage,
-                       last_heard, created_at, updated_at
+                       power_ina1, power_ina2, power_ina3, last_heard, created_at, updated_at
                 FROM nodes
                 WHERE (
                     role IN (2, 4, 9)
@@ -511,6 +511,9 @@ class Database:
             "via_mqtt",
             "battery",
             "voltage",
+            "power_ina1",
+            "power_ina2",
+            "power_ina3",
             "last_heard",
             "traces_detected",
         }
@@ -1145,41 +1148,44 @@ class Database:
                 parts_short.append(description)
             alert_text = ' '.join(' '.join(parts_short).split())
 
-            # Fecha/hora: mantener tal cual (CAP incluye zona); opcionalmente formatear HH:MM
+            # Fecha/hora: formatear de manera concisa y limpia (ej. "05/09 20:00" o "20:00")
             def _fmt_time(t: str) -> str:
                 try:
-                    # Admite formatos con offset o 'Z' o '+01:00'
-                    # Tomamos solo fecha y hora local textual
-                    return t.replace('T', ' ').replace('Z', '+00:00')
+                    cleaned = t.split('+')[0].split('Z')[0]
+                    dt = datetime.fromisoformat(cleaned)
+                    return dt.strftime("%d/%m %H:%M")
                 except Exception:
-                    return t
+                    return t.replace('T', ' ').split('+')[0].strip()
 
             parts_pub: list[str] = []
             if event:
                 if nivel:
-                    parts_pub.append(f"{event} (nivel {nivel})")
+                    parts_pub.append(f"{event} ({nivel})")
                 else:
                     parts_pub.append(event)
             elif headline:
                 parts_pub.append(headline)
+
             if area:
                 parts_pub.append(area)
-            # Ventana temporal
+
+            # Ventana temporal limpia
             if onset or expires:
-                if onset and expires:
-                    parts_pub.append(f"De { _fmt_time(onset) } a { _fmt_time(expires) }")
-                elif onset:
-                    parts_pub.append(f"Desde { _fmt_time(onset) }")
-                elif expires:
-                    parts_pub.append(f"Hasta { _fmt_time(expires) }")
+                t_on = _fmt_time(onset) if onset else ""
+                t_exp = _fmt_time(expires) if expires else ""
+                if t_on and t_exp:
+                    parts_pub.append(f"De {t_on} a {t_exp}")
+                elif t_on:
+                    parts_pub.append(f"Desde {t_on}")
+                elif t_exp:
+                    parts_pub.append(f"Hasta {t_exp}")
+
             if prob:
-                parts_pub.append(f"Prob.: {prob}")
+                parts_pub.append(f"Prob. {prob}")
+
             if description:
+                # La descripción suele contener el fenómeno concreto (temperatura, viento, etc.)
                 parts_pub.append(description)
-            if instruction:
-                parts_pub.append(instruction)
-            if web and 'aemet' in web.lower():
-                parts_pub.append(web)
 
             publish_text = ' '.join(' '.join(parts_pub).split())
             return alert_text, publish_text
@@ -1187,9 +1193,29 @@ class Database:
             return None, None
 
     def aemet_get_next_unpublished(self) -> Optional[Dict[str, Any]]:
+        """Devuelve la alerta más antigua sin publicar."""
         with closing(self._connect()) as conn:
             cur = conn.execute(
                 'SELECT id, province, data_raw, message, created_at FROM aemet WHERE published = 0 ORDER BY created_at ASC LIMIT 1'
+            )
+            row = cur.fetchone()
+            return dict(row) if row else None
+
+    def aemet_get_best_unpublished(self) -> Optional[Dict[str, Any]]:
+        """Obtiene la alerta pendiente más relevante por gravedad (Rojo > Naranja > Amarillo) o más reciente."""
+        with closing(self._connect()) as conn:
+            cur = conn.execute(
+                """SELECT id, province, data_raw, message, created_at FROM aemet 
+                   WHERE published = 0 
+                   ORDER BY 
+                     CASE 
+                       WHEN LOWER(message) LIKE '%rojo%' OR LOWER(data_raw) LIKE '%rojo%' THEN 1
+                       WHEN LOWER(message) LIKE '%naranja%' OR LOWER(data_raw) LIKE '%naranja%' THEN 2
+                       WHEN LOWER(message) LIKE '%amarillo%' OR LOWER(data_raw) LIKE '%amarillo%' THEN 3
+                       ELSE 4 
+                     END ASC,
+                     id DESC
+                   LIMIT 1"""
             )
             row = cur.fetchone()
             return dict(row) if row else None
@@ -1199,6 +1225,29 @@ class Database:
         with closing(self._connect()) as conn:
             conn.execute('UPDATE aemet SET published = 1, published_at = ? WHERE id = ?', (now, alert_id))
             conn.commit()
+
+    def aemet_is_same_alert_published_today(self, data_raw: str, province: Optional[str] = None) -> bool:
+        """Comprueba si una alerta con el mismo contenido meteorológico (data_raw) ya ha sido publicada hoy."""
+        if not data_raw:
+            return False
+        with closing(self._connect()) as conn:
+            if province:
+                cur = conn.execute(
+                    """SELECT id FROM aemet 
+                       WHERE data_raw = ? AND province = ? AND published = 1 
+                         AND date(published_at) = date('now', 'localtime')
+                       LIMIT 1""",
+                    (data_raw.strip(), province.strip()),
+                )
+            else:
+                cur = conn.execute(
+                    """SELECT id FROM aemet 
+                       WHERE data_raw = ? AND published = 1 
+                         AND date(published_at) = date('now', 'localtime')
+                       LIMIT 1""",
+                    (data_raw.strip(),),
+                )
+            return cur.fetchone() is not None
 
     # ---------- AEMET LEGACY FIX ----------
     def aemet_fix_legacy_rows(self, limit: int = 500) -> Tuple[int, int, int]:
@@ -1959,7 +2008,8 @@ class Database:
         with closing(self._connect()) as conn:
             sql = """
                 SELECT node_id AS id, node_id, name, num, short_name, mac_addr, hw_model, role,
-                       is_favorite, snr, rssi, hops, uptime, via_mqtt, battery, voltage, last_heard, traces_detected, created_at, updated_at
+                       is_favorite, snr, rssi, hops, uptime, via_mqtt, battery, voltage,
+                       power_ina1, power_ina2, power_ina3, last_heard, traces_detected, created_at, updated_at
                 FROM nodes
                 WHERE node_id IS NOT NULL AND trim(node_id) != '' AND node_id NOT IN ('None', 'null', 'Desconocido')
             """

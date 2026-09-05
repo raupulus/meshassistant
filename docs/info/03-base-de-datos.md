@@ -44,6 +44,9 @@ con `CREATE TABLE IF NOT EXISTS`. Además realiza **migraciones idempotentes**:
 | `via_mqtt` | INTEGER | 0/1 (si llega por MQTT). |
 | `battery` | INTEGER NULL | Nivel de batería reportado (0-100%). |
 | `voltage` | REAL NULL | Voltaje de batería (V). |
+| `power_ina1` | REAL NULL | Voltaje canal 1 sensor INA (INA219/INA3221). |
+| `power_ina2` | REAL NULL | Voltaje canal 2 sensor INA (INA3221). |
+| `power_ina3` | REAL NULL | Voltaje canal 3 sensor INA (INA3221). |
 | `last_heard` | INTEGER | Último contacto (epoch). |
 | `traces_detected` | INTEGER | Contador de traceroutes emitidos y detectados en la malla por este nodo. |
 | `created_at` | TEXT | Fecha y hora en que fue descubierto por primera vez. |
