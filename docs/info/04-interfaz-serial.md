@@ -123,6 +123,7 @@ Devuelve:
 
 ## Notas / gotchas
 
+- **Hardware y Potencia TX del Nodo:** El nodo de radio es una **Raspberry Pi Pico W** acoplada a un módulo **HT-RA62** (SX1262). La potencia máxima física real que puede entregar el hardware en emisión es de **21–22 dBm** (~160 mW). Aunque por software se configure un valor superior como `lora.tx_power = 27`, el módulo recortará la emisión física a su límite real de 21–22 dBm.
 - Si actualizas `meshtastic`, **prueba un traceroute real**: el parseo depende del
   texto que imprime la librería.
 - Hay algunos `print` heredados en handlers; el logging "oficial" es `log_p`.

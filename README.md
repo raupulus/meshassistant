@@ -146,7 +146,7 @@ Capas principales del código:
 ## Hardware y conexión serie
 
 - **Servidor / bot:** Raspberry Pi Zero W o **Zero 2 W**, ejecutando este proyecto.
-- **Nodo de malla:** un nodo Meshtastic conectado a la Pi por **UART**.
+- **Nodo de malla:** un nodo Meshtastic conectado a la Pi por **UART** (típicamente una **Raspberry Pi Pico W** con módulo transceptor **HT-RA62** SX1262, cuya potencia física máxima real de emisión es de **21–22 dBm** / ~160 mW, independientemente de que se configure un valor nominal superior por software).
 
 Conexión por los pines UART de la Raspberry Pi (GPIO):
 

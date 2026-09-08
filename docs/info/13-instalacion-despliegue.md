@@ -3,7 +3,9 @@
 ## Hardware
 
 - **Servidor / bot:** Raspberry Pi Zero W o **Zero 2 W**.
-- **Nodo de malla:** un nodo Meshtastic conectado por **UART** a la Pi.
+- **Nodo de malla:** un nodo Meshtastic conectado por **UART** a la Pi. En esta instalación de referencia, el nodo está compuesto por una **Raspberry Pi Pico W** junto con un módulo transceptor **HT-RA62** (SX1262).
+  > [!NOTE]
+  > **Potencia de emisión real (TX Power):** El módulo HT-RA62 tiene un límite físico de hardware de emisión en torno a **21–22 dBm** (~160 mW). Aunque en el firmware o mediante el CLI de Meshtastic se configure un valor nominal superior (como `lora.tx_power = 27`), la potencia real de transmisión de la etapa de RF no superará los 21–22 dBm. Para entornos de pruebas en laboratorio o despacho donde solo se requiera alcanzar un router o base cercana (ej. `RAU0`) y minimizar interferencias electromagnéticas, puede reducirse deliberadamente (ej. `lora.tx_power 1`).
 
 ### Conexión serie (GPIO)
 
