@@ -1436,7 +1436,11 @@ class MeshDashboard {
         btn.innerHTML = origHtml;
       }, 3000);
     }
-    this.sendAction("request_telemetry", { node_id: nodeId });
+    const payload = { node_id: nodeId };
+    if (type === "pwr") {
+      payload.telemetry_type = "power_metrics";
+    }
+    this.sendAction("request_telemetry", payload);
     const label = type === "pwr" ? "potencia (INA)" : "batería";
     this.showToast(`Solicitud de ${label} enviada a ${nodeId}`);
   }

@@ -241,8 +241,10 @@ class GatewayService:
                 node_id = params.get("node_id") or params.get("dest")
                 if not node_id:
                     raise ValueError("Parámetro 'node_id' o 'dest' obligatorio")
-                outbox_id = self.db.enqueue_outbox("__REQ_TELEMETRY__", dest=str(node_id), channel=0)
-                response["data"] = {"queued": True, "outbox_id": outbox_id, "node_id": str(node_id)}
+                telemetry_type = params.get("telemetry_type") or ("power_metrics" if params.get("type") == "pwr" else "device_metrics")
+                out_cmd = "__REQ_POWER_TELEMETRY__" if telemetry_type == "power_metrics" else "__REQ_TELEMETRY__"
+                outbox_id = self.db.enqueue_outbox(out_cmd, dest=str(node_id), channel=0)
+                response["data"] = {"queued": True, "outbox_id": outbox_id, "node_id": str(node_id), "telemetry_type": telemetry_type}
 
             elif action == "get_polls":
                 polls = self.db.encuesta_list_all(limit=100)

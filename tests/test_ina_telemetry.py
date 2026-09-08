@@ -126,6 +126,63 @@ class TestInaTelemetry(unittest.TestCase):
             "power_ina3": 3.52,
         })
 
+    def test_request_telemetry_power_metrics(self):
+        interface = SerialInterface(serial_port="/dev/null")
+        interface.interface = MagicMock()
+        mock_send_data = MagicMock()
+        interface.interface.sendData = mock_send_data
+
+        ok = interface.request_telemetry("!12345678", channel_index=0, telemetry_type="power_metrics")
+        self.assertTrue(ok)
+        mock_send_data.assert_called_once()
+        kargs = mock_send_data.call_args[1]
+        self.assertEqual(kargs.get("destinationId"), "!12345678")
+        self.assertEqual(kargs.get("wantResponse"), True)
+        sent_payload = mock_send_data.call_args[0][0]
+        self.assertTrue(sent_payload.HasField("power_metrics"))
+        self.assertFalse(sent_payload.HasField("device_metrics"))
+
+    def test_request_telemetry_device_metrics(self):
+        interface = SerialInterface(serial_port="/dev/null")
+        interface.interface = MagicMock()
+        mock_send_data = MagicMock()
+        interface.interface.sendData = mock_send_data
+
+        ok = interface.request_telemetry("!12345678", channel_index=0, telemetry_type="device_metrics")
+        self.assertTrue(ok)
+        mock_send_data.assert_called_once()
+        kargs = mock_send_data.call_args[1]
+        self.assertEqual(kargs.get("destinationId"), "!12345678")
+        self.assertEqual(kargs.get("wantResponse"), True)
+        sent_payload = mock_send_data.call_args[0][0]
+        self.assertTrue(sent_payload.HasField("device_metrics"))
+        self.assertFalse(sent_payload.HasField("power_metrics"))
+
+    def test_gateway_enqueues_power_telemetry(self):
+        import asyncio
+        from Services.Gateway import GatewayService
+        gateway = GatewayService()
+        gateway.db = self.db
+        
+        # Test default / device_metrics
+        resp_bat = asyncio.run(gateway._handle_action(None, {"action": "request_telemetry", "params": {"node_id": "!node_bat"}}))
+        self.assertTrue(resp_bat.get("success"))
+        msg_bat = self.db.get_next_pending_outbox()
+        self.assertIsNotNone(msg_bat)
+        self.assertEqual(msg_bat["text"], "__REQ_TELEMETRY__")
+        self.assertEqual(msg_bat["dest"], "!node_bat")
+        self.db.mark_outbox_sent(msg_bat["id"])
+
+        # Test power_metrics via telemetry_type
+        resp_pwr = asyncio.run(gateway._handle_action(None, {"action": "request_telemetry", "params": {"node_id": "!node_pwr", "telemetry_type": "power_metrics"}}))
+        self.assertTrue(resp_pwr.get("success"))
+        msg_pwr = self.db.get_next_pending_outbox()
+        self.assertIsNotNone(msg_pwr)
+        self.assertEqual(msg_pwr["text"], "__REQ_POWER_TELEMETRY__")
+        self.assertEqual(msg_pwr["dest"], "!node_pwr")
+        self.db.mark_outbox_sent(msg_pwr["id"])
+
 
 if __name__ == "__main__":
     unittest.main()
+

@@ -158,7 +158,11 @@ def loop():
                         db.mark_outbox_sent(out_id, ok=ok)
                     elif out_text == "__REQ_TELEMETRY__":
                         log_p(f"[outbox] Procesando solicitud de Telemetría/Batería para '{out_dest}'")
-                        ok = interface.request_telemetry(out_dest, channel_index=out_ch)
+                        ok = interface.request_telemetry(out_dest, channel_index=out_ch, telemetry_type="device_metrics")
+                        db.mark_outbox_sent(out_id, ok=ok)
+                    elif out_text == "__REQ_POWER_TELEMETRY__":
+                        log_p(f"[outbox] Procesando solicitud de Telemetría de Potencia (INA) para '{out_dest}'")
+                        ok = interface.request_telemetry(out_dest, channel_index=out_ch, telemetry_type="power_metrics")
                         db.mark_outbox_sent(out_id, ok=ok)
                     else:
                         log_p(f"[outbox] Transmitiendo mensaje #{out_id} a '{out_dest}' ch={out_ch}: {out_text[:40]}")

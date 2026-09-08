@@ -959,8 +959,8 @@ class SerialInterface:
             'backward': backward_hops,
         }
 
-    def request_telemetry(self, destination_id: str, channel_index: int = 0) -> bool:
-        """Envía una solicitud de telemetría a un nodo remoto para consultar su batería/voltaje."""
+    def request_telemetry(self, destination_id: str, channel_index: int = 0, telemetry_type: str = "device_metrics") -> bool:
+        """Envía una solicitud de telemetría a un nodo remoto para consultar su batería o potencia externa (INA)."""
         if not self.interface:
             return False
         try:
@@ -983,24 +983,38 @@ class SerialInterface:
                 log_p(f"request_telemetry: No se pudo resolver '{destination_id}' a un ID hexadecimal de nodo", level="WARN")
                 return False
 
-            req_fn = getattr(self.interface, 'sendTelemetry', None) or getattr(self.interface, 'requestTelemetry', None)
-            if callable(req_fn):
-                req_fn(destinationId=target_id)
-                log_p(f"Solicitud de telemetría enviada a {target_id} vía sendTelemetry", level="INFO")
-                return True
+            from meshtastic import portnums_pb2, telemetry_pb2
+            req_payload = telemetry_pb2.Telemetry()
+
+            if telemetry_type == "power_metrics":
+                req_payload.power_metrics.CopyFrom(telemetry_pb2.PowerMetrics())
+                log_label = "potencia (INA)"
+            else:
+                req_payload.device_metrics.CopyFrom(telemetry_pb2.DeviceMetrics())
+                log_label = "batería/dispositivo"
+
+            port_num = getattr(portnums_pb2, 'TELEMETRY_APP', None) or getattr(getattr(portnums_pb2, 'PortNum', None), 'TELEMETRY_APP', 67)
 
             send_data_fn = getattr(self.interface, 'sendData', None)
             if callable(send_data_fn):
-                from meshtastic import portnums_pb2, telemetry_pb2
-                req_payload = telemetry_pb2.Telemetry()
                 send_data_fn(
-                    req_payload.SerializeToString(),
+                    req_payload,
                     destinationId=target_id,
-                    portNum=portnums_pb2.TELEMETRY_APP,
+                    portNum=port_num,
                     channelIndex=channel_index,
                     wantResponse=True,
                 )
-                log_p(f"Solicitud de telemetría enviada a {target_id} vía sendData TELEMETRY_APP", level="INFO")
+                log_p(f"Solicitud de telemetría de {log_label} enviada a {target_id} vía sendData (wantResponse=True)", level="INFO")
+                return True
+
+            # Fallback si sendData no estuviera disponible
+            req_fn = getattr(self.interface, 'sendTelemetry', None) or getattr(self.interface, 'requestTelemetry', None)
+            if callable(req_fn):
+                try:
+                    req_fn(destinationId=target_id, wantResponse=True, telemetryType=telemetry_type)
+                except TypeError:
+                    req_fn(destinationId=target_id)
+                log_p(f"Solicitud de telemetría enviada a {target_id} vía sendTelemetry fallback", level="INFO")
                 return True
         except (Exception, SystemExit, BaseException) as e:
             log_p(f"Error en request_telemetry a {destination_id}: {e}", level="WARN")

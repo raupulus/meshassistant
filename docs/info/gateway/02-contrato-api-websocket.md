@@ -353,17 +353,22 @@ Emitido cuando un nodo envía métricas de estado, batería o mediciones de pote
   },
   "error": null
 ### 3.4. `request_telemetry` (Solicitar Batería y Métricas a un Nodo/Router)
-Encola una solicitud `TELEMETRY_APP` por radio LoRa dirigida al nodo especificado para que emita sus métricas actualizadas (batería, voltaje y canales de sensores INA si dispone de ellos). Utilizado en la web por los botones `🔋 Bat` y `🔌 PWR`.
+Encola una solicitud `TELEMETRY_APP` por radio LoRa dirigida al nodo especificado para que emita sus métricas actualizadas (batería/dispositivo o canales de potencia INA). Utilizado en la web por los botones `🔋 Bat` y `🔌 PWR`.
 - **Petición:**
 ```json
 {
   "action": "request_telemetry",
   "req_id": "tel_01",
   "params": {
-    "node_id": "!12345678"
+    "node_id": "!12345678",
+    "telemetry_type": "power_metrics"
   }
 }
 ```
+*Parámetros:*
+- `node_id` (obligatorio): Identificador del nodo destino (`!xxxxxxxx` o numérico).
+- `telemetry_type` (opcional): `"device_metrics"` (por defecto, batería estándar) o `"power_metrics"` (sensores de potencia INA).
+
 - **Respuesta:**
 ```json
 {
@@ -374,7 +379,8 @@ Encola una solicitud `TELEMETRY_APP` por radio LoRa dirigida al nodo especificad
   "data": {
     "queued": true,
     "outbox_id": 89,
-    "node_id": "!12345678"
+    "node_id": "!12345678",
+    "telemetry_type": "power_metrics"
   },
   "error": null
 }

@@ -52,6 +52,17 @@ reply_to_message(msg, metadata)                # responde citando el mensaje ori
 
 > Límite Meshtastic: **~200 caracteres** por mensaje. Trocea textos largos con `split_messages()`.
 
+## Solicitud de telemetría y métricas — `request_telemetry`
+
+```python
+request_telemetry(destination_id, channel_index=0, telemetry_type="device_metrics")
+```
+
+Permite solicitar telemetría bajo demanda a cualquier nodo o router de la red por radio LoRa:
+- `telemetry_type="device_metrics"`: Solicita métricas estándar de dispositivo (nivel de batería, voltaje interno, uptime).
+- `telemetry_type="power_metrics"`: Solicita métricas de potencia y corriente a nodos equipados con sensores INA (INA219 / INA3221).
+- **Asíncrono y no bloqueante**: Construye el protobuf `telemetry_pb2.Telemetry` y utiliza `self.interface.sendData(..., portNum=TELEMETRY_APP, wantResponse=True)` evitando deliberadamente el método síncrono `waitForTelemetry()` de Meshtastic. El proceso principal `main.py` no se congela y la respuesta entrante se procesa de forma natural en `on_receive_data`.
+
 ## Recepción de texto — `on_receive_text`
 
 1. Extrae `text`, `fromId`, `toId`, `to` y el `id` del paquete original.
