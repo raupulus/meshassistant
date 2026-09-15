@@ -1,4 +1,5 @@
 import env
+import time
 from datetime import datetime
 from time import sleep
 from functions import log_p
@@ -27,6 +28,11 @@ def loop():
             if interface.interface is None or interface._needs_reconnect:
                 interface.reconnect_if_needed()
                 sleep(2)
+                continue
+
+            # Vigilancia periódica de salud de la interfaz serie (Watchdog)
+            interface.check_watchdog()
+            if interface._needs_reconnect:
                 continue
 
             # Procesar (si hay) un trace pendiente encolado por cron (en la misma tabla traces)
@@ -90,6 +96,8 @@ def loop():
 
                         # Validar si el trace fue realmente exitoso (alcanzó algún salto y no abortó en error)
                         is_success = bool(forward or backward) and ("max_retransmit" not in text.lower() or "route traced back to us" in text.lower())
+                        if is_success:
+                            interface.record_trace_success()
 
                         # Marcar trace en la MISMA fila, guardando el texto en data_raw
                         db.mark_trace_done_with_route(
@@ -120,6 +128,8 @@ def loop():
                     except (Exception, SystemExit) as e:
                         # En caso de fallo, guardar el error como texto plano en data_raw
                         error_txt = f"{e.__class__.__name__}: {e}"
+                        if "timeout" in error_txt.lower():
+                            interface.record_trace_timeout()
                         log_p(f"[traceroute] Trace #{pending['id']} falló: {error_txt}", level="WARN")
                         db.mark_trace_done_with_route(
                             pending['id'], False,
@@ -376,9 +386,11 @@ def loop():
                 telem["nodes_in_memory"] = len(interface.node_dict)
 
                 broadcast_event("system_status", {
-                    "uart_connected": interface.interface is not None,
+                    "uart_connected": interface.interface is not None and not interface._needs_reconnect,
                     "serial_port": SERIAL_DEVICE_PATH,
                     "nodes_in_memory": len(interface.node_dict),
+                    "last_rx_timestamp": getattr(interface, 'last_rx_timestamp', None),
+                    "rx_silence_seconds": int(time.time() - interface.last_rx_timestamp) if getattr(interface, 'last_rx_timestamp', None) else 0,
                 })
                 broadcast_event("system_telemetry", telem)
 

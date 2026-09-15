@@ -98,3 +98,8 @@ IA_CHANNELS = ['Cadiz', 'Chipiona', 'bots', 'raupulus', 'Frikidevs']  # Canales 
 ## Control Anti-Abuso y Rate Limiting (Módulo 06)
 RATE_LIMIT_MAX_PER_MINUTE = 10                   # Máximo de comandos por nodo en ventana de 60s
 RATE_LIMIT_BAN_MINUTES = 15                      # Duración en minutos del primer auto-bloqueo
+
+## Watchdog y Vigilancia del Enlace Serie UART (Módulo 04)
+SERIAL_WATCHDOG_ENABLED = True                   # Activa la vigilancia continua del flujo de recepción (RX) serie
+SERIAL_WATCHDOG_TIMEOUT_MINUTES = 20             # Minutos sin recibir ningún paquete por serie para forzar reconexión (0 para desactivar)
+SERIAL_WATCHDOG_MAX_TRACE_TIMEOUTS = 5           # Traces consecutivos con timeout antes de forzar reconexión preventiva (0 para desactivar)

@@ -29,11 +29,24 @@ tópicos de `pubsub`:
 | `meshtastic.connection.lost` | `on_connection_lost` | Reconexión. |
 | `meshtastic.connection.closed` | `on_connection_closed` | Cierre. |
 
-## Reconexión
+## Reconexión y Watchdog de Recepción Serie (UART)
 
-`on_connection_lost` espera, cierra la interfaz y reintenta `connect()` en bucle
-mientras el dispositivo exista (`os.path.exists(self.serial_port)`), con esperas
-entre intentos. Esto da **tolerancia a reinicios** del nodo.
+El bot está diseñado para conectarse a un nodo por UART de hardware (`/dev/serial0` en Raspberry Pi). A diferencia de un puerto USB, el puerto UART físico no se desconecta a nivel de kernel si el microcontrolador (Pico W / ESP32) sufre un desincronismo o bloqueo en su flujo de lectura. Para evitar que el bot quede en un estado "sordo" silencioso, se implementa una arquitectura de doble protección:
+
+1. **Reconexión Reactiva (`on_connection_lost` / `on_connection_closed`):**
+   - El hilo de Meshtastic marca `self._needs_reconnect = True` de forma atómica y no bloqueante.
+   - La reconexión efectiva la ejecuta el hilo principal en `main.py` mediante `interface.reconnect_if_needed()`, cerrando la interfaz, aplicando una pausa de 2 segundos para liberar buffers del SO y reabriendo el puerto.
+
+2. **Watchdog Activo de Recepción (`check_watchdog()`):**
+   - **Monitoreo del hilo lector (`_rxThread`):** Verifica que el hilo en segundo plano de la librería `meshtastic` siga vivo. Si muere silenciosamente, solicita reconexión inmediata.
+   - **Inactividad de recepción (RX Silence Timeout):** Registra mediante `self._touch_rx()` la marca temporal de cualquier paquete o evento entrante (`on_receive_text`, `on_receive_data`, `on_node_update`, etc.). Si transcurren más de `SERIAL_WATCHDOG_TIMEOUT_MINUTES` (por defecto 20 min) sin ningún paquete entrante en la malla, fuerza un reinicio limpio del puerto serie.
+   - **Detección por fallos de trazas repetidos:** Si fallan `SERIAL_WATCHDOG_MAX_TRACE_TIMEOUTS` (por defecto 5) trazas consecutivas por `TimeoutError` y además no ha habido tráfico RX en los últimos 5 minutos, se diagnostica desincronismo del canal serie y se fuerza una reconexión preventiva.
+   - **Notificación IPC en tiempo real:** Si el watchdog actúa, emite los eventos `watchdog_alert` y actualiza `system_status` (indicando `watchdog_triggered=True` y la causa) para visibilidad en el panel web.
+
+Parámetros configurables en `env.py`:
+- `SERIAL_WATCHDOG_ENABLED` (bool, def. `True`): Activa o desactiva la vigilancia.
+- `SERIAL_WATCHDOG_TIMEOUT_MINUTES` (int/float, def. `20`): Minutos máximos de inactividad RX antes de reconectar (0 para deshabilitar).
+- `SERIAL_WATCHDOG_MAX_TRACE_TIMEOUTS` (int, def. `5`): Traces consecutivos fallidos por timeout antes de reconectar (0 para deshabilitar).
 
 ## Envío de mensajes
 

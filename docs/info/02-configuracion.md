@@ -21,6 +21,14 @@ que las variables ausentes no rompen la ejecución.
 | `DEBUG` | bool | `False` | Activa el logging de `functions.log_p`. Con `False` no se imprime nada (salvo `print` heredados). |
 | `SERIAL_DEVICE_PATH` | str | `/dev/cu.usbserial-212110` | Ruta del dispositivo serie del nodo. En la Pi suele ser `/dev/serial0`. |
 
+### Watchdog y Vigilancia Serie (UART)
+
+| Variable | Tipo | Defecto | Descripción |
+|---|---|---|---|
+| `SERIAL_WATCHDOG_ENABLED` | bool | `True` | Activa o desactiva la vigilancia continua del flujo de recepción serie (RX). |
+| `SERIAL_WATCHDOG_TIMEOUT_MINUTES` | int\|float | `20` | Minutos de inactividad total en RX antes de forzar reconexión preventiva (`0` desactiva). |
+| `SERIAL_WATCHDOG_MAX_TRACE_TIMEOUTS` | int | `5` | Traces consecutivos con `TimeoutError` antes de reconectar preventivamente si no hay RX (`0` desactiva). |
+
 ### Traces y Routers
 
 | Variable | Tipo | Defecto | Descripción |

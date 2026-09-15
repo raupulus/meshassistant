@@ -1,4 +1,6 @@
 from time import sleep
+import time
+from datetime import datetime
 import os
 from meshtastic import serial_interface
 from pubsub import pub
@@ -41,6 +43,10 @@ class SerialInterface:
         # reconexión real la realiza el hilo principal en main.loop(), nunca el
         # hilo 'publishing' de Meshtastic (que reparte los mensajes recibidos).
         self._needs_reconnect = False
+        # Watchdog de recepción y salud de la interfaz serie
+        self.last_rx_timestamp = time.time()
+        self.last_watchdog_check = time.time()
+        self.consecutive_trace_timeouts = 0
 
     def _subscribe(self):
         for handler, topic in self._subscriptions():
@@ -59,6 +65,9 @@ class SerialInterface:
         try:
             self.interface = serial_interface.SerialInterface(devPath=self.serial_port)
             self._needs_reconnect = False
+            self.last_rx_timestamp = time.time()
+            self.consecutive_trace_timeouts = 0
+            self.last_watchdog_check = time.time()
             log_p(f"Conectado al dispositivo Meshtastic en puerto {self.serial_port}")
             log_p(f"Suscribiendo a eventos\n")
             self._subscribe()
@@ -98,6 +107,129 @@ class SerialInterface:
         except Exception:
             pass
 
+    def _touch_rx(self):
+        """Actualiza la marca temporal de última actividad de recepción (RX) serie y reinicia fallos acumulados."""
+        self.last_rx_timestamp = time.time()
+        self.consecutive_trace_timeouts = 0
+
+    def record_trace_success(self):
+        """Registra un traceroute exitoso y resetea el contador de timeouts consecutivos."""
+        self.consecutive_trace_timeouts = 0
+        self.last_rx_timestamp = time.time()
+
+    def record_trace_timeout(self):
+        """Incrementa el contador de fallos consecutivos por timeout en traceroutes."""
+        self.consecutive_trace_timeouts += 1
+
+    def _broadcast_watchdog_alert(self, reason: str, **kwargs):
+        """Emite alerta estructurada de watchdog hacia la pasarela WebSocket si está disponible."""
+        try:
+            from Models.EventBroadcaster import broadcast_event
+            payload = {
+                "reason": reason,
+                "serial_port": self.serial_port,
+                "timestamp": datetime.now().isoformat(timespec="seconds"),
+            }
+            payload.update(kwargs)
+            broadcast_event("watchdog_alert", payload)
+            broadcast_event("system_status", {
+                "uart_connected": False,
+                "serial_port": self.serial_port,
+                "nodes_in_memory": len(self.node_dict),
+                "watchdog_triggered": True,
+                "watchdog_reason": reason,
+            })
+        except Exception:
+            pass
+
+    def check_watchdog(self) -> bool:
+        """Vigila la salud y fluidez del stream serie UART de Meshtastic.
+
+        Comprueba:
+        1. Estado de vida del hilo lector en segundo plano (_rxThread).
+        2. Timeout por inactividad prolongada de recepción (RX silence).
+        3. Fallos consecutivos reiterados por timeout en traceroutes con ausencia de tráfico RX.
+
+        Si detecta una anomalía de recepción, marca `self._needs_reconnect = True`
+        para que el bucle principal en `main.py` reinicie limpiamente el puerto serie.
+
+        Returns:
+            bool: True si la conexión se considera viva, False si requiere reconexión.
+        """
+        now = time.time()
+        # Limitar evaluación a cada 15 segundos para mínimo impacto en CPU
+        if now - self.last_watchdog_check < 15:
+            return not self._needs_reconnect
+        self.last_watchdog_check = now
+
+        if self.interface is None or self._needs_reconnect:
+            return False
+
+        # Configuración desde env.py con valores por defecto defensivos
+        import env as _env
+        watchdog_enabled = bool(getattr(_env, "SERIAL_WATCHDOG_ENABLED", True))
+        if not watchdog_enabled:
+            return True
+
+        # 1. Comprobación de vida del hilo lector de meshtastic
+        rx_thread = getattr(self.interface, "_rxThread", None)
+        if rx_thread is not None and not rx_thread.is_alive():
+            log_p(
+                "[Watchdog] El hilo lector serie de Meshtastic (_rxThread) ha finalizado. Solicitando reconexión inmediata...",
+                level="WARN",
+            )
+            self._needs_reconnect = True
+            self._broadcast_watchdog_alert("rx_thread_dead")
+            return False
+
+        # 2. Comprobación de inactividad prolongada de recepción (RX silence)
+        timeout_minutes = getattr(_env, "SERIAL_WATCHDOG_TIMEOUT_MINUTES", 20)
+        if timeout_minutes is not None:
+            try:
+                timeout_minutes = float(timeout_minutes)
+            except (ValueError, TypeError):
+                timeout_minutes = 20.0
+
+            if timeout_minutes > 0:
+                silence_seconds = now - self.last_rx_timestamp
+                timeout_seconds = timeout_minutes * 60.0
+                if silence_seconds > timeout_seconds:
+                    log_p(
+                        f"[Watchdog] Inactividad RX serie prolongada ({int(silence_seconds / 60)} min sin paquetes entrantes, "
+                        f"umbral={timeout_minutes:.0f}m). Forzando reconexión preventiva de UART...",
+                        level="WARN",
+                    )
+                    self._needs_reconnect = True
+                    self._broadcast_watchdog_alert("rx_timeout", silence_minutes=round(silence_seconds / 60, 1))
+                    return False
+
+        # 3. Comprobación de traces fallidos consecutivos por timeout
+        max_trace_timeouts = getattr(_env, "SERIAL_WATCHDOG_MAX_TRACE_TIMEOUTS", 5)
+        if max_trace_timeouts is not None:
+            try:
+                max_trace_timeouts = int(max_trace_timeouts)
+            except (ValueError, TypeError):
+                max_trace_timeouts = 5
+
+            if max_trace_timeouts > 0 and self.consecutive_trace_timeouts >= max_trace_timeouts:
+                silence_seconds = now - self.last_rx_timestamp
+                # Si han fallado 5 traces seguidos y llevamos al menos 5 min sin recibir nada por RF
+                if silence_seconds >= 300:
+                    log_p(
+                        f"[Watchdog] {self.consecutive_trace_timeouts} traceroutes consecutivos fallaron por timeout "
+                        f"y sin tráfico RX durante {int(silence_seconds / 60)} min. Solicitando reconexión preventiva de UART...",
+                        level="WARN",
+                    )
+                    self._needs_reconnect = True
+                    self._broadcast_watchdog_alert(
+                        "trace_timeouts",
+                        consecutive=self.consecutive_trace_timeouts,
+                        silence_minutes=round(silence_seconds / 60, 1),
+                    )
+                    return False
+
+        return True
+
     def reconnect_if_needed(self):
         """Reconexión ordenada, pensada para llamarse desde el hilo principal.
 
@@ -119,6 +251,10 @@ class SerialInterface:
             time.sleep(5)
             return False
 
+        # Pausa defensiva para permitir que los buffers y driver serie del SO liberen UART
+        import time
+        time.sleep(2)
+
         try:
             self.connect()
             if self.interface is not None:
@@ -137,6 +273,7 @@ class SerialInterface:
             return False
 
     def on_receive_position(self, packet, interface):
+        self._touch_rx()
         log_p(f"on_receive_position: {packet}", level="DEBUG")
         try:
             decoded = packet.get('decoded', {})
@@ -161,6 +298,7 @@ class SerialInterface:
             pass
 
     def on_receive_user(self, packet, interface):
+        self._touch_rx()
         # log_p(f"on_receive_user: {packet}", level="DEBUG")
         nodenumber = packet.get('from', None)
         decoded = packet.get('decoded', None)
@@ -220,6 +358,7 @@ class SerialInterface:
                     pass
 
     def on_receive_data(self, packet, interface):
+        self._touch_rx()
         log_p(f"on_receive_data: {packet}", level="DEBUG")
         try:
             if not isinstance(packet, dict):
@@ -546,12 +685,13 @@ class SerialInterface:
         """
         TODO: Revisar si entra en este evento, parece que no
         """
-
+        self._touch_rx()
         log_p(f"NodeInfo recibido: {packet}")
         pass
 
     def on_node_update (self, node, interface):
         """Callback reactivo cuando Meshtastic actualiza cualquier nodo en memoria (telemetría, user, posición)."""
+        self._touch_rx()
         try:
             if not isinstance(node, dict):
                 return
@@ -613,6 +753,7 @@ class SerialInterface:
         Args:
             interface: La interfaz de meshtastic que se ha conectado
         """
+        self._touch_rx()
         log_p("Conexión establecida con el dispositivo Meshtastic")
         self.get_nodes()
         try:
@@ -1067,6 +1208,7 @@ class SerialInterface:
         """
         Callback que se ejecuta cuando se recibe un mensaje
         """
+        self._touch_rx()
         try:
             # Verifico si el paquete contiene un mensaje de texto
             if 'decoded' in packet and 'text' in packet['decoded']:
