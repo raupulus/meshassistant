@@ -13,13 +13,13 @@ class MeshWatcher:
     Rastrea en memoria RAM las marcas de tiempo de telemetría y saltos iniciales
     para detectar comportamientos perjudiciales con coste computacional casi nulo:
     - Saltos iniciales configurados >= 6 (hopStart / hopLimit).
-    - Telemetrías frecuentes (< 30 min por tipo: Batería, Posición, NodeInfo, Sensores).
+    - Telemetrías frecuentes (< 27 min por tipo: Batería, Posición, NodeInfo, Sensores).
     - Abuso de Traceroutes (> 1 / minuto o > 20 / hora).
     - Nodos ignorados / bloqueados en el bot.
     - Exclusión estricta del nodo local (bot propio).
     """
 
-    MIN_TELEMETRY_INTERVAL_SEC = 1800  # 30 minutos (1800 segundos)
+    MIN_TELEMETRY_INTERVAL_SEC = 1620  # 27 minutos (1620s, margen para cadencias estándar de 30m)
     ANTIBOUNCE_MIN_SEC = 15           # Ignorar eventos duplicados/ráfagas < 15s
     MAX_RECOMMENDED_HOPS = 5          # Saltos máximos saludables
     MAX_TRACES_PER_MIN = 1            # Límite saludable: máx 1 trace/minuto
@@ -30,6 +30,8 @@ class MeshWatcher:
         "POSITION_APP": ("FAST_POSITION", "Posición GPS"),
         "NODEINFO_APP": ("FAST_NODEINFO", "NodeInfo"),
         "ENVIRONMENTAL_MEASUREMENT_APP": ("FAST_ENVIRONMENTAL", "Sensores climáticos"),
+        "TELEMETRY_POWER": ("FAST_POWER", "Telemetría de potencia"),
+        "TELEMETRY_AIR_QUALITY": ("FAST_AIR_QUALITY", "Calidad del aire"),
     }
 
     _last_telemetry: Dict[str, Dict[str, float]] = {}
@@ -209,24 +211,25 @@ class MeshWatcher:
             except Exception as e:
                 log_p(f"[Watcher] Error registrando salto excesivo: {e}", level="WARN")
 
-        # 5. Comprobar cadencia de telemetría (< 30 min)
+        # 5. Comprobar cadencia de telemetría (< 27 min)
         decoded = packet.get("decoded", {}) if isinstance(packet.get("decoded"), dict) else {}
         portnum = decoded.get("portnum")
         if not portnum and "telemetry" in packet:
             portnum = "TELEMETRY_APP"
 
-        if portnum and portnum in cls.PORT_MAP:
-            reason_code, port_label = cls.PORT_MAP[portnum]
+        classification = cls.classify_telemetry_packet(portnum, decoded, packet)
+        if classification:
+            sub_key, reason_code, port_label = classification
             now_ts = time.time()
 
             if from_id not in cls._last_telemetry:
                 cls._last_telemetry[from_id] = {}
 
-            last_ts = cls._last_telemetry[from_id].get(portnum)
+            last_ts = cls._last_telemetry[from_id].get(sub_key)
 
             # Si es la primera vez que se ve este tipo de paquete, fijar timestamp y salir
             if last_ts is None:
-                cls._last_telemetry[from_id][portnum] = now_ts
+                cls._last_telemetry[from_id][sub_key] = now_ts
                 return False
 
             delta_sec = int(now_ts - last_ts)
@@ -236,7 +239,7 @@ class MeshWatcher:
                 return False
 
             # Actualizar timestamp para el próximo ciclo
-            cls._last_telemetry[from_id][portnum] = now_ts
+            cls._last_telemetry[from_id][sub_key] = now_ts
 
             if delta_sec < cls.MIN_TELEMETRY_INTERVAL_SEC:
                 # Formatear tiempo limpio (ej. 45s, 5m, 12m 30s)
@@ -256,6 +259,7 @@ class MeshWatcher:
                         reason_desc=desc,
                         details={
                             "portnum": portnum,
+                            "sub_key": sub_key,
                             "interval_sec": delta_sec,
                             "min_interval_sec": cls.MIN_TELEMETRY_INTERVAL_SEC,
                         },
@@ -275,6 +279,102 @@ class MeshWatcher:
                     log_p(f"[Watcher] Error registrando telemetría rápida: {e}", level="WARN")
 
         return False
+
+    @classmethod
+    def classify_telemetry_packet(
+        cls,
+        portnum: Any,
+        decoded: Dict[str, Any],
+        packet: Dict[str, Any],
+    ) -> Optional[tuple[str, str, str]]:
+        """Identifica el tipo y submétrica de telemetría/posición/nodeinfo.
+        
+        Devuelve una tupla (sub_key, reason_code, port_label) o None si no aplica.
+        Distingue tramas físicas distintas de TELEMETRY_APP (batería, clima, potencia, aire)
+        para evitar falsos positivos al recibirse dentro de la misma cadencia.
+        """
+        # 1. Posición GPS
+        if portnum in ("POSITION_APP", 3, "position") or (not portnum and ("position" in decoded or "position" in packet)):
+            return ("POSITION_APP", "FAST_POSITION", "Posición GPS")
+
+        # 2. NodeInfo
+        if portnum in ("NODEINFO_APP", 4, "nodeinfo") or (not portnum and ("user" in decoded or "user" in packet)):
+            return ("NODEINFO_APP", "FAST_NODEINFO", "NodeInfo")
+
+        # 3. Aplicación ambiental dedicada (legacy)
+        if portnum in ("ENVIRONMENTAL_MEASUREMENT_APP", 68, "environmental"):
+            return ("TELEMETRY_ENVIRONMENTAL", "FAST_ENVIRONMENTAL", "Sensores climáticos")
+
+        # 4. Telemetría estándar Meshtastic (TELEMETRY_APP = 67)
+        if (
+            portnum in ("TELEMETRY_APP", 67, "telemetry")
+            or "telemetry" in decoded
+            or "telemetry" in packet
+            or "deviceMetrics" in decoded
+            or "device_metrics" in decoded
+            or "environmentMetrics" in decoded
+            or "environment_metrics" in decoded
+            or "powerMetrics" in decoded
+            or "power_metrics" in decoded
+            or "airQualityMetrics" in decoded
+            or "air_quality_metrics" in decoded
+        ):
+            telemetry = (
+                decoded.get("telemetry")
+                or packet.get("telemetry")
+                or decoded.get("deviceMetrics")
+                or decoded.get("device_metrics")
+                or packet.get("deviceMetrics")
+                or packet.get("device_metrics")
+                or {}
+            )
+            if not isinstance(telemetry, dict):
+                telemetry = {}
+
+            # A. Sensores climáticos / ambientales (BME280, BMP280, SHT31, etc.)
+            if (
+                "environmentMetrics" in telemetry
+                or "environment_metrics" in telemetry
+                or "environmentMetrics" in decoded
+                or "environment_metrics" in decoded
+                or "temperature" in telemetry
+                or "barometric_pressure" in telemetry
+                or "barometricPressure" in telemetry
+                or "lux" in telemetry
+                or "relative_humidity" in telemetry
+                or "relativeHumidity" in telemetry
+            ):
+                return ("TELEMETRY_ENVIRONMENTAL", "FAST_ENVIRONMENTAL", "Sensores climáticos")
+
+            # B. Sensores de potencia / monitorización eléctrica (INA219, INA3221, etc.)
+            if (
+                "powerMetrics" in telemetry
+                or "power_metrics" in telemetry
+                or "powerMetrics" in decoded
+                or "power_metrics" in decoded
+                or "ch1Voltage" in telemetry
+                or "ch1_voltage" in telemetry
+                or "ch1Current" in telemetry
+                or "ch1_current" in telemetry
+            ):
+                return ("TELEMETRY_POWER", "FAST_POWER", "Telemetría de potencia")
+
+            # C. Sensores de calidad del aire (PM2.5, PM10, etc.)
+            if (
+                "airQualityMetrics" in telemetry
+                or "air_quality_metrics" in telemetry
+                or "airQualityMetrics" in decoded
+                or "air_quality_metrics" in decoded
+                or "pm25" in telemetry
+                or "pm25_standard" in telemetry
+                or "pm10_standard" in telemetry
+            ):
+                return ("TELEMETRY_AIR_QUALITY", "FAST_AIR_QUALITY", "Calidad del aire")
+
+            # D. Por defecto para telemetría: métricas de dispositivo / batería
+            return ("TELEMETRY_DEVICE", "FAST_TELEMETRY", "Telemetría de batería")
+
+        return None
 
     @classmethod
     def report_command_spam(cls, node_id: str, count_1m: int, short_name: Optional[str] = None, name: Optional[str] = None) -> None:

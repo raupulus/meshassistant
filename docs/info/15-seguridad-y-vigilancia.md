@@ -54,12 +54,18 @@ El módulo [`Models/MeshWatcher.py`](file:///Users/fryntiz/git/meshassistant/Mod
 | Infracción | Código | Umbral | Descripción |
 |---|---|---|---|
 | **Exceso de Saltos Iniciales** | `EXCESSIVE_HOPS` | `hopStart >= 6` o `hopLimit >= 6` | El paquete fue originado deliberadamente para inundar la red a 6 o 7 saltos. |
-| **Telemetría de Batería Rápida** | `FAST_TELEMETRY` | `TELEMETRY_APP` < 30 min | Emisión repetida de métricas de batería/voltaje. |
-| **Posición GPS Rápida** | `FAST_POSITION` | `POSITION_APP` < 30 min | Emisión de coordenadas en ciclos cortos. |
-| **NodeInfo Rápido** | `FAST_NODEINFO` | `NODEINFO_APP` < 30 min | Difusión repetitiva de información de usuario/nodo. |
-| **Sensores Ambientales Rápidos** | `FAST_ENVIRONMENTAL` | `ENVIRONMENTAL_MEASUREMENT_APP` < 30 min | Estación climática emitiendo en intervalos agresivos. |
+| **Telemetría de Batería Rápida** | `FAST_TELEMETRY` | `deviceMetrics` < 27 min | Emisión repetida de métricas de batería/voltaje/canal. |
+| **Posición GPS Rápida** | `FAST_POSITION` | `POSITION_APP` < 27 min | Emisión de coordenadas en ciclos cortos. |
+| **NodeInfo Rápido** | `FAST_NODEINFO` | `NODEINFO_APP` < 27 min | Difusión repetitiva de información de usuario/nodo. |
+| **Sensores Ambientales Rápidos** | `FAST_ENVIRONMENTAL` | `environmentMetrics` / App 68 < 27 min | Estación climática emitiendo en intervalos agresivos. |
+| **Telemetría de Potencia Rápida** | `FAST_POWER` | `powerMetrics` < 27 min | Sensores de corriente/potencia (INA219/INA3221) emitidos en ciclos cortos. |
+| **Calidad del Aire Rápida** | `FAST_AIR_QUALITY` | `airQualityMetrics` < 27 min | Sensores de partículas (PM2.5/PM10) emitidos en ciclos cortos. |
 | **Abuso de Traceroutes** | `EXCESSIVE_TRACES` | > 1 pet / min ó > 20 pet / hora | Emisión descontrolada de traceroutes saturando la red LoRa. |
 | **Spam de Comandos** | `COMMAND_SPAM` | ≥ 10 peticiones / minuto | Ráfaga de comandos hacia el bot. |
+
+> **Nota sobre el umbral de 27 minutos:** El intervalo mínimo estándar recomendado en la red Meshtastic es de 30 minutos. Se establece un umbral de **27 minutos (1.620 segundos)** para tolerar jitter, variaciones de reloj o reintentos menores del firmware sin disparar falsas alarmas, considerándolo equivalente a la cadencia nominal de 30 minutos.
+>
+> **Subclasificación independiente de telemetría:** Aunque viajen bajo el mismo puerto `TELEMETRY_APP` (67), cada métrica física (`deviceMetrics`, `environmentMetrics`, `powerMetrics`, `airQualityMetrics`) mantiene su propio temporizador en RAM independiente. De este modo, si un nodo meteorológico envía batería a las 15:30 y mediciones de temperatura a las 15:46, no se produce ningún falso positivo.
 
 ### 2.2. Conteo de Traceroutes y Vigilancia de Abuso
 - **Contador por Nodo (`nodes.traces_detected`):** Cada paquete de traceroute detectado en el aire (`TRACEROUTE_APP` / `ROUTING_APP`) incrementa un contador atómico en la base de datos para saber cuántos traceroutes ha emitido ese nodo históricamente.
@@ -70,7 +76,7 @@ El módulo [`Models/MeshWatcher.py`](file:///Users/fryntiz/git/meshassistant/Mod
 ### 2.3. Filtro Antirrebote y Exclusión del Nodo Local
 - **Exclusión del Nodo Propio:** El nodo local conectado por UART (`Raupulus PicoBot 2` / ID local) emite telemetría constante por diseño hacia el host serie. Queda **estrictamente excluido** de cualquier regla de vigilancia o bloqueo.
 - **Filtro Antirrebote (< 15 segundos):** Los paquetes repetidos o disparados en ráfagas casi simultáneas por UART (< 15s) se descartan como duplicados del mismo evento, evitando falsos positivos de "0s".
-- **Medición de Intervalos Reales:** Cuando un nodo emite telemetría legítima en menos de 30 minutos, se calcula el tiempo transcurrido exacto y se presenta de forma limpia: `Telemetría recibida en 45s`, `Posición GPS recibida en 5m 20s`, `NodeInfo recibido en 12m`.
+- **Medición de Intervalos Reales:** Cuando un nodo emite telemetría legítima en menos de 27 minutos, se calcula el tiempo transcurrido exacto y se presenta de forma limpia: `Telemetría recibida en 45s`, `Posición GPS recibida en 5m 20s`, `NodeInfo recibido en 12m`.
 
 ### 2.4. Agrupación por Motivo en Base de Datos
 

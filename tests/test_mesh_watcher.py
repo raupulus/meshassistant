@@ -98,8 +98,13 @@ class TestMeshWatcher(unittest.TestCase):
         MeshWatcher.inspect_packet(packet_telemetry)
         self.assertEqual(len(self.db.get_auto_reported_nodes()), 0)
 
-        # Segundo paquete recibido 120 segundos después (t=1120s): debe saltar infracción limpia
-        mock_time.return_value = 1120.0
+        # Paquete a los 1620 segundos (27m exactos, t=2620s): dentro de margen saludable, NO debe reportar
+        mock_time.return_value = 2620.0
+        MeshWatcher.inspect_packet(packet_telemetry)
+        self.assertEqual(len(self.db.get_auto_reported_nodes()), 0)
+
+        # Siguiente paquete recibido 120 segundos después (t=2740s): debe saltar infracción limpia (< 27m)
+        mock_time.return_value = 2740.0
         discard2 = MeshWatcher.inspect_packet(packet_telemetry)
         self.assertFalse(discard2)
 
@@ -108,6 +113,89 @@ class TestMeshWatcher(unittest.TestCase):
         self.assertEqual(reported[0]["node_id"], "!fastnode")
         self.assertEqual(reported[0]["reason_code"], "FAST_TELEMETRY")
         self.assertEqual(reported[0]["reason_desc"], "Telemetría de batería recibida en 2m")
+
+    @patch("time.time")
+    def test_telemetry_subtypes_separation_no_false_positive(self, mock_time):
+        """Verifica que métricas distintas (batería, clima, potencia, aire) no interfieran entre sí."""
+        mock_time.return_value = 1000.0
+        node_id = "!multisensor"
+
+        pkg_battery = {
+            "fromId": node_id,
+            "hopStart": 3,
+            "decoded": {
+                "portnum": "TELEMETRY_APP",
+                "telemetry": {"deviceMetrics": {"batteryLevel": 100, "voltage": 4.15}},
+            },
+        }
+        pkg_climate = {
+            "fromId": node_id,
+            "hopStart": 3,
+            "decoded": {
+                "portnum": "TELEMETRY_APP",
+                "telemetry": {"environmentMetrics": {"temperature": 23.5, "relativeHumidity": 50.0}},
+            },
+        }
+        pkg_power = {
+            "fromId": node_id,
+            "hopStart": 3,
+            "decoded": {
+                "portnum": "TELEMETRY_APP",
+                "telemetry": {"powerMetrics": {"ch1Voltage": 5.05, "ch1Current": 0.35}},
+            },
+        }
+        pkg_air = {
+            "fromId": node_id,
+            "hopStart": 3,
+            "decoded": {
+                "portnum": "TELEMETRY_APP",
+                "telemetry": {"airQualityMetrics": {"pm25": 12}},
+            },
+        }
+
+        # 1. Enviar batería en t=1000s
+        MeshWatcher.inspect_packet(pkg_battery)
+
+        # 2. Enviar clima en t=1060s (1 min después) -> NO debe reportar por ser submétrica distinta
+        mock_time.return_value = 1060.0
+        MeshWatcher.inspect_packet(pkg_climate)
+
+        # 3. Enviar potencia en t=1120s -> NO debe reportar
+        mock_time.return_value = 1120.0
+        MeshWatcher.inspect_packet(pkg_power)
+
+        # 4. Enviar calidad de aire en t=1180s -> NO debe reportar
+        mock_time.return_value = 1180.0
+        MeshWatcher.inspect_packet(pkg_air)
+
+        self.assertEqual(len(self.db.get_auto_reported_nodes()), 0)
+
+        # 5. Batería en t=2650s (delta = 1650s > 1620s [27m]) -> Saludable, NO reporta
+        mock_time.return_value = 2650.0
+        MeshWatcher.inspect_packet(pkg_battery)
+        self.assertEqual(len(self.db.get_auto_reported_nodes()), 0)
+
+        # 6. Clima en t=2700s (delta = 1640s > 1620s [27m]) -> Saludable, NO reporta
+        mock_time.return_value = 2700.0
+        MeshWatcher.inspect_packet(pkg_climate)
+        self.assertEqual(len(self.db.get_auto_reported_nodes()), 0)
+
+        # 7. Batería en t=3500s (delta = 850s = 14m 10s < 1620s) -> Infracción FAST_TELEMETRY
+        mock_time.return_value = 3500.0
+        MeshWatcher.inspect_packet(pkg_battery)
+        reported = self.db.get_auto_reported_nodes()
+        self.assertEqual(len(reported), 1)
+        self.assertEqual(reported[0]["reason_code"], "FAST_TELEMETRY")
+        self.assertIn("14m 10s", reported[0]["reason_desc"])
+
+        # 8. Clima en t=3700s (delta = 1000s = 16m 40s < 1620s) -> Infracción FAST_ENVIRONMENTAL
+        mock_time.return_value = 3700.0
+        MeshWatcher.inspect_packet(pkg_climate)
+        reported = self.db.get_auto_reported_nodes()
+        self.assertEqual(len(reported), 2)
+        reasons = {r["reason_code"] for r in reported}
+        self.assertIn("FAST_TELEMETRY", reasons)
+        self.assertIn("FAST_ENVIRONMENTAL", reasons)
 
     @patch("time.time")
     def test_multiple_reasons_for_same_node(self, mock_time):

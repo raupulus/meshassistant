@@ -221,7 +221,7 @@ Permite a procesos externos (como la API WebSocket del Gateway) encolar mensajes
 Índice: `idx_outbox_status_created ON outbox(status, created_at)`.
 
 ### `auto_reported_nodes` — nodos auto-reportados por mala praxis (vigilancia)
-Registra incidencias de nodos que saturan o dañan la red LoRa (saltos excesivos iniciales ≥6, telemetrías frecuentes <30m, spam de comandos). Permite que un mismo nodo tenga múltiples motivos de incidencia.
+Registra incidencias de nodos que saturan o dañan la red LoRa (saltos excesivos iniciales ≥6, telemetrías frecuentes <27m, spam de comandos). Permite que un mismo nodo tenga múltiples motivos de incidencia.
 
 | Columna | Tipo | Notas |
 |---|---|---|
@@ -229,7 +229,7 @@ Registra incidencias de nodos que saturan o dañan la red LoRa (saltos excesivos
 | `node_id` | TEXT NOT NULL | ID del nodo (`!xxxxxxxx`). |
 | `short_name` | TEXT NULL | Alias corto del nodo. |
 | `name` | TEXT NULL | Nombre largo del nodo. |
-| `reason_code` | TEXT NOT NULL | Código (`EXCESSIVE_HOPS`, `FAST_TELEMETRY`, `FAST_POSITION`, `FAST_NODEINFO`, `FAST_ENVIRONMENTAL`, `EXCESSIVE_TRACES`, `COMMAND_SPAM`). |
+| `reason_code` | TEXT NOT NULL | Código (`EXCESSIVE_HOPS`, `FAST_TELEMETRY`, `FAST_POSITION`, `FAST_NODEINFO`, `FAST_ENVIRONMENTAL`, `FAST_POWER`, `FAST_AIR_QUALITY`, `EXCESSIVE_TRACES`, `COMMAND_SPAM`). |
 | `reason_desc` | TEXT NOT NULL | Descripción en lenguaje natural en español. |
 | `event_count` | INTEGER | Número de reincidencias detectadas (por defecto 1). |
 | `first_detected_at` | TEXT | Fecha y hora de la primera infracción (ISO 8601). |

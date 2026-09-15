@@ -2248,10 +2248,12 @@ class MeshDashboard {
 
     const reasonBadges = {
       "EXCESSIVE_HOPS": { icon: "🔀", label: "Saltos Excesivos", bg: "var(--danger-bg)", color: "var(--danger)" },
-      "FAST_TELEMETRY": { icon: "⚡", label: "Telemetría Rápida", bg: "var(--warning-bg)", color: "var(--warning)" },
-      "FAST_POSITION": { icon: "📍", label: "Posición GPS Rápida", bg: "var(--warning-bg)", color: "var(--warning)" },
+      "FAST_TELEMETRY": { icon: "⚡", label: "Telemetría Batería", bg: "var(--warning-bg)", color: "var(--warning)" },
+      "FAST_POSITION": { icon: "📍", label: "Posición GPS", bg: "var(--warning-bg)", color: "var(--warning)" },
       "FAST_NODEINFO": { icon: "👥", label: "NodeInfo Rápido", bg: "var(--primary-bg)", color: "var(--primary)" },
       "FAST_ENVIRONMENTAL": { icon: "🌡️", label: "Sensores Clima", bg: "var(--warning-bg)", color: "var(--warning)" },
+      "FAST_POWER": { icon: "⚡", label: "Sensores Potencia", bg: "var(--warning-bg)", color: "var(--warning)" },
+      "FAST_AIR_QUALITY": { icon: "🍃", label: "Calidad Aire", bg: "var(--primary-bg)", color: "var(--primary)" },
       "EXCESSIVE_TRACES": { icon: "📍", label: "Exceso Traceroutes", bg: "var(--danger-bg)", color: "var(--danger)" },
       "COMMAND_SPAM": { icon: "🛑", label: "Spam Comandos", bg: "var(--danger-bg)", color: "var(--danger)" },
     };

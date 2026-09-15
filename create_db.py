@@ -309,7 +309,7 @@ def _execute_schema(conn: sqlite3.Connection) -> None:
             node_id TEXT NOT NULL,
             short_name TEXT NULL,
             name TEXT NULL,
-            reason_code TEXT NOT NULL,               -- 'EXCESSIVE_HOPS', 'FAST_TELEMETRY', 'FAST_POSITION', 'FAST_NODEINFO', 'FAST_ENVIRONMENTAL', 'COMMAND_SPAM'
+            reason_code TEXT NOT NULL,               -- 'EXCESSIVE_HOPS', 'FAST_TELEMETRY', 'FAST_POSITION', 'FAST_NODEINFO', 'FAST_ENVIRONMENTAL', 'FAST_POWER', 'FAST_AIR_QUALITY', 'EXCESSIVE_TRACES', 'COMMAND_SPAM'
             reason_desc TEXT NOT NULL,
             event_count INTEGER NOT NULL DEFAULT 1,
             first_detected_at TEXT NOT NULL,
