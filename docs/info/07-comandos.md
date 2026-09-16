@@ -152,6 +152,15 @@ Todo callback **registra el comando** con `Database().log_command(...)` (en
   Open-Meteo Marine; sin Internet → **estimación astronómica** marcada `~`. La
   consulta de red on-demand se limita a una vez cada `ONDEMAND_REFRESH_MIN` min
   (def. 10) y con timeout bajo (4 s); entre medias se usa la estimación offline.
+- **`/boletin [tipo]`** — Resumen matinal o vespertino en formato compacto:
+  - **Parte 1 (Resumen general):**
+    - Cabecera: `📢 [Boletín Matinal]` (se omite `📍 Cádiz` por defecto; se muestra solo si la provincia es distinta).
+    - Astronomía: `☀️ 08:09-20:34 | 🌙 Creciente (23%)`.
+    - Predicción meteorológica: texto narrativo ampliado y ajustado dinámicamente al presupuesto de bytes restante (ej. `🌦️ Cielos poco nubosos o despejados, con intervalos de nubes…`).
+    - Mareas: `🌊 Baja 12:19 (-1.3m), Plea 18:42 (0.5m)` (sin prefijo redundante `Mareas:`).
+    - Alertas: si no hay avisos, muestra `⚠️ 0 Alertas` y se entrega íntegro en un único mensaje (<= 200 bytes). Si hay avisos activos, indica `⚠️ N Alerta(s) (ver sig.)`.
+  - **Parte 2 (Detalle de avisos, solo si existen avisos activos):**
+    - `⚠️ [Avisos AEMET]` con el texto completo de las alertas oficiales vigentes.
 
 ### Astronomía (100% offline, `Models/Astro.py`)
 

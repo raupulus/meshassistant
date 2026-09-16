@@ -147,12 +147,50 @@ class TestModules(unittest.TestCase):
         print("Captured scheduled command output:", cap.captured)
 
     def test_bulletin_generator(self):
+        with self.db._connect() as conn:
+            conn.execute("DELETE FROM aemet")
+            conn.execute("DELETE FROM aemet_weather")
+
+        # 1. Caso sin alertas: exactamente 1 parte, sin '📍 Cádiz', sin 'Mareas:' y con '0 Alertas'
         parts = BulletinGenerator.build_bulletin(slot_name="Matinal")
         self.assertIsInstance(parts, list)
-        self.assertTrue(len(parts) >= 1)
-        for p in parts:
-            self.assertLessEqual(len(p.encode("utf-8")), MESH_MAX_BYTES)
-            print("Bulletin part:", p)
+        self.assertEqual(len(parts), 1)
+        self.assertLessEqual(len(parts[0].encode("utf-8")), MESH_MAX_BYTES)
+        self.assertNotIn("📍 Cádiz", parts[0])
+        self.assertNotIn("Mareas:", parts[0])
+        self.assertIn("0 Alertas", parts[0])
+        print("Bulletin part (sin alertas):", parts[0])
+
+        # 2. Con predicción de tiempo real/larga: verificar que expande el texto aprovechando el espacio
+        self.db.aemet_weather_insert(
+            scope="province",
+            province="Cadiz",
+            province_code="11",
+            day="hoy",
+            content="CÁDIZ Cielos poco nubosos o despejados, con intervalos de nubes bajas matinales en el área del Estrecho. Temperaturas en descenso.",
+            data_raw="",
+        )
+        parts_weather = BulletinGenerator.build_bulletin(slot_name="Matinal")
+        self.assertEqual(len(parts_weather), 1)
+        self.assertLessEqual(len(parts_weather[0].encode("utf-8")), MESH_MAX_BYTES)
+        self.assertIn("con intervalos de nubes", parts_weather[0])
+        print("Bulletin part (con tiempo ampliado):", parts_weather[0])
+
+        # 3. Con alerta activa en BD: verificar que genera 2 partes (resumen + aviso completo)
+        self.db.aemet_insert_alert(
+            province="Cadiz",
+            data_raw="{}",
+            message="Aviso de vientos de nivel amarillo Estrecho. Rachas máximas: 80 km/h. Viento de levante.",
+        )
+        parts_alert = BulletinGenerator.build_bulletin(slot_name="Matinal")
+        self.assertEqual(len(parts_alert), 2)
+        self.assertLessEqual(len(parts_alert[0].encode("utf-8")), MESH_MAX_BYTES)
+        self.assertLessEqual(len(parts_alert[1].encode("utf-8")), MESH_MAX_BYTES)
+        self.assertIn("⚠️ 1 Alerta (ver sig.)", parts_alert[0])
+        self.assertIn("⚠️ [Avisos AEMET]", parts_alert[1])
+        self.assertIn("Aviso de vientos", parts_alert[1])
+        print("Bulletin part 1 (con aviso):", parts_alert[0])
+        print("Bulletin part 2 (detalle aviso):", parts_alert[1])
 
     def test_boletin_callback(self):
         from Commands.boletin import boletin_callback
