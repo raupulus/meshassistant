@@ -806,6 +806,12 @@ class MeshDashboard {
         this.showToast(`🚨 Bloqueo aplicado a ${data.node_name || data.node_id}: ${data.reason}`, "warning");
         this.loadSecurityData();
         break;
+      case "node_favorite_changed":
+        if (data.node_id && this.nodesMap.has(data.node_id)) {
+          this.nodesMap.get(data.node_id).is_favorite = data.is_favorite;
+          this.renderNodesTable();
+        }
+        break;
       case "node_updated":
         if (data.id && String(data.id).trim() && data.id !== "None" && data.id !== "Desconocido") {
           const prev = this.nodesMap.get(data.id) || {};

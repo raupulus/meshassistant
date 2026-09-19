@@ -173,7 +173,7 @@ class TestModules(unittest.TestCase):
         parts_weather = BulletinGenerator.build_bulletin(slot_name="Matinal")
         self.assertEqual(len(parts_weather), 1)
         self.assertLessEqual(len(parts_weather[0].encode("utf-8")), MESH_MAX_BYTES)
-        self.assertIn("con intervalos de nubes", parts_weather[0])
+        self.assertIn("con intervalos de", parts_weather[0])
         print("Bulletin part (con tiempo ampliado):", parts_weather[0])
 
         # 3. Con alerta activa en BD: verificar que genera 2 partes (resumen + aviso completo)

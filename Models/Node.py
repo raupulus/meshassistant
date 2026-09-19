@@ -67,7 +67,11 @@ class Node:
         self.mac_addr = node_info.get('mac_addr', self.mac_addr)
         self.hw_model = node_info.get('hw_model', self.hw_model)
         self.role = node_info.get('role', self.role)
-        self.is_favorite = node_info.get('is_favorite', self.is_favorite)
+        # is_favorite es una preferencia de usuario/dashboard.
+        # Los paquetes de radio nunca deben desmarcar un favorito existente.
+        # Solo se actualiza si viene explícitamente como True (ej. importación inicial desde la radio).
+        if node_info.get('is_favorite') is True or node_info.get('isFavorite') is True:
+            self.is_favorite = True
         self.uptime = node_info.get('uptime', self.uptime)
         self.via_mqtt = node_info.get('via_mqtt', self.via_mqtt)
         
@@ -135,7 +139,6 @@ class Node:
                 "mac_addr": self.mac_addr,
                 "hw_model": self.hw_model,
                 "role": self.role,
-                "is_favorite": self.is_favorite,
                 "snr": self.snr,
                 "rssi": self.rssi,
                 "public_key": self.public_key,
@@ -153,6 +156,8 @@ class Node:
                 db_update["power_ina2"] = self.power_ina2
             if self.power_ina3 is not None:
                 db_update["power_ina3"] = self.power_ina3
+            if node_info.get('is_favorite') is True or node_info.get('isFavorite') is True:
+                db_update["is_favorite"] = 1
             db.update_node(self.id, db_update)
         except Exception:
             # En caso de error al guardar, continuar sin interrumpir
@@ -193,13 +198,15 @@ class Node:
             db = Database()
             row = db.get_node(self.id)
             if row:
+                fav = row.get('is_favorite')
+                if fav is not None:
+                    self.is_favorite = bool(fav)
                 self.update_metadata({
                     "name": row.get('name', None),
                     "num": row.get('num', None),
                     "short_name": row.get('short_name', None),
                     "mac_addr": row.get('mac_addr', None),
                     "hw_model": row.get('hw_model', None),
-                    "is_favorite": bool(row.get('is_favorite')) if row.get('is_favorite') is not None else None,
                     "snr": row.get('snr', None),
                     "rssi": row.get('rssi', None),
                     "public_key": row.get('public_key', None),

@@ -24,6 +24,7 @@ node.refresh_from_db()     # recarga desde BD
 - Fusiona los campos presentes en `node_info` sobre los actuales (los ausentes se
   conservan).
 - Calcula `hops = hop_start - hop_limit` cuando ambos están disponibles.
+- **Protección de Favoritos (`is_favorite`):** Es una preferencia administrativa fijada desde el dashboard web (`Services/Gateway.py`). Los paquetes ordinarios recibidos por radio LoRa (telemetría, posición, `NODEINFO_APP`, mensajes) **nunca** sobrescriben ni eliminan el estado favorito de un nodo. Solo se activa si un paquete o importación inicial lo define explícitamente como `True`.
 - Persiste vía `Database.create_node_if_not_exists` + `Database.update_node`
   (también con `try/except` defensivo).
 

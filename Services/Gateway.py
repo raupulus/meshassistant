@@ -570,6 +570,13 @@ class GatewayService:
                     raise ValueError("Parámetro 'node_id' obligatorio")
                 self.db.update_node(str(node_id), {"is_favorite": is_fav})
                 response["data"] = {"node_id": node_id, "is_favorite": is_fav}
+                try:
+                    asyncio.create_task(self._broadcast_ws({
+                        "event": "node_favorite_changed",
+                        "data": {"node_id": str(node_id), "is_favorite": is_fav}
+                    }))
+                except Exception:
+                    pass
 
             elif action == "send_message":
                 text = params.get("text")

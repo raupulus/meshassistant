@@ -266,6 +266,19 @@ Emitido cuando un nodo envía métricas de estado, batería o mediciones de pote
 }
 ```
 
+### 2.13. `node_favorite_changed` (Cambio de Estado Favorito)
+Emitido cuando un usuario marca o desmarca un nodo como favorito (estrella en la tabla de nodos) para sincronizar en tiempo real a todos los clientes web conectados:
+```json
+{
+  "event": "node_favorite_changed",
+  "ts": "2026-09-19T11:50:00",
+  "data": {
+    "node_id": "!16cd4834",
+    "is_favorite": true
+  }
+}
+```
+
 ---
 
 ## 3. Catálogo de Acciones de Entrada (Cliente ➔ Servidor)

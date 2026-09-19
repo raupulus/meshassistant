@@ -1185,6 +1185,15 @@ class SerialInterface:
                 id = str(id).strip()
                 newNodeInfo = Node(id)
 
+                # Si la radio hardware lo tiene marcado como favorito, asegurar en BD y memoria
+                if bool(node_info.get('isFavorite', False)) and not newNodeInfo.is_favorite:
+                    newNodeInfo.is_favorite = True
+                    try:
+                        from Models.Database import Database
+                        Database().update_node(id, {"is_favorite": 1})
+                    except Exception:
+                        pass
+
                 newNodeInfo.update_metadata({
                     "name": user.get('longName', None),
                     "num": node_num,
@@ -1196,7 +1205,6 @@ class SerialInterface:
                     "snr": node_info.get('snr', None),
                     "last_heard": node_info.get('lastHeard', None),
                     "hops": node_info.get('hopsAway', None),
-                    "is_favorite": node_info.get('isFavorite', None),
                 })
 
                 newNodeInfo.update_metadata(node_info)
