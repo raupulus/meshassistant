@@ -301,3 +301,117 @@ def get_system_telemetry() -> dict:
         "system_uptime_human": sys_uptime_str or bot_uptime,
         "system_uptime_seconds": sys_uptime_sec,
     }
+
+
+# ----------------------------------------------------------------------
+# Gestión de Nodos Descartados (env.DISCARDED_NODES)
+# ----------------------------------------------------------------------
+
+_DYNAMIC_DISCARDED_IDS: set = set()
+
+
+def get_discarded_nodes_config() -> list:
+    """Devuelve la lista configurada de nombres cortos, nombres largos o IDs a descartar."""
+    try:
+        import env
+        val = getattr(env, 'DISCARDED_NODES', None)
+        if val is None:
+            val = getattr(env, 'DISCARD_NODES', None) or getattr(env, 'IGNORED_NODES', None) or []
+        if isinstance(val, str):
+            return [x.strip() for x in val.split(',') if x.strip()]
+        if isinstance(val, (list, set, tuple)):
+            return [str(x).strip() for x in val if str(x).strip()]
+        return []
+    except Exception:
+        return []
+
+
+def register_discarded_node_id(node_id: str) -> None:
+    """Memoriza un node_id canónico en la caché en memoria de nodos descartados."""
+    if not node_id:
+        return
+    nid = str(node_id).strip()
+    if nid and nid not in ("", "None", "null", "Desconocido", "none"):
+        _DYNAMIC_DISCARDED_IDS.add(nid)
+        _DYNAMIC_DISCARDED_IDS.add(nid.lower())
+        _DYNAMIC_DISCARDED_IDS.add(nid.upper())
+
+
+def reset_discarded_nodes_cache() -> None:
+    """Limpia la caché en memoria de IDs descartados (útil para pruebas unitarias)."""
+    global _DYNAMIC_DISCARDED_IDS
+    _DYNAMIC_DISCARDED_IDS.clear()
+
+
+def is_node_discarded(
+    node_id: str = None,
+    short_name: str = None,
+    name: str = None,
+    interface: any = None
+) -> bool:
+    """Comprueba si un nodo debe ser descartado completamente.
+
+    Comprueba contra la lista env.DISCARDED_NODES evaluando:
+    - short_name (nombre corto exacto sin distinción de mayúsculas/minúsculas, ej. 'Ben4')
+    - name (nombre largo exacto o coincidencia de subcadena, ej. 'Benthur4')
+    - node_id (id hex o numérico)
+
+    Si se detecta coincidencia por nombre o radio, se añade el node_id a
+    _DYNAMIC_DISCARDED_IDS para que futuras consultas por ID sean O(1).
+    """
+    discarded_list = get_discarded_nodes_config()
+    if not discarded_list:
+        return False
+
+    discarded_upper = {str(x).strip().upper() for x in discarded_list if str(x).strip()}
+
+    # 1. Comprobar short_name explícito
+    if short_name:
+        s = str(short_name).strip().upper()
+        if s and s in discarded_upper:
+            if node_id:
+                register_discarded_node_id(node_id)
+            return True
+
+    # 2. Comprobar name explícito
+    if name:
+        n = str(name).strip().upper()
+        if n and (n in discarded_upper or any(d in n for d in discarded_upper)):
+            if node_id:
+                register_discarded_node_id(node_id)
+            return True
+
+    # 3. Comprobar node_id
+    if node_id:
+        nid = str(node_id).strip()
+        if nid and nid not in ("", "None", "null", "Desconocido", "none"):
+            # Comprobación instantánea en memoria O(1)
+            if nid in _DYNAMIC_DISCARDED_IDS or nid.upper() in _DYNAMIC_DISCARDED_IDS:
+                return True
+
+            if nid.upper() in discarded_upper:
+                register_discarded_node_id(nid)
+                return True
+
+            # 4. Intentar resolver short_name desde la interfaz de Meshtastic si se suministra
+            if interface:
+                try:
+                    nodes = getattr(interface, 'nodes', {}) or {}
+                    ninfo = nodes.get(nid)
+                    if not ninfo and nid.startswith('!'):
+                        try:
+                            num = int(nid[1:], 16)
+                            ninfo = nodes.get(num)
+                        except Exception:
+                            pass
+                    if isinstance(ninfo, dict):
+                        user = ninfo.get('user') or {}
+                        u_short = str(user.get('shortName') or '').strip().upper()
+                        u_long = str(user.get('longName') or '').strip().upper()
+                        if u_short in discarded_upper or (u_long and any(d in u_long for d in discarded_upper)):
+                            register_discarded_node_id(nid)
+                            return True
+                except Exception:
+                    pass
+
+    return False

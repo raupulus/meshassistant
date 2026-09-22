@@ -72,6 +72,11 @@ ROUTER_MAX_RETRIES = 5                # Máximo de reintentos rápidos (1h) ante
 ROUTER_RETRY_LONG_HOURS = 24          # Enfriamiento tras 5 fallos consecutivos (horas)
 ROUTERS_MAX_PARTS = 5                 # Límite máximo de mensajes para la respuesta de /routers (def. 5)
 
+## Nodos descartados completamente (nombres cortos, nombres largos o IDs).
+## Todo el tráfico entrante de estos nodos (paquetes, telemetría, posiciones, mensajes)
+## se descarta en memoria y nunca se almacena en la base de datos local.
+DISCARDED_NODES = ['Ben4']
+
 ## Mareas (/marea)
 ## Fuente de descarga vía cron: si TIDES_API_KEY está vacío se usa Open-Meteo
 ## Marine (gratis, sin key). Si no hay Internet, el comando estima con la Luna.

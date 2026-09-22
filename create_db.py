@@ -484,6 +484,31 @@ def _execute_schema(conn: sqlite3.Connection) -> None:
                 conn.execute(f'ALTER TABLE traces ADD COLUMN {col} TEXT NULL')
     conn.commit()
 
+    # Purgar nodos descartados configurados en env.DISCARDED_NODES
+    try:
+        from functions import get_discarded_nodes_config
+        discarded = get_discarded_nodes_config()
+        if discarded:
+            for item in discarded:
+                val = str(item).strip()
+                if val:
+                    conn.execute(
+                        "DELETE FROM nodes WHERE UPPER(short_name) = UPPER(?) OR UPPER(name) = UPPER(?) OR UPPER(node_id) = UPPER(?)",
+                        (val, val, val),
+                    )
+                    conn.execute(
+                        "DELETE FROM auto_reported_nodes WHERE UPPER(short_name) = UPPER(?) OR UPPER(name) = UPPER(?) OR UPPER(node_id) = UPPER(?)",
+                        (val, val, val),
+                    )
+                    conn.execute(
+                        "DELETE FROM pings WHERE UPPER(from_name) = UPPER(?) OR UPPER(\"from\") = UPPER(?)",
+                        (val, val),
+                    )
+            conn.commit()
+    except Exception:
+        pass
+
+
 
 def ensure_database(db_path: Optional[str | Path] = None) -> Path:
     """Asegura que la BD existe y aplica el esquema (idempotente)."""

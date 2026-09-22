@@ -8,7 +8,7 @@ import hashlib
 import json
 
 from create_db import ensure_database
-from functions import sanitize_text
+from functions import sanitize_text, is_node_discarded
 
 
 class Database:
@@ -317,6 +317,9 @@ class Database:
         - hops se guarda en la columna hops
         - data_raw debe ser un string (p.ej., JSON) con los datos crudos
         """
+        if is_node_discarded(node_id=from_id, short_name=from_name, name=from_name):
+            return 0
+
         with closing(self._connect()) as conn:
             cur = conn.execute(
                 'INSERT INTO pings ("from", "to", from_name, hops, data_raw) VALUES (?, ?, ?, ?, ?)',
@@ -472,10 +475,16 @@ class Database:
         return found_nodes
 
     def create_node_if_not_exists(self, node_id: str, data: Optional[Dict[str, Any]] = None) -> None:
-        """Crea un nodo si no existe. Ignora si ya existe o si el ID es inválido."""
+        """Crea un nodo si no existe. Ignora si ya existe, si el ID es inválido o si está en DISCARDED_NODES."""
         if not node_id or str(node_id).strip() in ("", "None", "null", "Desconocido", "none"):
             return
         clean_id = str(node_id).strip()
+
+        short_name = data.get('short_name') if isinstance(data, dict) else None
+        name = data.get('name') if isinstance(data, dict) else None
+        if is_node_discarded(node_id=clean_id, short_name=short_name, name=name):
+            return
+
         now = datetime.now().isoformat(timespec="seconds")
         with closing(self._connect()) as conn:
             conn.execute(
@@ -493,6 +502,18 @@ class Database:
         if not node_id or str(node_id).strip() in ("", "None", "null", "Desconocido", "none") or not data:
             return
         clean_id = str(node_id).strip()
+
+        short_name = data.get('short_name') if isinstance(data, dict) else None
+        name = data.get('name') if isinstance(data, dict) else None
+        if is_node_discarded(node_id=clean_id, short_name=short_name, name=name):
+            # Si el nodo estaba previamente en la tabla nodes, purgarlo
+            try:
+                with closing(self._connect()) as conn:
+                    conn.execute("DELETE FROM nodes WHERE node_id = ?", (clean_id,))
+                    conn.commit()
+            except Exception:
+                pass
+            return
 
         allowed = {
             "name",
@@ -2507,6 +2528,9 @@ class Database:
         Si ya existe la combinación (node_id, reason_code), incrementa event_count
         y actualiza last_detected_at y last_details.
         """
+        if is_node_discarded(node_id=node_id, short_name=short_name, name=name):
+            return 0
+
         now_iso = datetime.now().isoformat(timespec="seconds")
         details_str = json.dumps(details, ensure_ascii=False) if isinstance(details, dict) else (details or None)
 

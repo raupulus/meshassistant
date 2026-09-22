@@ -95,9 +95,12 @@ class MeshWatcher:
 
     @classmethod
     def is_ignored(cls, node_id: Optional[str]) -> bool:
-        """Devuelve True si el nodo está en la lista de ignorados del bot."""
+        """Devuelve True si el nodo está en la lista de ignorados del bot o en DISCARDED_NODES."""
         if not node_id:
             return False
+        from functions import is_node_discarded
+        if is_node_discarded(node_id=node_id):
+            return True
         if not cls._initialized:
             cls.init()
         return str(node_id).strip() in cls._ignored_nodes
@@ -161,6 +164,12 @@ class MeshWatcher:
         # 2. Exclusión estricta del nodo local / PicoBot
         if cls.is_local_node(from_id, name, short_name):
             return False
+
+        # 2.1 Descarte inmediato si el nodo está en DISCARDED_NODES
+        from functions import is_node_discarded
+        if is_node_discarded(node_id=from_id, short_name=short_name, name=name):
+            log_p(f"[Watcher] Paquete descartado: nodo {short_name or name or from_id} está en DISCARDED_NODES", level="DEBUG")
+            return True
 
         # 3. Si el nodo está marcado como ignorado, descartar inmediatamente
         if from_id in cls._ignored_nodes:

@@ -4,7 +4,7 @@ from datetime import datetime
 import os
 from meshtastic import serial_interface
 from pubsub import pub
-from functions import log_p, search_command
+from functions import log_p, search_command, is_node_discarded
 from data import commands_dict
 from Models.Node import Node
 
@@ -276,6 +276,20 @@ class SerialInterface:
         self._touch_rx()
         log_p(f"on_receive_position: {packet}", level="DEBUG")
         try:
+            from_id = packet.get('fromId')
+            if not from_id and packet.get('from') is not None:
+                try:
+                    from_id = f"!{int(packet['from']):08x}"
+                except Exception:
+                    from_id = str(packet.get('from'))
+
+            from_info = self.node_dict.get(from_id) if from_id else None
+            s_name = getattr(from_info, "short_name", None) if from_info else None
+            l_name = getattr(from_info, "name", None) if from_info else None
+
+            if is_node_discarded(node_id=from_id, short_name=s_name, name=l_name, interface=interface or self.interface):
+                return
+
             decoded = packet.get('decoded', {})
             pos = decoded.get('position', {}) if isinstance(decoded, dict) else {}
             if pos:
@@ -308,6 +322,14 @@ class SerialInterface:
 
             if user:
                 id = user.get('id', 'Desconocido')
+                short_name = user.get('shortName', None)
+                long_name = user.get('longName', None)
+
+                # Comprobar si el nodo debe ser descartado completamente (env.DISCARDED_NODES)
+                if is_node_discarded(node_id=id, short_name=short_name, name=long_name, interface=interface or self.interface):
+                    log_p(f"[Discard] Nodo descartado en on_receive_user: {short_name or long_name} ({id})", level="DEBUG")
+                    self.node_dict.pop(id, None)
+                    return
 
                 # Comprobar si el nodo está ignorado
                 try:
@@ -376,10 +398,17 @@ class SerialInterface:
                 except Exception:
                     from_node_id = str(from_num)
 
+            from_info = self.node_dict.get(from_node_id) if from_node_id else None
+            s_name = getattr(from_info, "short_name", None) if from_info else None
+            l_name = getattr(from_info, "name", None) if from_info else None
+
+            if is_node_discarded(node_id=from_node_id, short_name=s_name, name=l_name, interface=interface or self.interface):
+                log_p(f"[Discard] Paquete data descartado de nodo {from_node_id}", level="DEBUG")
+                return
+
             # Comprobar vigilancia y descarte de ignorados
             try:
                 from Models.MeshWatcher import MeshWatcher
-                from_info = self.node_dict.get(from_node_id) if from_node_id else None
                 if MeshWatcher.inspect_packet(packet, from_info):
                     return
                 
@@ -706,6 +735,12 @@ class SerialInterface:
             if not node_id:
                 return
 
+            short_name = user.get('shortName')
+            long_name = user.get('longName')
+            if is_node_discarded(node_id=node_id, short_name=short_name, name=long_name, interface=interface or self.interface):
+                self.node_dict.pop(node_id, None)
+                return
+
             fromNodeInfo = self.node_dict.get(node_id)
             if not fromNodeInfo:
                 fromNodeInfo = Node(node_id)
@@ -866,6 +901,10 @@ class SerialInterface:
         """
         if not self.interface:
             raise RuntimeError("Interfaz Meshtastic no conectada")
+
+        if is_node_discarded(node_id=node_id, interface=self.interface):
+            log_p(f"[traceroute] Omitido trace hacia nodo descartado {node_id}", level="DEBUG")
+            return {"text": "Nodo descartado", "forward": [], "backward": []}
 
         send_fn = getattr(self.interface, 'sendTraceRoute', None)
         if send_fn is None or not callable(send_fn):
@@ -1124,6 +1163,10 @@ class SerialInterface:
                 log_p(f"request_telemetry: No se pudo resolver '{destination_id}' a un ID hexadecimal de nodo", level="WARN")
                 return False
 
+            if is_node_discarded(node_id=target_id, interface=self.interface):
+                log_p(f"request_telemetry: Omitida solicitud hacia nodo descartado {target_id}", level="DEBUG")
+                return False
+
             from meshtastic import portnums_pb2, telemetry_pb2
             req_payload = telemetry_pb2.Telemetry()
 
@@ -1183,6 +1226,12 @@ class SerialInterface:
                     continue
 
                 id = str(id).strip()
+                short_name = user.get('shortName', None)
+                long_name = user.get('longName', None)
+
+                if is_node_discarded(node_id=id, short_name=short_name, name=long_name, interface=self.interface):
+                    continue
+
                 newNodeInfo = Node(id)
 
                 # Si la radio hardware lo tiene marcado como favorito, asegurar en BD y memoria
@@ -1241,6 +1290,12 @@ class SerialInterface:
 
                 # Pedir info del nodo que envía
                 fromNodeInfo = self.node_dict.get(from_id, None) if from_id else None
+                s_name = getattr(fromNodeInfo, "short_name", None) if fromNodeInfo else None
+                l_name = getattr(fromNodeInfo, "name", None) if fromNodeInfo else None
+
+                if is_node_discarded(node_id=from_id, short_name=s_name, name=l_name, interface=interface or self.interface):
+                    log_p(f"[Discard] Mensaje de texto descartado de nodo {from_id}", level="DEBUG")
+                    return
 
                 if from_id and not fromNodeInfo:
                     fromNodeInfo = Node(from_id)

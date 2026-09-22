@@ -29,6 +29,10 @@ class Node:
         self.id = id
         self.updated = False
 
+        from functions import is_node_discarded
+        if is_node_discarded(node_id=self.id):
+            return
+
         # Cargar desde BD si existe o crearlo
         try:
             db = Database()
@@ -127,6 +131,10 @@ class Node:
             self.hops = hops_start - hops_limit
 
         self.updated = True
+
+        from functions import is_node_discarded
+        if is_node_discarded(node_id=self.id, short_name=self.short_name, name=self.name):
+            return
 
         # Persistir en BD
         try:
