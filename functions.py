@@ -1,3 +1,4 @@
+import re
 import time
 from datetime import datetime
 
@@ -376,7 +377,7 @@ def is_node_discarded(
     # 2. Comprobar name explícito
     if name:
         n = str(name).strip().upper()
-        if n and (n in discarded_upper or any(d in n for d in discarded_upper)):
+        if n and (n in discarded_upper or any(bool(re.search(r'\b' + re.escape(d) + r'\b', n)) for d in discarded_upper)):
             if node_id:
                 register_discarded_node_id(node_id)
             return True
@@ -408,7 +409,7 @@ def is_node_discarded(
                         user = ninfo.get('user') or {}
                         u_short = str(user.get('shortName') or '').strip().upper()
                         u_long = str(user.get('longName') or '').strip().upper()
-                        if u_short in discarded_upper or (u_long and any(d in u_long for d in discarded_upper)):
+                        if u_short in discarded_upper or (u_long and (u_long in discarded_upper or any(bool(re.search(r'\b' + re.escape(d) + r'\b', u_long)) for d in discarded_upper))):
                             register_discarded_node_id(nid)
                             return True
                 except Exception:

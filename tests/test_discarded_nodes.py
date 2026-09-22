@@ -51,6 +51,16 @@ class TestDiscardedNodes(unittest.TestCase):
         self.assertFalse(is_node_discarded(short_name="RAU0"))
         self.assertFalse(is_node_discarded(short_name=None))
 
+    @patch("env.DISCARDED_NODES", ["Ben4", "mesh"])
+    def test_short_name_mesh_and_no_false_positives(self):
+        self.assertTrue(is_node_discarded(short_name="mesh"))
+        self.assertTrue(is_node_discarded(short_name="MESH"))
+        self.assertTrue(is_node_discarded(short_name="Mesh"))
+        self.assertFalse(is_node_discarded(name="Meshtastic 0460", short_name="0460"))
+        self.assertFalse(is_node_discarded(name="ChocoMesh - Gibraleon", short_name="SMGG"))
+        self.assertFalse(is_node_discarded(name="Alicante OpenMesh 1.1", short_name="O1.1"))
+        self.assertTrue(is_node_discarded(name="Nodo mesh pruebas"))
+
     @patch("env.DISCARDED_NODES", ["Ben4"])
     def test_dynamic_id_memorization(self):
         # 1. Al comprobar con short_name e id nuevo, se memoriza el id

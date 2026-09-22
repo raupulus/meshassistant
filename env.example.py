@@ -75,7 +75,7 @@ ROUTERS_MAX_PARTS = 5                 # Límite máximo de mensajes para la resp
 ## Nodos descartados completamente (nombres cortos, nombres largos o IDs).
 ## Todo el tráfico entrante de estos nodos (paquetes, telemetría, posiciones, mensajes)
 ## se descarta en memoria y nunca se almacena en la base de datos local.
-DISCARDED_NODES = ['Ben4']
+DISCARDED_NODES = ['Ben4', 'mesh']
 
 ## Mareas (/marea)
 ## Fuente de descarga vía cron: si TIDES_API_KEY está vacío se usa Open-Meteo
