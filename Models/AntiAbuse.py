@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 from typing import Dict, Optional, Tuple
 
 import env
-from functions import log_p
+from functions import log_p, now_utc
 from Models.Database import Database
 
 
@@ -78,7 +78,7 @@ class AntiAbuseManager:
                 ban_action = f"autoban_{ban_mins}m"
                 reason_str = f"Exceso de comandos (> {max_cmds} en 60s)"
 
-            expires_at = (datetime.now() + ban_duration).isoformat(timespec="seconds")
+            expires_at = (now_utc() + ban_duration).strftime("%Y-%m-%dT%H:%M:%SZ")
 
             self.db.block_node(
                 node_id=node_id,

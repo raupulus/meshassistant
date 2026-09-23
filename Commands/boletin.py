@@ -1,6 +1,7 @@
 from __future__ import annotations
 from datetime import datetime
 from time import sleep
+from functions import now_madrid
 from Models.Bulletin import BulletinGenerator
 
 
@@ -19,7 +20,7 @@ def boletin_callback(interface, args, msg, metadata):
                 slot_name = "Vespertino"
 
         if not slot_name:
-            slot_name = "Matinal" if datetime.now().hour < 14 else "Vespertino"
+            slot_name = "Matinal" if now_madrid().hour < 14 else "Vespertino"
 
         parts = BulletinGenerator.build_bulletin(slot_name=slot_name)
         for idx, part in enumerate(parts):

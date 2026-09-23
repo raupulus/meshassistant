@@ -1426,6 +1426,7 @@ class SerialInterface:
                 # Emitir evento en tiempo real a la pasarela WiFi (IPC no bloqueante, en RAM)
                 try:
                     from Models.EventBroadcaster import broadcast_event
+                    from functions import to_utc_iso
                     broadcast_event("message_rx", {
                         "from": from_id,
                         "from_name": fromNodeInfo.name,
@@ -1438,7 +1439,7 @@ class SerialInterface:
                         "hops": fromNodeInfo.hops,
                         "is_direct": is_direct,
                         "via_mqtt": fromNodeInfo.via_mqtt,
-                    })
+                    }, ts=to_utc_iso(rx_time))
                 except Exception:
                     pass
 

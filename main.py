@@ -180,6 +180,7 @@ def loop():
                         
                         try:
                             from Models.EventBroadcaster import broadcast_event
+                            from functions import now_utc_iso
                             my_info = getattr(interface.interface, 'myInfo', None)
                             my_id = f"!{my_info.my_node_num:08x}" if getattr(my_info, 'my_node_num', None) else "local"
                             broadcast_event("message_rx", {
@@ -193,7 +194,7 @@ def loop():
                                 "is_direct": (out_dest != '^all'),
                                 "is_outgoing": True,
                                 "via_mqtt": False,
-                            })
+                            }, ts=now_utc_iso())
                         except Exception:
                             pass
             except (Exception, SystemExit) as e:

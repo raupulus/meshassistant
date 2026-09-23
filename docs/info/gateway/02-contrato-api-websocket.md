@@ -20,10 +20,11 @@ Todos los eventos emitidos de forma reactiva por el servidor tienen la siguiente
 ```json
 {
   "event": "<nombre_evento>",
-  "ts": "YYYY-MM-DDTHH:MM:SS",
+  "ts": "YYYY-MM-DDTHH:MM:SSZ",
   "data": { ... }
 }
 ```
+> **Nota sobre timestamps:** Siguiendo la regla global de fechas del proyecto, todos los timestamps `ts` emitidos en eventos IPC/WebSocket viajan **100% en UTC con sufijo `Z`**. Los clientes web u offline son responsables de proyectarlos a la hora local correspondiente (ej. `Europe/Madrid`).
 
 ### 1.2. Peticiones de Acción (Cliente ➔ Servidor)
 Todas las solicitudes emitidas por los clientes deben seguir el esquema:

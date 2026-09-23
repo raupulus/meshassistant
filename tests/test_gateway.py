@@ -42,6 +42,7 @@ class TestEventBroadcaster(unittest.TestCase):
 
                 self.assertEqual(received_obj.get("event"), "message_rx")
                 self.assertIn("ts", received_obj)
+                self.assertTrue(received_obj.get("ts").endswith("Z"))
                 self.assertEqual(received_obj.get("data"), data_payload)
             finally:
                 rx_sock.close()

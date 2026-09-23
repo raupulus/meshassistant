@@ -6,7 +6,7 @@ import socket
 from datetime import datetime
 from typing import Any, Dict, Optional
 
-from functions import log_p
+from functions import log_p, now_utc_iso, to_utc_iso
 
 # Ruta por defecto del socket Unix DGRAM para eventos IPC
 DEFAULT_EVENTS_SOCKET_PATH = "/tmp/meshassistant_events.sock"
@@ -61,7 +61,7 @@ class EventBroadcaster:
                 # El receptor (Gateway) no está activo; descartar de inmediato
                 return False
 
-            now_iso = ts or datetime.now().isoformat(timespec="seconds")
+            now_iso = to_utc_iso(ts) if ts else now_utc_iso()
             payload = {
                 "event": event,
                 "ts": now_iso,
