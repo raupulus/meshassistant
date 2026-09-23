@@ -1,11 +1,78 @@
+from __future__ import annotations
 import re
 import time
-from datetime import datetime
+from datetime import datetime, timezone
+from typing import Optional, Any
+from zoneinfo import ZoneInfo
 
-# Marca temporal de arranque del proceso. Se fija una sola vez al importar este
-# módulo (ocurre al inicio del daemon), así /uptime mide el tiempo real encendido
-# con independencia de reconexiones del puerto serie.
-STARTED_AT = datetime.now()
+MADRID_TZ = ZoneInfo("Europe/Madrid")
+
+
+def now_utc() -> datetime:
+    """Devuelve el datetime actual en UTC consciente de zona horaria."""
+    return datetime.now(timezone.utc)
+
+
+def now_utc_iso() -> str:
+    """Devuelve la fecha/hora actual en formato ISO 8601 UTC estricto: 'YYYY-MM-DDTHH:MM:SSZ'."""
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def now_utc_epoch() -> int:
+    """Devuelve el epoch actual en segundos UTC."""
+    return int(datetime.now(timezone.utc).timestamp())
+
+
+def now_madrid() -> datetime:
+    """Devuelve el datetime actual en la zona horaria peninsular de España ('Europe/Madrid').
+    Útil para lógica de negocio sujeta a horario local (AEMET, franjas diurnas/nocturnas).
+    """
+    return datetime.now(MADRID_TZ)
+
+
+def parse_iso_to_utc(dt_str: Optional[str]) -> Optional[datetime]:
+    """Parsea una cadena de fecha/hora garantizando retorno de datetime consciente en UTC."""
+    if not dt_str:
+        return None
+    try:
+        s = str(dt_str).strip()
+        if s.endswith("Z"):
+            dt = datetime.fromisoformat(s[:-1] + "+00:00")
+        else:
+            dt = datetime.fromisoformat(s)
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            else:
+                dt = dt.astimezone(timezone.utc)
+        return dt
+    except Exception:
+        return None
+
+
+def to_utc_iso(val: Any) -> Optional[str]:
+    """Convierte cualquier valor de fecha (datetime, epoch numérico o cadena ISO) a 'YYYY-MM-DDTHH:MM:SSZ'."""
+    if val is None or val == "":
+        return None
+    try:
+        if isinstance(val, (int, float)):
+            dt = datetime.fromtimestamp(float(val), tz=timezone.utc)
+            return dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+        if isinstance(val, datetime):
+            if val.tzinfo is None:
+                val = val.replace(tzinfo=timezone.utc)
+            else:
+                val = val.astimezone(timezone.utc)
+            return val.strftime("%Y-%m-%dT%H:%M:%SZ")
+        parsed = parse_iso_to_utc(str(val))
+        if parsed:
+            return parsed.strftime("%Y-%m-%dT%H:%M:%SZ")
+    except Exception:
+        pass
+    return None
+
+
+# Marca temporal de arranque del proceso en UTC.
+STARTED_AT = now_utc()
 
 # Límite de bytes por mensaje en la malla Meshtastic.
 MESH_MAX_BYTES = 200
@@ -19,7 +86,9 @@ def format_uptime(since: datetime = None) -> str:
     izquierda). Si es menos de un minuto, devuelve 'menos de 1m'.
     """
     ref = since or STARTED_AT
-    delta = datetime.now() - ref
+    if ref.tzinfo is None:
+        ref = ref.replace(tzinfo=timezone.utc)
+    delta = now_utc() - ref
     total = int(delta.total_seconds())
     if total < 0:
         total = 0

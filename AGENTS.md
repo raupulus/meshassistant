@@ -162,7 +162,15 @@ y la información se pierde (es lo que pasaba con `/weather`). Reglas:
   Si añades una columna, hazlo también ahí siguiendo ese patrón.
 - `"from"` y `"to"` son palabras reservadas de SQL: van **siempre entre comillas
   dobles** en las queries.
-- Fechas: se guardan como texto ISO 8601 (`datetime.now().isoformat(timespec=...)`).
+- **Regla inquebrantable de fechas y zonas horarias (100% UTC en BD/Backend, Europe/Madrid en Frontend):**
+  - **Base de datos y Backend:** se guardan **100% en UTC siempre**.
+    - Strings ISO 8601 con sufijo `Z` obligatorio: `YYYY-MM-DDTHH:MM:SSZ` (usar `functions.now_utc_iso()`).
+    - Timestamps / Epoch numéricos: enteros en segundos UTC (usar `functions.now_utc_epoch()` o `int(time.time())`).
+    - En SQLite, **nunca** usar `'localtime'` en funciones de tiempo; usar `strftime('%s', 'now')`.
+    - Franjas horarias de operación en España (ventanas AEMET, horas punta de traceroute): usar `functions.now_madrid().hour`.
+  - **Frontend Web (`web/app.js`):** se muestran **siempre en hora de España peninsular (`Europe/Madrid`)**.
+    - Todas las fechas se convierten mediante `Intl.DateTimeFormat` / `{ timeZone: "Europe/Madrid" }` usando los helpers `formatRelativeOrDate`, `formatFullDateTime` y `formatDateOnly`.
+    - `parseDateTimestamp(val)` interpreta defensivamente como UTC anexando `Z` si el string carece de offset o zona.
 - Tabla `traces`: hace de **cola y de resultado** a la vez (no hay tabla auxiliar).
   `status` ∈ `pending|done|error`.
 - `tasks_control`: marca la última ejecución de tareas periódicas (`name`,

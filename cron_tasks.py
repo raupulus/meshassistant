@@ -6,24 +6,19 @@ from typing import Optional
 from Models.Database import Database
 from Models.Api import Api
 from Models.Aemet import Aemet
-from functions import log_p
+from functions import log_p, now_utc, now_madrid, parse_iso_to_utc
 import env
 
 
 def _parse_dt(dt_str: Optional[str]) -> Optional[datetime]:
-    if not dt_str:
-        return None
-    try:
-        return datetime.fromisoformat(dt_str)
-    except Exception:
-        return None
+    return parse_iso_to_utc(dt_str)
 
 
 def _should_run(db: Database, name: str, min_interval_minutes: int) -> bool:
     last = _parse_dt(db.get_task_last_run(name))
     if not last:
         return True
-    return datetime.now() - last >= timedelta(minutes=min_interval_minutes)
+    return now_utc() - last >= timedelta(minutes=min_interval_minutes)
 
 
 def chiste_upload() -> None:
@@ -195,35 +190,37 @@ def send_trace() -> None:
     # Throttle dinámico según tipo de nodo y franja horaria
     is_router = db.is_router_node(node_id, routers_cfg)
     last_done_iso = db.get_last_trace_updated_at()
-    now = datetime.now()
+    now_u = now_utc()
+    now_m = now_madrid()
 
     if last_done_iso:
         try:
-            last_dt = datetime.fromisoformat(last_done_iso)
-            elapsed = (now - last_dt).total_seconds()
+            last_dt = parse_iso_to_utc(last_done_iso)
+            if last_dt:
+                elapsed = (now_u - last_dt).total_seconds()
 
-            if is_router:
-                router_sec = int(getattr(env, 'ROUTER_TRACE_INTERVAL_SECONDS', 40) or 40)
-                if elapsed < router_sec:
-                    log_p(f"[cron] send_trace: omitido (cooldown router {router_sec}s, faltan {int(router_sec - elapsed)}s)")
-                    return
-            else:
-                peak_start = int(getattr(env, 'TRACES_PEAK_START_HOUR', 8) or 8)
-                peak_end = int(getattr(env, 'TRACES_PEAK_END_HOUR', 23) or 23)
-                is_peak = (peak_start <= now.hour < peak_end)
-
-                if is_peak:
-                    interval_min = int(getattr(env, 'TRACES_INTERVAL_PEAK', 60) or 60)
-                    if elapsed < interval_min * 60:
-                        rem_min = int((interval_min * 60 - elapsed) / 60)
-                        log_p(f"[cron] send_trace: omitido (cooldown diurno {interval_min}min [1/h], faltan ~{rem_min}m)")
+                if is_router:
+                    router_sec = int(getattr(env, 'ROUTER_TRACE_INTERVAL_SECONDS', 40) or 40)
+                    if elapsed < router_sec:
+                        log_p(f"[cron] send_trace: omitido (cooldown router {router_sec}s, faltan {int(router_sec - elapsed)}s)")
                         return
                 else:
-                    interval_min = int(getattr(env, 'TRACES_INTERVAL_OFFPEAK', 5) or 5)
-                    if elapsed < interval_min * 60:
-                        rem_min = int((interval_min * 60 - elapsed) / 60)
-                        log_p(f"[cron] send_trace: omitido (cooldown nocturno {interval_min}min, faltan ~{rem_min}m)")
-                        return
+                    peak_start = int(getattr(env, 'TRACES_PEAK_START_HOUR', 8) or 8)
+                    peak_end = int(getattr(env, 'TRACES_PEAK_END_HOUR', 23) or 23)
+                    is_peak = (peak_start <= now_m.hour < peak_end)
+
+                    if is_peak:
+                        interval_min = int(getattr(env, 'TRACES_INTERVAL_PEAK', 60) or 60)
+                        if elapsed < interval_min * 60:
+                            rem_min = int((interval_min * 60 - elapsed) / 60)
+                            log_p(f"[cron] send_trace: omitido (cooldown diurno {interval_min}min [1/h], faltan ~{rem_min}m)")
+                            return
+                    else:
+                        interval_min = int(getattr(env, 'TRACES_INTERVAL_OFFPEAK', 5) or 5)
+                        if elapsed < interval_min * 60:
+                            rem_min = int((interval_min * 60 - elapsed) / 60)
+                            log_p(f"[cron] send_trace: omitido (cooldown nocturno {interval_min}min, faltan ~{rem_min}m)")
+                            return
         except Exception:
             pass
 
@@ -243,7 +240,7 @@ def request_router_telemetry() -> None:
         return
 
     start_hour = int(getattr(env, 'ROUTER_TELEMETRY_START_HOUR', 7) or 7)
-    if datetime.now().hour < start_hour:
+    if now_madrid().hour < start_hour:
         return
 
     routers_cfg = getattr(env, 'ROUTER_NODES', None) or getattr(env, 'ROUTERS_LIST', None) or []
@@ -726,7 +723,7 @@ def check_aemet_key_expiry() -> None:
 
         warn_days = int(getattr(env, 'AEMET_EXPIRY_WARNING_DAYS', 10) or 10)
         if days_left <= warn_days or is_expired:
-            today_tag = f"aemet_key_warn_{datetime.now().strftime('%Y%m%d')}"
+            today_tag = f"aemet_key_warn_{now_madrid().strftime('%Y%m%d')}"
             if not db.get_task_last_run(today_tag):
                 channels = getattr(env, 'AEMET_EXPIRY_WARNING_CHANNELS', None)
                 if channels is None:
@@ -755,7 +752,7 @@ def maritime_aemet() -> None:
     if not getattr(env, 'AEMET_API_KEY', None):
         return
 
-    now = datetime.now()
+    now = now_madrid()
     hour = now.hour
     minute = now.minute
 
@@ -777,7 +774,8 @@ def maritime_aemet() -> None:
     last_attempt = db.get_task_last_run(last_attempt_tag)
     if last_attempt:
         try:
-            if datetime.now() - datetime.fromisoformat(last_attempt) < timedelta(minutes=10):
+            last_dt = parse_iso_to_utc(last_attempt)
+            if last_dt and now_utc() - last_dt < timedelta(minutes=10):
                 return
         except Exception:
             pass

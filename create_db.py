@@ -555,6 +555,94 @@ def _execute_schema(conn: sqlite3.Connection) -> None:
     except Exception:
         pass
 
+    # Migración idempotente de fechas naive locales históricas a UTC estricto con sufijo Z
+    _migrate_timestamps_to_utc(conn)
+
+
+def _migrate_timestamps_to_utc(conn: sqlite3.Connection) -> None:
+    """Convierte timestamps existentes almacenados en hora local naive a UTC ISO 8601 (con sufijo Z).
+
+    También recalcula nodes.last_heard como epoch UTC entero en segundos.
+    Es completamente idempotente: solo afecta a registros que no terminen en 'Z' ni contengan offset.
+    """
+    from datetime import datetime, timezone
+    from zoneinfo import ZoneInfo
+
+    madrid_tz = ZoneInfo("Europe/Madrid")
+
+    def _convert_val(val: str | None) -> str | None:
+        if not val or not isinstance(val, str):
+            return val
+        s = val.strip()
+        if not s:
+            return s
+        if s.endswith("Z") or "+" in s or (len(s) > 10 and "-" in s[10:]):
+            return s
+        try:
+            dt = datetime.fromisoformat(s)
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=madrid_tz)
+            dt_utc = dt.astimezone(timezone.utc)
+            return dt_utc.strftime("%Y-%m-%dT%H:%M:%SZ")
+        except Exception:
+            return s
+
+    targets = [
+        ("traces", ["created_at", "updated_at"]),
+        ("nodes", ["created_at", "updated_at"]),
+        ("tasks_control", ["last_run_at"]),
+        ("aemet_alertas", ["created_at", "published_at"]),
+        ("aemet_weather", ["created_at"]),
+        ("aemet_maritime", ["created_at"]),
+        ("aemet_forecast_daily", ["created_at"]),
+        ("aemet_forecast_hourly", ["created_at"]),
+        ("aemet_observation", ["created_at"]),
+        ("tides", ["created_at"]),
+        ("maremotos", ["created_at"]),
+        ("encuestas", ["created_at", "ends_at", "closed_at"]),
+        ("encuesta_votos", ["created_at", "updated_at"]),
+        ("outbox", ["created_at", "sent_at"]),
+        ("scheduled_messages", ["start_at", "last_sent_at", "next_run_at", "created_at"]),
+        ("blocked_nodes", ["created_at", "expires_at"]),
+        ("abuse_logs", ["created_at"]),
+        ("auto_reported_nodes", ["first_detected_at", "last_detected_at", "updated_at"]),
+        ("commands_sent", ["created_at"]),
+        ("queue", ["start_at", "end_at", "send_at"]),
+    ]
+
+    cur = conn.cursor()
+    for table, cols in targets:
+        cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name=?", (table,))
+        if not cur.fetchone():
+            continue
+
+        cur.execute(f"PRAGMA table_info({table})")
+        existing_cols = {row[1] for row in cur.fetchall()}
+
+        for col in cols:
+            if col not in existing_cols:
+                continue
+            cur.execute(
+                f"SELECT rowid, {col} FROM {table} WHERE {col} IS NOT NULL AND {col} NOT LIKE '%Z' AND {col} NOT LIKE '%+%' AND {col} != ''"
+            )
+            rows = cur.fetchall()
+            for rowid, old_val in rows:
+                new_val = _convert_val(old_val)
+                if new_val != old_val:
+                    cur.execute(f"UPDATE {table} SET {col} = ? WHERE rowid = ?", (new_val, rowid))
+
+    # Poblar last_heard en nodes si es NULL o 0 basado en updated_at ya migrado a UTC
+    try:
+        conn.execute("""
+            UPDATE nodes
+            SET last_heard = CAST(strftime('%s', updated_at) AS INTEGER)
+            WHERE (last_heard IS NULL OR last_heard = 0) AND updated_at IS NOT NULL AND updated_at LIKE '%Z'
+        """)
+    except Exception:
+        pass
+
+    conn.commit()
+
 
 
 def ensure_database(db_path: Optional[str | Path] = None) -> Path:

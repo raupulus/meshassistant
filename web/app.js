@@ -1279,7 +1279,7 @@ class MeshDashboard {
       let senderName = m.from_name || m.from_short_name || m.from || m.node_id || "Desconocido";
       if (senderName === "Desconocido" && m.from) senderName = m.from;
 
-      const timeStr = m.ts ? m.ts.replace("T", " ").substring(11, 19) : "--:--";
+      const timeStr = m.ts ? this.formatRelativeOrDate(m.ts) : "--:--";
       const isDirect = m.is_direct;
       const chNum = m.channel ?? 0;
       const chName = (this.channels && this.channels[chNum]?.name) ? `Ch ${chNum} (${this.channels[chNum].name})` : `Canal ${chNum}`;
@@ -2135,11 +2135,17 @@ class MeshDashboard {
     if (!val) return 0;
     if (typeof val === "number") return val > 10000000000 ? val : val * 1000;
     if (typeof val === "string") {
-      if (/^\d+$/.test(val)) {
-        const num = parseInt(val, 10);
+      const s = val.trim();
+      if (!s) return 0;
+      if (/^\d+$/.test(s)) {
+        const num = parseInt(s, 10);
         return num > 10000000000 ? num : num * 1000;
       }
-      const parsed = Date.parse(val);
+      let isoStr = s;
+      if (!isoStr.endsWith("Z") && !/[+-]\d{2}:?\d{2}$/.test(isoStr)) {
+        isoStr = isoStr + "Z";
+      }
+      const parsed = Date.parse(isoStr);
       return isNaN(parsed) ? 0 : parsed;
     }
     return 0;
@@ -2150,15 +2156,30 @@ class MeshDashboard {
     if (!ms) return "--";
     const d = new Date(ms);
     const now = new Date();
-    const isToday = d.toDateString() === now.toDateString();
-    
+
+    const dateMadrid = d.toLocaleDateString("en-CA", { timeZone: "Europe/Madrid" });
+    const nowMadrid = now.toLocaleDateString("en-CA", { timeZone: "Europe/Madrid" });
+    const isToday = dateMadrid === nowMadrid;
+
     if (isToday) {
-      return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+      return d.toLocaleTimeString("es-ES", {
+        timeZone: "Europe/Madrid",
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+      });
     } else {
-      const day = String(d.getDate()).padStart(2, "0");
-      const month = String(d.getMonth() + 1).padStart(2, "0");
-      const time = d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-      return `${day}/${month} ${time}`;
+      const dateParts = d.toLocaleDateString("es-ES", {
+        timeZone: "Europe/Madrid",
+        day: "2-digit",
+        month: "2-digit",
+      });
+      const timeParts = d.toLocaleTimeString("es-ES", {
+        timeZone: "Europe/Madrid",
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+      return `${dateParts} ${timeParts}`;
     }
   }
 
@@ -2166,10 +2187,31 @@ class MeshDashboard {
     const ms = this.parseDateTimestamp(val);
     if (!ms) return "--";
     const d = new Date(ms);
-    const day = String(d.getDate()).padStart(2, "0");
-    const month = String(d.getMonth() + 1).padStart(2, "0");
-    const year = d.getFullYear();
-    return `${day}/${month}/${year}`;
+    return d.toLocaleDateString("es-ES", {
+      timeZone: "Europe/Madrid",
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+    });
+  }
+
+  formatFullDateTime(val) {
+    const ms = this.parseDateTimestamp(val);
+    if (!ms) return "--";
+    const d = new Date(ms);
+    const dateParts = d.toLocaleDateString("es-ES", {
+      timeZone: "Europe/Madrid",
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+    });
+    const timeParts = d.toLocaleTimeString("es-ES", {
+      timeZone: "Europe/Madrid",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+    });
+    return `${dateParts} ${timeParts}`;
   }
 
   // ==========================================================================
@@ -2178,7 +2220,7 @@ class MeshDashboard {
   renderTraceResult(trace, ts) {
     if (!this.tracesGrid) return;
 
-    const timeStr = ts ? ts.replace("T", " ").substring(0, 19) : new Date().toLocaleString();
+    const timeStr = ts ? this.formatFullDateTime(ts) : this.formatFullDateTime(Date.now());
     const hopsFwd = trace.hops_forward || [];
     
     let fwdStr = "";
@@ -2258,15 +2300,8 @@ class MeshDashboard {
           const warningBadge = isHeavy ? `<span class="badge" style="background: var(--danger-bg); color: var(--danger); margin-left: 4px;">Uso Alto</span>` : "";
           const name = r.name || r.short_name || r.node_id || "Desconocido";
           
-          // Formateo de fecha en ranking: si es >24h o total, mostrar fecha completa
-          let lastTime = "--:--";
-          if (r.last_command_at) {
-            if (this.auditHours === 1 || this.auditHours === 24) {
-              lastTime = r.last_command_at.replace("T", " ").substring(11, 19);
-            } else {
-              lastTime = r.last_command_at.replace("T", " ").substring(0, 16);
-            }
-          }
+          // Formateo de fecha en ranking en Europe/Madrid
+          const lastTime = r.last_command_at ? this.formatRelativeOrDate(r.last_command_at) : "--:--";
 
           return `
             <tr>
@@ -2315,7 +2350,7 @@ class MeshDashboard {
     }
 
     this.auditLogsTbody.innerHTML = logs.map(l => {
-      const timeStr = l.created_at ? l.created_at.replace("T", " ").substring(0, 19) : "--";
+      const timeStr = l.created_at ? this.formatFullDateTime(l.created_at) : "--";
       const sender = l.short_name || l.name || l.node_id || "N/D";
 
       return `
@@ -2776,7 +2811,7 @@ class MeshDashboard {
     }
 
     this.abuseLogsTbody.innerHTML = this.abuseLogs.map(l => {
-      const timeStr = l.created_at ? l.created_at.replace("T", " ").substring(0, 19) : "--";
+      const timeStr = l.created_at ? this.formatFullDateTime(l.created_at) : "--";
       return `
         <tr>
           <td style="font-size: 0.8rem; color: var(--text-muted);">${timeStr}</td>

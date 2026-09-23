@@ -5,7 +5,7 @@ import json
 import os
 import socket
 from collections import deque
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, Optional, Set
 import websockets
 
@@ -18,7 +18,7 @@ if str(BASE_DIR) not in sys.path:
     sys.path.insert(0, str(BASE_DIR))
 
 import env
-from functions import log_p
+from functions import log_p, now_utc, now_utc_iso, parse_iso_to_utc
 from Models.Database import Database
 
 # Constantes y configuración por defecto
@@ -179,7 +179,7 @@ class GatewayService:
                     
                     # Enriquecer routers con estado online/offline y segundos desde última señal
                     enriched_routers = []
-                    now_dt = datetime.now()
+                    now_dt = now_utc()
                     for node in raw_routers:
                         r = dict(node)
                         nid = r.get('node_id') or r.get('identifier') or r.get('id')
@@ -190,10 +190,11 @@ class GatewayService:
                         if ts:
                             try:
                                 if isinstance(ts, (int, float)) or str(ts).isdigit():
-                                    dt = datetime.fromtimestamp(float(ts))
+                                    dt = datetime.fromtimestamp(float(ts), tz=timezone.utc)
                                 else:
-                                    dt = datetime.fromisoformat(str(ts))
-                                diff_sec = max(0, int((now_dt - dt).total_seconds()))
+                                    dt = parse_iso_to_utc(str(ts))
+                                if dt:
+                                    diff_sec = max(0, int((now_dt - dt).total_seconds()))
                             except Exception:
                                 diff_sec = None
                         r['last_seen_sec'] = diff_sec
@@ -770,7 +771,7 @@ class GatewayService:
             # Enviar mensaje de bienvenida
             welcome_msg = {
                 "event": "welcome",
-                "ts": datetime.now().isoformat(timespec="seconds"),
+                "ts": now_utc_iso(),
                 "data": {
                     "version": "1.0",
                     "server": "meshassistant-gateway",

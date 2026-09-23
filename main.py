@@ -1,12 +1,11 @@
 import env
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 from time import sleep
-from functions import log_p
+from functions import log_p, sanitize_text, now_madrid, now_utc, now_utc_iso
 from Models.SerialInterface import SerialInterface
 from create_db import ensure_database
 import json
-from functions import sanitize_text
 
 # Ruta del dispositivo serial
 SERIAL_DEVICE_PATH = env.SERIAL_DEVICE_PATH
@@ -45,7 +44,7 @@ def loop():
                 pending = db.get_next_pending_trace(router_identifiers=_rcfg)
                 if pending:
                     node_id = pending.get('to')
-                    now_hour = datetime.now().hour
+                    now_hour = now_madrid().hour
                     peak_start = int(getattr(env, 'TRACES_PEAK_START_HOUR', 8) or 8)
                     peak_end = int(getattr(env, 'TRACES_PEAK_END_HOUR', 23) or 23)
                     if peak_start <= now_hour < peak_end:
@@ -203,8 +202,7 @@ def loop():
             # Publicación de alertas AEMET (si hay API key y dentro de ventana horaria)
             try:
                 if getattr(__import__('env'), 'AEMET_API_KEY', None):
-                    now_dt = datetime.now()
-                    now_hour = now_dt.hour
+                    now_hour = now_madrid().hour
                     if aemet.is_within_hour_window(now_hour):
                         target_channels = aemet.channels or []
                         if target_channels:
@@ -362,12 +360,12 @@ def loop():
                             sleep(2.5)
 
                     # Calcular próximo disparo
-                    now_dt = __import__('datetime').datetime.now()
+                    now_dt = now_utc()
                     next_run_iso = None
                     if p_type == 'hours':
-                        next_run_iso = (now_dt + __import__('datetime').timedelta(hours=p_val)).isoformat(timespec='seconds')
+                        next_run_iso = (now_dt + timedelta(hours=p_val)).strftime("%Y-%m-%dT%H:%M:%SZ")
                     elif p_type == 'days':
-                        next_run_iso = (now_dt + __import__('datetime').timedelta(days=p_val)).isoformat(timespec='seconds')
+                        next_run_iso = (now_dt + timedelta(days=p_val)).strftime("%Y-%m-%dT%H:%M:%SZ")
                     elif p_type == 'once':
                         next_run_iso = None
 

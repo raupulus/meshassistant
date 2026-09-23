@@ -1,8 +1,9 @@
 import unittest
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 import tempfile
 import os
+from functions import now_utc
 from Commands.ping import ping_callback
 from Commands.routers import routers_callback
 from Models.Database import Database
@@ -336,7 +337,7 @@ class TestPingRouters(unittest.TestCase):
         # 1. Fallo hace 30 minutos (< 1h) -> NO debe ser elegible todavía
         t_id = db.enqueue_trace(router_id)
         db.mark_trace_done_with_route(t_id, False, text="error 1", hops=[])
-        t_30m_ago = (datetime.now() - timedelta(minutes=30)).isoformat(timespec='seconds')
+        t_30m_ago = (now_utc() - timedelta(minutes=30)).strftime("%Y-%m-%dT%H:%M:%SZ")
         with db._connect() as conn:
             conn.execute("UPDATE traces SET updated_at = ? WHERE id = ?", (t_30m_ago, t_id))
             conn.commit()
@@ -352,7 +353,7 @@ class TestPingRouters(unittest.TestCase):
         self.assertIsNone(cand, "Router con 1 fallo hace 30m no debe reintentarse todavía (<1h)")
 
         # 2. Fallo hace 70 minutos (> 1h pero < 5 fallos) -> DEBE ser elegible (reintento rápido)
-        t_70m_ago = (datetime.now() - timedelta(minutes=70)).isoformat(timespec='seconds')
+        t_70m_ago = (now_utc() - timedelta(minutes=70)).strftime("%Y-%m-%dT%H:%M:%SZ")
         with db._connect() as conn:
             conn.execute("UPDATE traces SET updated_at = ? WHERE id = ?", (t_70m_ago, t_id))
             conn.commit()
@@ -371,7 +372,7 @@ class TestPingRouters(unittest.TestCase):
         for i in range(4): # Total 5 fallos
             t_extra = db.enqueue_trace(router_id)
             db.mark_trace_done_with_route(t_extra, False, text=f"error {i+2}", hops=[])
-            t_2h_ago = (datetime.now() - timedelta(hours=2)).isoformat(timespec='seconds')
+            t_2h_ago = (now_utc() - timedelta(hours=2)).strftime("%Y-%m-%dT%H:%M:%SZ")
             with db._connect() as conn:
                 conn.execute("UPDATE traces SET updated_at = ? WHERE id = ?", (t_2h_ago, t_extra))
                 conn.commit()
@@ -387,7 +388,7 @@ class TestPingRouters(unittest.TestCase):
         self.assertIsNone(cand, "Router con 5 fallos consecutivos hace 2h debe esperar 24h")
 
         # 4. 5 fallos consecutivos hace 25 horas (> 24h) -> DEBE ser elegible
-        t_25h_ago = (datetime.now() - timedelta(hours=25)).isoformat(timespec='seconds')
+        t_25h_ago = (now_utc() - timedelta(hours=25)).strftime("%Y-%m-%dT%H:%M:%SZ")
         with db._connect() as conn:
             conn.execute("UPDATE traces SET updated_at = ? WHERE \"to\" = ?", (t_25h_ago, router_id))
             conn.commit()
@@ -405,7 +406,7 @@ class TestPingRouters(unittest.TestCase):
         # 5. Tras un éxito ('done'), el contador de fallos se resetea a 0 y aplica la ventana de 6h
         t_success = db.enqueue_trace(router_id)
         db.mark_trace_done_with_route(t_success, True, text="done success", hops=[])
-        t_2h_ago = (datetime.now() - timedelta(hours=2)).isoformat(timespec='seconds')
+        t_2h_ago = (now_utc() - timedelta(hours=2)).strftime("%Y-%m-%dT%H:%M:%SZ")
         with db._connect() as conn:
             conn.execute("UPDATE traces SET updated_at = ? WHERE id = ?", (t_2h_ago, t_success))
             conn.commit()

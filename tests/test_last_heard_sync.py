@@ -118,7 +118,8 @@ class TestLastHeardSync(unittest.TestCase):
         n = self.db.get_node(node_id)
         self.assertIsNotNone(n)
         self.assertIsNotNone(n["last_heard"])
-        self.assertEqual(n["updated_at"], "2026-09-23T08:31:30")
+        # La migración convierte la hora local naive (Madrid CEST UTC+2) a UTC estricto con sufijo Z
+        self.assertEqual(n["updated_at"], "2026-09-23T06:31:30Z")
 
 
 if __name__ == "__main__":

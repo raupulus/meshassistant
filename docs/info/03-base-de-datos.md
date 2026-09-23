@@ -21,9 +21,18 @@ con `CREATE TABLE IF NOT EXISTS`. Además realiza **migraciones idempotentes**:
 - Reconstruye `traces` (patrón *table rebuild*) si faltan columnas clave
   (`status`, `created_at`, `updated_at`) o si `"from"`/`data_raw` eran `NOT NULL`.
 - Crea índices con `CREATE INDEX IF NOT EXISTS`.
+- **Migración de timestamps a UTC:** `_migrate_timestamps_to_utc()` normaliza idempotentemente todas las fechas textuales antiguas almacenadas en formato naive a UTC ISO 8601 con sufijo `Z` (`YYYY-MM-DDTHH:MM:SSZ`) y recalcula `nodes.last_heard` como epoch UTC en segundos.
 
 `main.py` llama a `ensure_database()` al arrancar; también puede ejecutarse a mano:
 `python3 create_db.py`.
+
+## Estándar de Fechas y Zonas Horarias (100% UTC)
+
+Todas las fechas y tiempos almacenados en la base de datos se rigen por una regla estricta:
+1. **Campos de texto (`created_at`, `updated_at`, etc.):** Formato ISO 8601 estricto en UTC con terminador `Z`: `YYYY-MM-DDTHH:MM:SSZ` (generados con `functions.now_utc_iso()`).
+2. **Timestamps / Epoch (`last_heard`, etc.):** Enteros que representan los segundos transcurridos desde el epoch Unix UTC (`int(time.time())` o `functions.now_utc_epoch()`).
+3. **Consultas SQLite:** Nunca se utiliza `'localtime'` en funciones SQL como `strftime('%s', 'now')`.
+4. **Visualización Frontend:** El frontend web (`web/app.js`) recibe siempre estos valores UTC y los proyecta a la hora peninsular de España (`Europe/Madrid`) mediante `Intl.DateTimeFormat` / `{ timeZone: "Europe/Madrid" }`.
 
 ## Tablas
 

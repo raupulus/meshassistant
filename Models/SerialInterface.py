@@ -125,10 +125,11 @@ class SerialInterface:
         """Emite alerta estructurada de watchdog hacia la pasarela WebSocket si está disponible."""
         try:
             from Models.EventBroadcaster import broadcast_event
+            from functions import now_utc_iso
             payload = {
                 "reason": reason,
                 "serial_port": self.serial_port,
-                "timestamp": datetime.now().isoformat(timespec="seconds"),
+                "timestamp": now_utc_iso(),
             }
             payload.update(kwargs)
             broadcast_event("watchdog_alert", payload)

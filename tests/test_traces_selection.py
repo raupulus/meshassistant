@@ -90,16 +90,12 @@ class TestTracesSelection(unittest.TestCase):
         })
 
         # Simular hora 04:00 AM (antes de las 05:00) -> No debe devolver router rutinario
-        with patch("Models.Database.datetime") as mock_dt:
-            mock_dt.now.return_value = datetime(2026, 8, 29, 4, 30, 0)
-            mock_dt.fromisoformat = datetime.fromisoformat
+        with patch("Models.Database.now_madrid", return_value=datetime(2026, 8, 29, 4, 30, 0)):
             candidate_early = self.db.get_next_node_to_trace(router_start_hour=5)
             self.assertIsNone(candidate_early)
 
         # Simular hora 05:30 AM -> Sí debe devolver el router
-        with patch("Models.Database.datetime") as mock_dt:
-            mock_dt.now.return_value = datetime(2026, 8, 29, 5, 30, 0)
-            mock_dt.fromisoformat = datetime.fromisoformat
+        with patch("Models.Database.now_madrid", return_value=datetime(2026, 8, 29, 5, 30, 0)):
             candidate_morning = self.db.get_next_node_to_trace(router_start_hour=5)
             self.assertEqual(candidate_morning, "!router1")
 
@@ -115,15 +111,13 @@ class TestTracesSelection(unittest.TestCase):
         self.db.save_trace("local", "!router_batt", "ok")
         env.ROUTER_NODES = ['!router_batt']
 
-        with patch("cron_tasks.datetime") as mock_dt:
-            # Antes de las 07:00 AM -> no encola
-            mock_dt.now.return_value = datetime(2026, 8, 29, 6, 45, 0)
-            mock_dt.fromisoformat = datetime.fromisoformat
+        # Antes de las 07:00 AM -> no encola
+        with patch("cron_tasks.now_madrid", return_value=datetime(2026, 8, 29, 6, 45, 0)):
             cron_tasks.request_router_telemetry()
             self.assertIsNone(self.db.get_next_pending_outbox())
 
-            # A las 07:15 AM -> encola petición de telemetría
-            mock_dt.now.return_value = datetime(2026, 8, 29, 7, 15, 0)
+        # A las 07:15 AM -> encola petición de telemetría
+        with patch("cron_tasks.now_madrid", return_value=datetime(2026, 8, 29, 7, 15, 0)):
             cron_tasks.request_router_telemetry()
             pending = self.db.get_next_pending_outbox()
             self.assertIsNotNone(pending)

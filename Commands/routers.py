@@ -1,18 +1,20 @@
 from __future__ import annotations
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List
-from functions import reply_long, log_p
+from functions import reply_long, log_p, now_utc, parse_iso_to_utc
 
 
-def _get_time_diff_seconds(iso_str: str | None) -> int | None:
+def _get_time_diff_seconds(iso_str: Any) -> int | None:
     if not iso_str:
         return None
     try:
-        if isinstance(iso_str, (int, float)) or str(iso_str).isdigit():
-            dt = datetime.fromtimestamp(float(iso_str))
+        if isinstance(iso_str, (int, float)) or (isinstance(iso_str, str) and str(iso_str).isdigit()):
+            dt = datetime.fromtimestamp(float(iso_str), tz=timezone.utc)
         else:
-            dt = datetime.fromisoformat(str(iso_str))
-        diff = datetime.now() - dt
+            dt = parse_iso_to_utc(str(iso_str))
+            if dt is None:
+                return None
+        diff = now_utc() - dt
         return max(0, int(diff.total_seconds()))
     except Exception:
         return None

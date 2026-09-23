@@ -9,7 +9,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from create_db import ensure_database
 from Models.Database import Database
-from functions import get_system_telemetry, split_messages, MESH_MAX_BYTES
+from functions import get_system_telemetry, split_messages, MESH_MAX_BYTES, now_utc
 from Models.Bulletin import BulletinGenerator
 from Models.AntiAbuse import AntiAbuseManager
 from Commands.estado import estado_callback
@@ -50,7 +50,7 @@ class TestModules(unittest.TestCase):
             channels=[0, 6],
             period_type="hours",
             period_value=2,
-            start_at=datetime.now().isoformat(),
+            start_at=(now_utc() - timedelta(minutes=1)).strftime("%Y-%m-%dT%H:%M:%SZ"),
             enabled=1,
         )
         self.assertIsNotNone(msg_id)
@@ -67,7 +67,7 @@ class TestModules(unittest.TestCase):
         self.assertIn(msg_id, pending_ids)
 
         # Mark sent
-        next_run = (datetime.now() + timedelta(hours=2)).isoformat()
+        next_run = (now_utc() + timedelta(hours=2)).strftime("%Y-%m-%dT%H:%M:%SZ")
         self.db.mark_scheduled_message_sent(msg_id, next_run_at=next_run)
         m_after = self.db.get_scheduled_message(msg_id)
         self.assertIsNotNone(m_after["last_sent_at"])
@@ -216,15 +216,15 @@ class TestModules(unittest.TestCase):
             "period_type": "hours",
             "period_value": 12,
             "channels": [6],
-            "start_at": "2026-08-29T08:00:00"
+            "start_at": "2026-08-29T08:00:00Z"
         })
         self.assertTrue(ok)
 
         m = self.db.get_scheduled_message(msg_id)
         self.assertEqual(m["period_type"], "hours")
         self.assertEqual(m["period_value"], 12)
-        self.assertEqual(m["start_at"], "2026-08-29T08:00:00")
-        self.assertEqual(m["next_run_at"], "2026-08-29T08:00:00")
+        self.assertEqual(m["start_at"], "2026-08-29T08:00:00Z")
+        self.assertEqual(m["next_run_at"], "2026-08-29T08:00:00Z")
 
         self.db.delete_scheduled_message(msg_id)
 

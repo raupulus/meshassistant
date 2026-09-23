@@ -8,7 +8,16 @@ import hashlib
 import json
 
 from create_db import ensure_database
-from functions import sanitize_text, is_node_discarded
+from functions import (
+    sanitize_text,
+    is_node_discarded,
+    now_utc,
+    now_utc_iso,
+    now_utc_epoch,
+    now_madrid,
+    parse_iso_to_utc,
+    to_utc_iso,
+)
 
 
 class Database:
@@ -138,7 +147,7 @@ class Database:
     # ---------- TRACES (COLA Y RESULTADOS) ----------
     def save_trace(self, from_: Optional[str], to: str, data_raw: Optional[str]) -> int:
         """Inserta un trace directamente como completado ('done')."""
-        now = datetime.now().isoformat(timespec='seconds')
+        now = now_utc_iso()
         with closing(self._connect()) as conn:
             cur = conn.execute(
                 'INSERT INTO traces ("from", "to", data_raw, status, created_at, updated_at) VALUES (?, ?, ?, "done", ?, ?)',
@@ -149,7 +158,7 @@ class Database:
 
     def enqueue_trace(self, node_id: str) -> int:
         """Encola una petición de traceroute para el nodo indicado."""
-        now = datetime.now().isoformat(timespec='seconds')
+        now = now_utc_iso()
         with closing(self._connect()) as conn:
             cur = conn.execute(
                 'SELECT id FROM traces WHERE "to" = ? AND status = "pending" ORDER BY id ASC LIMIT 1',
@@ -200,11 +209,11 @@ class Database:
                 UPDATE traces
                 SET status = 'error',
                     data_raw = 'Timeout: cola pendiente expirada',
-                    updated_at = datetime('now', 'localtime')
+                    updated_at = ?
                 WHERE status = 'pending'
-                  AND strftime('%s', 'now', 'localtime') - strftime('%s', created_at) >= ?
+                  AND strftime('%s', 'now') - strftime('%s', created_at) >= ?
                 """,
-                (int(max_age_minutes) * 60,),
+                (now_utc_iso(), int(max_age_minutes) * 60,),
             )
             conn.commit()
             return cur.rowcount
@@ -216,7 +225,7 @@ class Database:
         - ok=False -> status='error'
         - payload debe ser string (ej. JSON)
         """
-        when_str = datetime.now().isoformat(timespec='seconds')
+        when_str = now_utc_iso()
         status = 'done' if ok else 'error'
         with closing(self._connect()) as conn:
             conn.execute(
@@ -244,7 +253,7 @@ class Database:
         - hops: lista de hasta 7 dicts con claves: id, name, name_short, snr, rssi (ida)
         - return_hops: lista de hasta 7 dicts (regreso) con las mismas claves
         """
-        when_str = datetime.now().isoformat(timespec='seconds')
+        when_str = now_utc_iso()
         status = 'done' if ok else 'error'
         hops = hops or []
         return_hops = return_hops or []
@@ -353,11 +362,11 @@ class Database:
         Si es None, se usará el momento actual (UTC local según sistema).
         """
         if moment is None:
-            moment_str = datetime.now().isoformat(timespec="seconds")
+            moment_str = now_utc_iso()
         elif isinstance(moment, datetime):
-            moment_str = moment.isoformat(timespec="seconds")
+            moment_str = to_utc_iso(moment) or now_utc_iso()
         else:
-            moment_str = str(moment)
+            moment_str = to_utc_iso(moment) or str(moment)
 
         with closing(self._connect()) as conn:
             cur = conn.execute(
@@ -512,7 +521,7 @@ class Database:
         if is_node_discarded(node_id=clean_id, short_name=short_name, name=name):
             return
 
-        now = datetime.now().isoformat(timespec="seconds")
+        now = now_utc_iso()
         with closing(self._connect()) as conn:
             conn.execute(
                 'INSERT OR IGNORE INTO nodes (node_id, created_at, updated_at) VALUES (?, ?, ?)',
@@ -585,7 +594,7 @@ class Database:
         if not fields:
             return
 
-        values.append(datetime.now().isoformat(timespec="seconds"))
+        values.append(now_utc_iso())
         values.append(clean_id)
 
         set_clause = ", ".join(fields + ["updated_at = ?"])  # siempre actualizar updated_at
@@ -617,8 +626,8 @@ class Database:
         if is_node_discarded(node_id=clean_id, short_name=short_name, name=name):
             return
 
-        ts = int(last_heard) if last_heard is not None else int(datetime.now().timestamp())
-        now_iso = datetime.now().isoformat(timespec="seconds")
+        ts = int(last_heard) if last_heard is not None else now_utc_epoch()
+        now_iso = now_utc_iso()
 
         with closing(self._connect()) as conn:
             conn.execute(
@@ -666,7 +675,7 @@ class Database:
             return 0
         clean_id = str(node_id).strip()
         self.create_node_if_not_exists(clean_id)
-        when_str = datetime.now().isoformat(timespec="seconds")
+        when_str = now_utc_iso()
         with closing(self._connect()) as conn:
             conn.execute(
                 "UPDATE nodes SET traces_detected = COALESCE(traces_detected, 0) + 1, updated_at = ? WHERE node_id = ?",
@@ -683,7 +692,7 @@ class Database:
             return 0
         clean_id = str(node_id).strip()
         self.create_node_if_not_exists(clean_id)
-        when_str = datetime.now().isoformat(timespec="seconds")
+        when_str = now_utc_iso()
         with closing(self._connect()) as conn:
             conn.execute(
                 "UPDATE nodes SET telemetry_count = COALESCE(telemetry_count, 0) + 1, updated_at = ? WHERE node_id = ?",
@@ -710,7 +719,7 @@ class Database:
             return row['last_run_at'] if row and row['last_run_at'] else None
 
     def set_task_run(self, name: str, when: Optional[datetime] = None, extra: Optional[str] = None) -> None:
-        when_str = (when or datetime.now()).isoformat(timespec='seconds')
+        when_str = to_utc_iso(when) or now_utc_iso()
         with closing(self._connect()) as conn:
             conn.execute(
                 (
@@ -912,7 +921,7 @@ class Database:
         eff_router_hops = int(router_max_hops) + 1
         eff_hops_limit = int(hops_limit) + 1
         inactive_sec = int(max_inactive_days) * 86400
-        current_hour = datetime.now().hour
+        current_hour = now_madrid().hour
         router_routine_allowed = (current_hour >= int(router_start_hour))
 
         with closing(self._connect()) as conn:
@@ -955,8 +964,8 @@ class Database:
                 WHERE COALESCE(n.via_mqtt, 0) = 0
                   AND (n.hops IS NULL OR n.hops <= ?)
                   AND (
-                      (n.last_heard IS NOT NULL AND strftime('%s','now','localtime') - n.last_heard <= ?)
-                   OR (n.last_heard IS NULL AND strftime('%s','now','localtime') - strftime('%s', n.updated_at) <= ?)
+                      (n.last_heard IS NOT NULL AND strftime('%s','now') - n.last_heard <= ?)
+                   OR (n.last_heard IS NULL AND strftime('%s','now') - strftime('%s', n.updated_at) <= ?)
                   )
                   AND COALESCE(p.pendings, 0) = 0
                   AND (
@@ -967,9 +976,9 @@ class Database:
                   )
                   AND (
                         (lp.last_updated IS NULL AND ? = 1)
-                     OR (ls.last_status = 'done' AND ? = 1 AND strftime('%s','now','localtime') - strftime('%s', lp.last_updated) >= ?)
-                     OR (ls.last_status = 'error' AND COALESCE(ce.err_count, 0) < ?  AND strftime('%s','now','localtime') - strftime('%s', lp.last_updated) >= ?)
-                     OR (ls.last_status = 'error' AND COALESCE(ce.err_count, 0) >= ? AND strftime('%s','now','localtime') - strftime('%s', lp.last_updated) >= ?)
+                     OR (ls.last_status = 'done' AND ? = 1 AND strftime('%s','now') - strftime('%s', lp.last_updated) >= ?)
+                     OR (ls.last_status = 'error' AND COALESCE(ce.err_count, 0) < ?  AND strftime('%s','now') - strftime('%s', lp.last_updated) >= ?)
+                     OR (ls.last_status = 'error' AND COALESCE(ce.err_count, 0) >= ? AND strftime('%s','now') - strftime('%s', lp.last_updated) >= ?)
                   )
                 ORDER BY lp.last_updated ASC, n.updated_at DESC
                 LIMIT 1
@@ -1045,8 +1054,8 @@ class Database:
                 WHERE COALESCE(n.via_mqtt, 0) = 0
                   AND (n.hops IS NULL OR n.hops <= ?)
                   AND (
-                      (n.last_heard IS NOT NULL AND strftime('%s','now','localtime') - n.last_heard <= ?)
-                   OR (n.last_heard IS NULL AND strftime('%s','now','localtime') - strftime('%s', n.updated_at) <= ?)
+                      (n.last_heard IS NOT NULL AND strftime('%s','now') - n.last_heard <= ?)
+                   OR (n.last_heard IS NULL AND strftime('%s','now') - strftime('%s', n.updated_at) <= ?)
                   )
                   AND COALESCE(p.pendings, 0) = 0
                   AND NOT (
@@ -1068,8 +1077,8 @@ class Database:
                   AND (
                         lp.last_updated IS NULL
                      OR (
-                          (ls.last_status = 'done'  AND strftime('%s','now','localtime') - strftime('%s', lp.last_updated) >= ?)
-                       OR (ls.last_status = 'error' AND strftime('%s','now','localtime') - strftime('%s', lp.last_updated) >= ?)
+                          (ls.last_status = 'done'  AND strftime('%s','now') - strftime('%s', lp.last_updated) >= ?)
+                       OR (ls.last_status = 'error' AND strftime('%s','now') - strftime('%s', lp.last_updated) >= ?)
                         )
                   )
                 ORDER BY n.updated_at DESC
@@ -1131,7 +1140,7 @@ class Database:
         if not basis:
             return None
         h = self._hash_text(basis)
-        now = datetime.now().isoformat(timespec='seconds')
+        now = now_utc_iso()
         with closing(self._connect()) as conn:
             try:
                 cur = conn.execute(
@@ -1361,7 +1370,7 @@ class Database:
             return dict(row) if row else None
 
     def aemet_mark_published(self, alert_id: int) -> None:
-        now = datetime.now().isoformat(timespec='seconds')
+        now = now_utc_iso()
         with closing(self._connect()) as conn:
             conn.execute('UPDATE aemet SET published = 1, published_at = ? WHERE id = ?', (now, alert_id))
             conn.commit()
@@ -1370,22 +1379,23 @@ class Database:
         """Comprueba si una alerta con el mismo contenido meteorológico (data_raw) ya ha sido publicada hoy."""
         if not data_raw:
             return False
+        today_madrid = now_madrid().date().isoformat()
         with closing(self._connect()) as conn:
             if province:
                 cur = conn.execute(
                     """SELECT id FROM aemet 
                        WHERE data_raw = ? AND province = ? AND published = 1 
-                         AND date(published_at) = date('now', 'localtime')
+                         AND date(published_at, 'localtime') = ?
                        LIMIT 1""",
-                    (data_raw.strip(), province.strip()),
+                    (data_raw.strip(), province.strip(), today_madrid),
                 )
             else:
                 cur = conn.execute(
                     """SELECT id FROM aemet 
                        WHERE data_raw = ? AND published = 1 
-                         AND date(published_at) = date('now', 'localtime')
+                         AND date(published_at, 'localtime') = ?
                        LIMIT 1""",
-                    (data_raw.strip(),),
+                    (data_raw.strip(), today_madrid),
                 )
             return cur.fetchone() is not None
 
@@ -1474,7 +1484,7 @@ class Database:
         content_s = sanitize_text(content)
         if not content_s:
             return None
-        now = datetime.now().isoformat(timespec='seconds')
+        now = now_utc_iso()
         with closing(self._connect()) as conn:
             cur = conn.execute(
                 'INSERT INTO aemet_weather (scope, province, province_code, city, city_code, day, content, data_raw, created_at) '
@@ -1573,7 +1583,7 @@ class Database:
         """
         with closing(self._connect()) as conn:
             if hours is not None:
-                threshold = (datetime.now() - timedelta(hours=int(hours))).isoformat(timespec='seconds')
+                threshold = (now_utc() - timedelta(hours=int(hours))).strftime("%Y-%m-%dT%H:%M:%SZ")
                 cur = conn.execute(
                     'SELECT id, province, data_raw, message, created_at FROM aemet '
                     'WHERE created_at >= ? ORDER BY created_at DESC LIMIT ?',
@@ -1599,7 +1609,7 @@ class Database:
     ) -> int:
         """Guarda la predicción multi-día (7 días) de un municipio."""
         payload_str = json.dumps(data_json, ensure_ascii=False) if not isinstance(data_json, str) else data_json
-        now_iso = datetime.now().isoformat(timespec='seconds')
+        now_iso = now_utc_iso()
         with closing(self._connect()) as conn:
             cur = conn.execute(
                 """
@@ -1670,7 +1680,7 @@ class Database:
     ) -> int:
         """Guarda la predicción horaria (24-48 horas) de un municipio."""
         payload_str = json.dumps(data_json, ensure_ascii=False) if not isinstance(data_json, str) else data_json
-        now_iso = datetime.now().isoformat(timespec='seconds')
+        now_iso = now_utc_iso()
         with closing(self._connect()) as conn:
             cur = conn.execute(
                 """
@@ -1715,7 +1725,7 @@ class Database:
     ) -> int:
         """Guarda un boletín marítimo costero."""
         payload_str = json.dumps(data_json, ensure_ascii=False) if not isinstance(data_json, str) else data_json
-        now_iso = datetime.now().isoformat(timespec='seconds')
+        now_iso = now_utc_iso()
         with closing(self._connect()) as conn:
             cur = conn.execute(
                 """
@@ -1760,7 +1770,7 @@ class Database:
     ) -> int:
         """Guarda la observación física de una estación meteorológica."""
         payload_str = json.dumps(data_json, ensure_ascii=False) if not isinstance(data_json, str) else data_json
-        now_iso = datetime.now().isoformat(timespec='seconds')
+        now_iso = now_utc_iso()
         with closing(self._connect()) as conn:
             cur = conn.execute(
                 """
@@ -1816,7 +1826,7 @@ class Database:
             return 0
         clean_node_id = str(node_id).strip() if (node_id and str(node_id).strip() not in ("", "None", "null", "Desconocido")) else None
         clean_cmd = str(command).strip().lstrip("/!").lower()
-        when_str = datetime.now().isoformat(timespec='seconds')
+        when_str = now_utc_iso()
         with closing(self._connect()) as conn:
             cur = conn.execute(
                 'INSERT INTO commands_sent (node_id, command, parameters, message, created_at) VALUES (?, ?, ?, ?, ?)',
@@ -1837,9 +1847,9 @@ class Database:
         norm: List[Dict[str, Any]] = []
         for e in extremes or []:
             t = e.get('time')
-            t_iso = t.isoformat() if isinstance(t, datetime) else str(t)
+            t_iso = to_utc_iso(t) or (t.isoformat() if isinstance(t, datetime) else str(t))
             norm.append({'time': t_iso, 'type': e.get('type'), 'height': e.get('height')})
-        now = datetime.now().isoformat(timespec='seconds')
+        now = now_utc_iso()
         with closing(self._connect()) as conn:
             cur = conn.execute(
                 'INSERT INTO tides (location, source, approximate, extremes, created_at) VALUES (?, ?, ?, ?, ?)',
@@ -1879,8 +1889,7 @@ class Database:
         calculan el estado efectivo en memoria (ver _row_to_encuesta) sin tocar
         la BD.
         """
-        now = datetime.now()
-        now_iso = now.isoformat(timespec='seconds')
+        now_iso = now_utc_iso()
         with closing(self._connect()) as conn:
             cur = conn.execute(
                 "UPDATE encuestas SET status = 'closed', closed_at = ? "
@@ -1896,13 +1905,14 @@ class Database:
                         ends_at: Optional[str] = None) -> int:
         """Crea una encuesta y devuelve su id. Soporta duración por días o fechas ISO explícitas."""
         import json
-        now = datetime.now()
-        created_iso = starts_at if starts_at else now.isoformat(timespec='seconds')
+        now = now_utc()
+        now_iso = now.strftime("%Y-%m-%dT%H:%M:%SZ")
+        created_iso = to_utc_iso(starts_at) if starts_at else now_iso
         if ends_at:
-            ends_iso = ends_at
+            ends_iso = to_utc_iso(ends_at)
         else:
             days = max(1, min(365, int(days)))
-            ends_iso = (now + timedelta(days=days)).isoformat(timespec='seconds')
+            ends_iso = (now + timedelta(days=days)).strftime("%Y-%m-%dT%H:%M:%SZ")
 
         with closing(self._connect()) as conn:
             cur = conn.execute(
@@ -1924,7 +1934,8 @@ class Database:
         # Estado EFECTIVO sin persistir: si ya venció ends_at, se presenta como cerrada
         try:
             if d.get('status') == 'active' and d.get('ends_at'):
-                if datetime.fromisoformat(d['ends_at']) <= datetime.now():
+                end_dt = parse_iso_to_utc(d['ends_at'])
+                if end_dt and end_dt <= now_utc():
                     d['status'] = 'closed'
         except Exception:
             pass
@@ -1942,7 +1953,7 @@ class Database:
             return self._row_to_encuesta(row) if row else None
 
     def encuesta_get_active_by_owner(self, owner_node_id: str) -> Optional[Dict[str, Any]]:
-        now = datetime.now().isoformat(timespec='seconds')
+        now = now_utc_iso()
         with closing(self._connect()) as conn:
             cur = conn.execute(
                 "SELECT id, owner_node_id, question, options, created_at, ends_at, status, closed_at "
@@ -1955,7 +1966,7 @@ class Database:
             return self._row_to_encuesta(row) if row else None
 
     def encuesta_list_active(self, limit: int = 10) -> List[Dict[str, Any]]:
-        now = datetime.now().isoformat(timespec='seconds')
+        now = now_utc_iso()
         with closing(self._connect()) as conn:
             cur = conn.execute(
                 "SELECT id, owner_node_id, question, options, created_at, ends_at, status, closed_at "
@@ -1978,7 +1989,7 @@ class Database:
 
     def encuesta_close(self, encuesta_id: int, owner_node_id: Optional[str] = None) -> bool:
         """Cierra una encuesta. Si owner_node_id es None o 'admin', cierra sin comprobar dueño."""
-        now = datetime.now().isoformat(timespec='seconds')
+        now = now_utc_iso()
         with closing(self._connect()) as conn:
             if owner_node_id and owner_node_id not in ('admin', 'gateway', 'web'):
                 cur = conn.execute(
@@ -2014,21 +2025,8 @@ class Database:
             return (cur.rowcount or 0) > 0
 
     def encuesta_vote(self, encuesta_id: int, node_id: str, option_index: int) -> str:
-        """Registra o cambia el voto de un nodo. Devuelve 'new'|'changed'|'same'.
-
-        NOTA (punto 3 de la revisión): la escritura usa un UPSERT atómico
-        (INSERT ... ON CONFLICT DO UPDATE) sobre el índice UNIQUE
-        (encuesta_id, node_id). El SELECT previo es SOLO para decidir el mensaje
-        de respuesta ('new'/'changed'/'same'); aunque haya una escritura
-        concurrente entre el SELECT y el UPSERT, este último no lanza
-        IntegrityError (a diferencia de un INSERT a secas).
-
-        En la práctica el daemon procesa los mensajes en un único hilo y el cron
-        no vota, así que dos votos del MISMO nodo no coinciden en el tiempo; el
-        UPSERT se adopta como buena práctica de robustez, no para corregir un
-        fallo que se diera hoy.
-        """
-        now = datetime.now().isoformat(timespec='seconds')
+        """Registra o cambia el voto de un nodo. Devuelve 'new'|'changed'|'same'."""
+        now = now_utc_iso()
         with closing(self._connect()) as conn:
             cur = conn.execute(
                 'SELECT option_index FROM encuesta_votos WHERE encuesta_id = ? AND node_id = ?',
@@ -2070,7 +2068,7 @@ class Database:
     # ---------- STATS ----------
     def stats_summary(self) -> Dict[str, Any]:
         """Resumen para /stats: comandos (hoy/total), comando top, pings y nodos."""
-        today = datetime.now().date().isoformat()
+        today = now_utc().date().isoformat()
         out: Dict[str, Any] = {}
         with closing(self._connect()) as conn:
             row = conn.execute('SELECT COUNT(*) AS c FROM commands_sent').fetchone()
@@ -2112,7 +2110,7 @@ class Database:
             out['rf'] = out['total'] - out['mqtt']
             # last_heard es epoch (segundos). Activos en las últimas N horas.
             try:
-                threshold = int((datetime.now() - timedelta(hours=active_hours)).timestamp())
+                threshold = int((now_utc() - timedelta(hours=active_hours)).timestamp())
                 row = conn.execute(
                     'SELECT COUNT(*) AS c FROM nodes WHERE last_heard IS NOT NULL AND last_heard >= ?',
                     (threshold,),
@@ -2225,7 +2223,7 @@ class Database:
     # ---------- OUTBOX (COLA DE MENSAJES SALIENTES) ----------
     def enqueue_outbox(self, text: str, dest: str = '^all', channel: int = 0) -> int:
         """Encola un mensaje para ser enviado a la malla por el proceso de radio (main.py). Deduplica si ya está pendiente."""
-        now_str = datetime.now().isoformat(timespec='seconds')
+        now_str = now_utc_iso()
         with closing(self._connect()) as conn:
             cur = conn.execute(
                 "SELECT id FROM outbox WHERE text = ? AND dest = ? AND channel = ? AND status = 'pending' ORDER BY id ASC LIMIT 1",
@@ -2254,7 +2252,7 @@ class Database:
     def mark_outbox_sent(self, outbox_id: int, ok: bool = True) -> None:
         """Marca un mensaje saliente como enviado o con error."""
         status = 'sent' if ok else 'error'
-        when_str = datetime.now().isoformat(timespec='seconds')
+        when_str = now_utc_iso()
         with closing(self._connect()) as conn:
             conn.execute(
                 "UPDATE outbox SET status = ?, sent_at = ? WHERE id = ?",
@@ -2282,7 +2280,7 @@ class Database:
             conds = []
             params = []
             if hours is not None:
-                threshold = (datetime.now() - timedelta(hours=hours)).isoformat(timespec='seconds')
+                threshold = (now_utc() - timedelta(hours=hours)).strftime("%Y-%m-%dT%H:%M:%SZ")
                 conds.append("c.created_at >= ?")
                 params.append(threshold)
             if node_id:
@@ -2313,7 +2311,7 @@ class Database:
             """
             params = []
             if hours is not None:
-                threshold = (datetime.now() - timedelta(hours=hours)).isoformat(timespec='seconds')
+                threshold = (now_utc() - timedelta(hours=hours)).strftime("%Y-%m-%dT%H:%M:%SZ")
                 sql += " WHERE c.created_at >= ?"
                 params.append(threshold)
             sql += " GROUP BY c.node_id ORDER BY count DESC LIMIT ?"
@@ -2336,7 +2334,7 @@ class Database:
             params = []
             where_sql = ""
             if hours is not None:
-                threshold = (datetime.now() - timedelta(hours=hours)).isoformat(timespec='seconds')
+                threshold = (now_utc() - timedelta(hours=hours)).strftime("%Y-%m-%dT%H:%M:%SZ")
                 where_sql = "WHERE created_at >= ?"
                 params.append(threshold)
             
@@ -2408,24 +2406,18 @@ class Database:
         start_at: Optional[str] = None,
         enabled: int = 1,
     ) -> int:
-        now = datetime.now()
-        now_iso = now.isoformat(timespec="seconds")
+        now_iso = now_utc_iso()
+        now_dt = now_utc()
         
         if not start_at:
             start_iso = now_iso
             next_run_iso = now_iso
         else:
-            s_clean = str(start_at).replace("Z", "")
-            try:
-                if "." in s_clean:
-                    s_clean = s_clean.split(".")[0]
-                start_dt = datetime.fromisoformat(s_clean)
-                start_iso = start_dt.isoformat(timespec="seconds")
-                if start_dt <= now:
-                    next_run_iso = now_iso
-                else:
-                    next_run_iso = start_iso
-            except Exception:
+            start_dt = parse_iso_to_utc(str(start_at))
+            if start_dt:
+                start_iso = start_dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+                next_run_iso = now_iso if start_dt <= now_dt else start_iso
+            else:
                 start_iso = now_iso
                 next_run_iso = now_iso
 
@@ -2464,26 +2456,16 @@ class Database:
             data_clean["message"] = str(data_clean["message"]).strip()
 
         if "start_at" in data_clean and data_clean["start_at"]:
-            s_clean = str(data_clean["start_at"]).replace("Z", "")
-            if "." in s_clean:
-                s_clean = s_clean.split(".")[0]
-            try:
-                start_dt = datetime.fromisoformat(s_clean)
-                data_clean["start_at"] = start_dt.isoformat(timespec="seconds")
+            parsed = parse_iso_to_utc(str(data_clean["start_at"]))
+            if parsed:
+                data_clean["start_at"] = parsed.strftime("%Y-%m-%dT%H:%M:%SZ")
                 if "next_run_at" not in data_clean:
                     data_clean["next_run_at"] = data_clean["start_at"]
-            except Exception:
-                pass
 
         if "next_run_at" in data_clean and data_clean["next_run_at"]:
-            n_clean = str(data_clean["next_run_at"]).replace("Z", "")
-            if "." in n_clean:
-                n_clean = n_clean.split(".")[0]
-            try:
-                next_dt = datetime.fromisoformat(n_clean)
-                data_clean["next_run_at"] = next_dt.isoformat(timespec="seconds")
-            except Exception:
-                pass
+            parsed = parse_iso_to_utc(str(data_clean["next_run_at"]))
+            if parsed:
+                data_clean["next_run_at"] = parsed.strftime("%Y-%m-%dT%H:%M:%SZ")
 
         allowed = ["message", "channels", "period_type", "period_value", "start_at", "next_run_at", "enabled"]
         updates = []
@@ -2512,7 +2494,7 @@ class Database:
 
     def get_pending_scheduled_messages(self) -> List[Dict[str, Any]]:
         """Obtiene mensajes programados activos cuyo next_run_at ya venció."""
-        now_iso = datetime.now().isoformat(timespec="seconds")
+        now_iso = now_utc_iso()
         with closing(self._connect()) as conn:
             cur = conn.execute(
                 """
@@ -2527,7 +2509,7 @@ class Database:
 
     def mark_scheduled_message_sent(self, msg_id: int, next_run_at: Optional[str] = None) -> None:
         """Actualiza last_sent_at y fija el nuevo next_run_at (o deshabilita si era de un solo uso)."""
-        now_iso = datetime.now().isoformat(timespec="seconds")
+        now_iso = now_utc_iso()
         with closing(self._connect()) as conn:
             if next_run_at is None:
                 # Caso 'once': deshabilitar
@@ -2545,7 +2527,7 @@ class Database:
     # ---------- NODOS BLOQUEADOS Y ANTI-ABUSO (MÓDULO 06) ----------
     def get_blocked_nodes(self, active_only: bool = True) -> List[Dict[str, Any]]:
         """Devuelve los nodos bloqueados (con soporte de expiración automática)."""
-        now_iso = datetime.now().isoformat(timespec="seconds")
+        now_iso = now_utc_iso()
         with closing(self._connect()) as conn:
             sql = "SELECT id, node_id, node_name, block_type, reason, created_at, expires_at, active FROM blocked_nodes"
             if active_only:
@@ -2561,7 +2543,7 @@ class Database:
         """Comprueba si un nodo está bloqueado actualmente. Devuelve (is_blocked, block_info)."""
         if not node_id:
             return False, None
-        now_iso = datetime.now().isoformat(timespec="seconds")
+        now_iso = now_utc_iso()
         with closing(self._connect()) as conn:
             cur = conn.execute(
                 """
@@ -2586,7 +2568,8 @@ class Database:
         expires_at: Optional[str] = None,
     ) -> int:
         """Bloquea un nodo (auto o manual). Actualiza o inserta según existencia."""
-        now_iso = datetime.now().isoformat(timespec="seconds")
+        now_iso = now_utc_iso()
+        exp_iso = to_utc_iso(expires_at) if expires_at else None
         with closing(self._connect()) as conn:
             cur = conn.execute(
                 """
@@ -2600,7 +2583,7 @@ class Database:
                     expires_at = excluded.expires_at,
                     active = 1
                 """,
-                (str(node_id), node_name, block_type, reason, now_iso, expires_at),
+                (str(node_id), node_name, block_type, reason, now_iso, exp_iso),
             )
             conn.commit()
             return int(cur.lastrowid or 0)
@@ -2617,7 +2600,7 @@ class Database:
 
     def log_abuse(self, node_id: str, command: Optional[str], action_taken: str, reason: Optional[str] = None) -> None:
         """Registra un evento de abuso/bloqueo para auditoría."""
-        now_iso = datetime.now().isoformat(timespec="seconds")
+        now_iso = now_utc_iso()
         with closing(self._connect()) as conn:
             conn.execute(
                 "INSERT INTO abuse_logs (node_id, command, action_taken, reason, created_at) VALUES (?, ?, ?, ?, ?)",
@@ -2658,7 +2641,7 @@ class Database:
         if is_node_discarded(node_id=node_id, short_name=short_name, name=name):
             return 0
 
-        now_iso = datetime.now().isoformat(timespec="seconds")
+        now_iso = now_utc_iso()
         details_str = json.dumps(details, ensure_ascii=False) if isinstance(details, dict) else (details or None)
 
         with closing(self._connect()) as conn:
@@ -2734,7 +2717,7 @@ class Database:
 
     def set_node_bot_ignored(self, node_id: str, is_ignored: bool = True) -> bool:
         """Marca un nodo para ser ignorado completamente por el bot (no guardar nada ni responder)."""
-        now_iso = datetime.now().isoformat(timespec="seconds")
+        now_iso = now_utc_iso()
         val = 1 if is_ignored else 0
         with closing(self._connect()) as conn:
             conn.execute(
@@ -2773,7 +2756,7 @@ class Database:
 
     def set_node_fw_blocked(self, node_id: str, is_blocked: bool = True) -> bool:
         """Marca en base de datos si el nodo fue bloqueado a nivel de firmware Meshtastic."""
-        now_iso = datetime.now().isoformat(timespec="seconds")
+        now_iso = now_utc_iso()
         val = 1 if is_blocked else 0
         with closing(self._connect()) as conn:
             cur = conn.execute(
