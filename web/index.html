@@ -219,7 +219,8 @@
         <table>
           <thead>
             <tr>
-              <th style="width: 40px; cursor: pointer;" class="sort-header" data-sort="is_favorite">⭐</th>
+              <th style="width: 35px; cursor: pointer; text-align: center;" class="sort-header" data-sort="is_favorite" title="Favoritos">⭐</th>
+              <th style="width: 35px; cursor: pointer; text-align: center;" class="sort-header" data-sort="is_watched" title="Vigilados">👁️</th>
               <th style="cursor: pointer;" class="sort-header" data-sort="name">Nombre / Alias <span class="sort-arrow">↕</span></th>
               <th style="cursor: pointer;" class="sort-header" data-sort="short_name">Corto <span class="sort-arrow">↕</span></th>
               <th style="cursor: pointer;" class="sort-header" data-sort="id">ID Hex <span class="sort-arrow">↕</span></th>
@@ -231,12 +232,12 @@
               <th style="cursor: pointer;" class="sort-header" data-sort="traces_detected">Traces <span class="sort-arrow">↕</span></th>
               <th style="cursor: pointer;" class="sort-header" data-sort="last_heard">Última Señal <span class="sort-arrow">↕</span></th>
               <th style="cursor: pointer;" class="sort-header" data-sort="created_at">Primera Vez <span class="sort-arrow">↕</span></th>
-              <th style="width: 140px;">Acciones</th>
+              <th style="width: 120px; text-align: center;">Acciones</th>
             </tr>
           </thead>
           <tbody id="nodes-tbody">
             <tr>
-              <td colspan="13" style="text-align: center; color: var(--text-dim); padding: 20px;">Cargando lista de nodos...</td>
+              <td colspan="14" style="text-align: center; color: var(--text-dim); padding: 20px;">Cargando lista de nodos...</td>
             </tr>
           </tbody>
         </table>
@@ -925,6 +926,6 @@
   <!-- Contenedor de Alertas Toast -->
   <div id="toast-container"></div>
 
-  <script src="app.js?v=3.1"></script>
+  <script src="app.js?v=3.2"></script>
 </body>
 </html>

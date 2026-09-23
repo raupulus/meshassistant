@@ -38,11 +38,11 @@ La aplicación web está estructurada como una SPA (Single Page Application) rea
 - **Telemetría de Batería y Sensores INA:** Nivel de carga (`⚡ 100%`) y voltaje (`4.18V`), o mediciones externas de potencia con sensor INA (`🔌 3.7/4.1/3.5`) cuando el router está alimentado por USB o monitorizado externamente.
 - **Carga de Canal y Transmisión (`Carga (Ch/Tx)`):** Ocupación instantánea del canal (`chutil %`) y tiempo de emisión al aire (`tx %`) reportados por el repetidor.
 - **Actividad de Telemetría y Traces:** Conteo ligero acumulado de telemetrías recibidas (`📊 X telems.`) y traceroutes detectados (`📍 Y traces`).
-- **Avisos de Seguridad:** Badge destacado `⚠️ X avisos` con tooltip explicativo de la razón en caso de que el router esté registrado en `auto_reported_nodes`.
-- **Acciones Rápidas:**
-  - Botón **`🔋 Pedir Batería`**: Solicita por radio LoRa la telemetría de batería y voltaje actualizada al router.
-  - Botón **`🔌 Pedir PWR`**: Si el router cuenta con sensor INA, solicita de forma directa la telemetría de potencia/batería externa.
-  - Botón **`📍 Lanzar Traceroute`**: Encola un traceroute hacia el router con protección anti-doble clic.
+- **Avisos de Red:** Fila regular situada bajo *Última señal:* que indica `0 avisos` (en color atenuado) o `⚠️ X avisos` (en rojo con tooltip explicativo de la infracción) si el router está registrado en `auto_reported_nodes`.
+- **Acciones Rápidas (Alineadas al footer con `.card-actions`):**
+  - Botón **`🔋 Batería`**: Solicita por radio LoRa la telemetría de batería y voltaje actualizada al router.
+  - Botón **`🔌 PWR`**: Si el router cuenta con sensor INA, solicita de forma directa la telemetría de potencia/batería externa.
+  - Botón **`📍 Trace`**: Encola un traceroute hacia el router con protección anti-doble clic y estado temporal de espera (`⏳ Trace...`).
 
 ---
 
@@ -51,16 +51,16 @@ La aplicación web está estructurada como una SPA (Single Page Application) rea
 Sección dedicada a la agrupación, seguimiento estrecho y diagnóstico rápido de nodos seleccionados por el operador de la estación:
 - **Subpestañas de Navegación:**
   - **`⭐ Favoritos`:** Nodos marcados como favoritos (`is_favorite = 1`). Se sincronizan automáticamente desde la estrella `★` de la tabla de nodos sin necesidad de añadirlos manualmente ni poder borrarlos salvo quitando el favorito.
-  - **`👁️ Vigilados`:** Nodos en seguimiento activo (`is_watched = 1`) marcados explícitamente mediante el botón `👁️`.
+  - **`👁️ Vigilados`:** Nodos en seguimiento activo (`is_watched = 1`) marcados explícitamente mediante el botón `👁️` al inicio de la tabla de nodos o desde la propia tarjeta.
 - **Formato de Tarjetas Idéntico a Routers:**
   - Estado `ONLINE` / `OFFLINE` y enlace de ruta / calidad SNR.
   - Telemetría de batería y sensores INA (`🔌 PWR`).
   - Métricas de saturación instantánea `Carga (Ch/Tx)`.
   - Actividad recogida (`📊 telemetrías` y `📍 traces detectados`).
-  - Alertas automáticas de seguridad (`⚠️ avisos`).
-- **Acciones Directas en Tarjeta:**
-  - `🔋 Pedir Batería`, `🔌 Pedir PWR` y `📍 Lanzar Trace`.
-  - Botón de gestión rápida: **`★ Quitar de Favoritos`** en subpestaña Favoritos y **`👁️ Dejar de vigilar`** en subpestaña Vigilados.
+  - Fila de avisos de red (`0 avisos` o `⚠️ X avisos`).
+- **Acciones Directas en Tarjeta (Alineadas al footer):**
+  - Fila 1: `🔋 Batería` y `🔌 PWR` (o `🔋 Batería` y `📍 Trace` si no tiene INA).
+  - Fila 2: `📍 Trace` y botón de gestión rápida: **`★ Quitar`** en subpestaña Favoritos y **`👁️ Quitar`** en subpestaña Vigilados.
 
 ---
 
@@ -87,18 +87,18 @@ Sección dedicada a la agrupación, seguimiento estrecho y diagnóstico rápido 
   - `Favoritos ⭐`: Nodos destacados persistidos en SQLite.
   - `Vigilados 👁️`: Nodos marcados activamente para seguimiento en la pestaña Vigilancia.
 - **Paginación Ágil:** Selector de 50, 100, 250 por página o "Ver todos", manteniendo el censo completo en memoria.
-- **Ordenación Multidimensional Inteligente:** Posibilidad de ordenar por favoritos, vigilados, rol, nombre, alias, saltos, batería, carga (`Carga (Ch/Tx)`), SNR, Traceroutes detectados, última señal o primera vez visto.
+- **Ordenación Multidimensional Inteligente:** Posibilidad de ordenar por favoritos (`⭐`), vigilados (`👁️`), rol, nombre, alias, saltos, batería, carga (`Carga (Ch/Tx)`), SNR, Traceroutes detectados, última señal o primera vez visto.
 - **Detalle de Columnas:**
+  - **Favoritos (`⭐`) y Vigilados (`👁️`):** Columnas fijas al inicio de la tabla (35px) con botones interactivos toggle para marcar/desmarcar con un solo clic.
   - **Carga (Ch/Tx):** Ocupación instantánea del canal en porcentaje (`chutil %`) y tiempo empleado en el aire transmitiendo (`tx %`).
   - **Traces:** Contador de paquetes de traceroute emitidos por ese nodo (`📍 X`).
   - **Primera Vez:** Fecha en que el nodo fue descubierto por primera vez (`DD/MM/YYYY`).
   - **Última Señal:** Formateo dinámico (`HH:MM:SS` para hoy / `DD/MM HH:MM` para días previos).
-  - **Acciones:**
-    - Botón **`🔋 Bat`**: Solicita por radio LoRa la telemetría de batería y voltaje del nodo bajo demanda.
-    - Botón **`🔌 PWR`**: Presente en nodos con telemetría de potencia/INA para solicitar actualización de potencia externa bajo demanda.
-    - Botón **`Trace`**: Lanza y encola un traceroute hacia el nodo.
-    - Botón **`👁️`**: Activa o desactiva la vigilancia del nodo para agruparlo en la pestaña Vigilancia.
-    - Botón **`ℹ️ Info`**: Solicita NodeInfo por radio LoRa bajo demanda.
+  - **Acciones (Iconos compactos):**
+    - Botón **`🔋`**: Solicita por radio LoRa la telemetría de batería y voltaje del nodo bajo demanda.
+    - Botón **`🔌`**: Presente en nodos con sensor INA para solicitar actualización de potencia externa por LoRa.
+    - Botón **`📍`**: Lanza y encola un traceroute hacia el nodo.
+    - Botón **`ℹ️`**: Solicita NodeInfo por radio LoRa bajo demanda.
 
 ---
 

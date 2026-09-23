@@ -509,12 +509,28 @@ main {
   font-weight: 600;
 }
 
-.card .btn-secondary,
-.card-action-btn {
-  margin-top: auto !important;
+.card-actions {
+  margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
   width: 100%;
-  font-weight: 600;
 }
+
+.card-actions-row {
+  display: flex;
+  gap: 6px;
+  width: 100%;
+}
+
+.card-action-btn {
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+
 
 /* ==========================================================================
    Nodes Table
@@ -560,6 +576,27 @@ tr:hover td {
 
 .star-btn.fav {
   color: var(--warning);
+}
+
+.watch-btn {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  font-size: 1.05rem;
+  opacity: 0.35;
+  transition: opacity 0.15s, transform 0.15s;
+  padding: 0;
+  line-height: 1;
+}
+
+.watch-btn:hover {
+  opacity: 0.85;
+  transform: scale(1.15);
+}
+
+.watch-btn.watched {
+  opacity: 1;
+  filter: drop-shadow(0 0 4px rgba(59, 130, 246, 0.6));
 }
 
 /* ==========================================================================

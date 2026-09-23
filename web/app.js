@@ -402,7 +402,7 @@ class MeshDashboard {
           this.sortDirection = this.sortDirection === "asc" ? "desc" : "asc";
         } else {
           this.sortField = field;
-          this.sortDirection = (field === "is_favorite" || field === "battery" || field === "snr" || field === "traces_detected" || field === "last_heard" || field === "created_at") ? "desc" : "asc";
+          this.sortDirection = (field === "is_favorite" || field === "is_watched" || field === "battery" || field === "snr" || field === "traces_detected" || field === "last_heard" || field === "created_at") ? "desc" : "asc";
         }
         this.nodesPage = 1;
         this.updateSortHeaders();
@@ -1464,12 +1464,11 @@ class MeshDashboard {
         activityStr = `<div class="card-row"><span>Actividad:</span><span style="font-size: 0.85rem; color: var(--text-dim);">${activityItems.join(" · ")}</span></div>`;
       }
 
-      // Badge de aviso de seguridad si está en auto_reported_nodes
-      let securityBadge = "";
-      if (r.auto_report_count && Number(r.auto_report_count) > 0) {
-        const reasonTooltip = r.auto_report_reason ? `Motivo: ${this.escapeHtml(r.auto_report_reason)}` : "Detectado por vigilancia de red";
-        securityBadge = `<span class="badge" style="background: rgba(239, 68, 68, 0.2); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.4);" title="${reasonTooltip}">⚠️ ${r.auto_report_count} ${Number(r.auto_report_count) === 1 ? "aviso" : "avisos"}</span>`;
-      }
+      // Avisos de seguridad si está en auto_reported_nodes
+      const reportCount = (r.auto_report_count !== undefined && r.auto_report_count !== null) ? Number(r.auto_report_count) : 0;
+      const warningsHtml = reportCount > 0
+        ? `<span style="color: #ef4444; font-weight: 600;" title="${r.auto_report_reason ? this.escapeHtml(r.auto_report_reason) : "Avisos de vigilancia"}">⚠️ ${reportCount} ${reportCount === 1 ? "aviso" : "avisos"}</span>`
+        : `<span style="color: var(--text-dim);">0 avisos</span>`;
 
       let lastSeen = "sin señal";
       if (r.last_seen_sec !== undefined && r.last_seen_sec !== null) {
@@ -1482,12 +1481,43 @@ class MeshDashboard {
 
       const routerId = r.id || r.node_id || r.name;
 
+      let actionsHtml = "";
+      if (hasInaRouter) {
+        actionsHtml = `
+          <div class="card-actions">
+            <div class="card-actions-row">
+              <button class="btn-secondary card-action-btn" style="flex: 1;" onclick="window.dashboard.requestTelemetry('${routerId}', this)">
+                🔋 Batería
+              </button>
+              <button class="btn-secondary card-action-btn" style="flex: 1;" title="Pedir Telemetría de Potencia (INA) por LoRa" onclick="window.dashboard.requestTelemetry('${routerId}', this, 'pwr')">
+                🔌 PWR
+              </button>
+            </div>
+            <button class="btn-secondary card-action-btn" style="width: 100%;" onclick="window.dashboard.requestTraceTo('${routerId}', this)">
+              📍 Trace
+            </button>
+          </div>
+        `;
+      } else {
+        actionsHtml = `
+          <div class="card-actions">
+            <div class="card-actions-row">
+              <button class="btn-secondary card-action-btn" style="flex: 1;" onclick="window.dashboard.requestTelemetry('${routerId}', this)">
+                🔋 Batería
+              </button>
+              <button class="btn-secondary card-action-btn" style="flex: 1;" onclick="window.dashboard.requestTraceTo('${routerId}', this)">
+                📍 Trace
+              </button>
+            </div>
+          </div>
+        `;
+      }
+
       return `
         <div class="card">
           <div class="card-header">
             <span>${this.escapeHtml(r.name || routerId)}</span>
             <div style="display: flex; gap: 4px; align-items: center; flex-wrap: wrap;">
-              ${securityBadge}
               ${routeBadge}
               <span class="badge" style="background: ${isOnline ? "var(--success-bg)" : "var(--danger-bg)"}; color: ${isOnline ? "var(--success)" : "var(--danger)"};">
                 ${isOnline ? "ONLINE" : "OFFLINE"}
@@ -1509,19 +1539,11 @@ class MeshDashboard {
             <span>Última señal:</span>
             <span>${lastSeen}</span>
           </div>
-          <div style="display: flex; gap: 6px; margin-bottom: 6px;">
-            <button class="btn-secondary card-action-btn" style="flex: 1;" onclick="window.dashboard.requestTelemetry('${routerId}', this)">
-              🔋 Pedir Batería
-            </button>
-            ${hasInaRouter ? `
-            <button class="btn-secondary card-action-btn" style="flex: 1;" title="Pedir Telemetría de Potencia (INA) por LoRa" onclick="window.dashboard.requestTelemetry('${routerId}', this, 'pwr')">
-              🔌 Pedir PWR
-            </button>
-            ` : ""}
+          <div class="card-row">
+            <span>Avisos de red:</span>
+            <span>${warningsHtml}</span>
           </div>
-          <button class="btn-secondary card-action-btn" onclick="window.dashboard.requestTraceTo('${routerId}', this)">
-            📍 Lanzar Traceroute
-          </button>
+          ${actionsHtml}
         </div>
       `;
     }).join("");
@@ -1531,7 +1553,7 @@ class MeshDashboard {
     if (btn) {
       btn.disabled = true;
       const origHtml = btn.innerHTML;
-      btn.textContent = "Pidiendo...";
+      btn.innerHTML = btn.classList.contains("card-action-btn") ? "⏳ Pidiendo..." : "⏳";
       setTimeout(() => {
         btn.disabled = false;
         btn.innerHTML = origHtml;
@@ -1549,8 +1571,12 @@ class MeshDashboard {
   requestTraceTo(nodeId, btn) {
     if (btn) {
       btn.disabled = true;
-      btn.textContent = "Encolando...";
-      setTimeout(() => { btn.disabled = false; btn.textContent = btn.classList.contains("card-action-btn") ? "📍 Lanzar Traceroute" : "Trace"; }, 3000);
+      const origHtml = btn.innerHTML;
+      btn.innerHTML = btn.classList.contains("card-action-btn") ? "⏳ Trace..." : "⏳";
+      setTimeout(() => {
+        btn.disabled = false;
+        btn.innerHTML = origHtml;
+      }, 3000);
     }
     this.sendAction("request_trace", { dest: nodeId });
     this.showToast(`Traceroute encolado hacia ${nodeId}`);
@@ -1559,8 +1585,12 @@ class MeshDashboard {
   requestNodeInfo(nodeId, btn) {
     if (btn) {
       btn.disabled = true;
-      btn.textContent = "Pidiendo...";
-      setTimeout(() => { btn.disabled = false; btn.textContent = "ℹ️ Info"; }, 3000);
+      const origHtml = btn.innerHTML;
+      btn.innerHTML = btn.classList.contains("card-action-btn") ? "⏳ Pidiendo..." : "⏳";
+      setTimeout(() => {
+        btn.disabled = false;
+        btn.innerHTML = origHtml;
+      }, 3000);
     }
     this.sendAction("request_node_info", { node_id: nodeId });
     this.showToast(`Petición NodeInfo enviada a ${nodeId}`);
@@ -1804,9 +1834,14 @@ class MeshDashboard {
 
       return `
         <tr>
-          <td>
-            <button class="star-btn ${isFav ? "fav" : ""}" onclick="window.dashboard.toggleFavorite('${nodeId}', ${!isFav})">
+          <td style="text-align: center;">
+            <button class="star-btn ${isFav ? "fav" : ""}" title="${isFav ? "Quitar de Favoritos" : "Añadir a Favoritos"}" onclick="window.dashboard.toggleFavorite('${nodeId}', ${!isFav})">
               ★
+            </button>
+          </td>
+          <td style="text-align: center;">
+            <button class="watch-btn ${isWatched ? "watched" : ""}" title="${isWatched ? "Dejar de vigilar" : "Marcar para vigilar en pestaña Vigilancia"}" onclick="window.dashboard.toggleWatched('${nodeId}', ${!isWatched})">
+              👁️
             </button>
           </td>
           <td>
@@ -1824,25 +1859,21 @@ class MeshDashboard {
           <td>${tracesCell}</td>
           <td style="font-size: 0.8rem; color: var(--text-muted);">${lastHeardStr}</td>
           <td style="font-size: 0.8rem; color: var(--text-dim);">${createdAtStr}</td>
-          <td>
-            <div style="display: flex; gap: 4px; align-items: center;">
-              <button class="btn-secondary" style="padding: 3px 6px; font-size: 0.75rem;" title="Pedir Batería / Telemetría por LoRa" onclick="window.dashboard.requestTelemetry('${nodeId}', this)">
-                🔋 Bat
+          <td style="text-align: center;">
+            <div style="display: flex; gap: 4px; align-items: center; justify-content: center;">
+              <button class="btn-secondary" style="padding: 4px 7px; font-size: 0.85rem;" title="Pedir Batería / Telemetría por LoRa" onclick="window.dashboard.requestTelemetry('${nodeId}', this)">
+                🔋
               </button>
               ${hasIna ? `
-              <button class="btn-secondary" style="padding: 2px 6px; font-size: 0.7rem; display: inline-flex; flex-direction: column; align-items: center; line-height: 1.1;" title="Pedir Telemetría de Potencia (INA) por LoRa" onclick="window.dashboard.requestTelemetry('${nodeId}', this, 'pwr')">
-                <span>🔌</span>
-                <span style="font-size: 0.65rem; font-weight: 700; margin-top: 1px;">PWR</span>
+              <button class="btn-secondary" style="padding: 4px 7px; font-size: 0.85rem;" title="Pedir Telemetría de Potencia (INA) por LoRa" onclick="window.dashboard.requestTelemetry('${nodeId}', this, 'pwr')">
+                🔌
               </button>
               ` : ""}
-              <button class="btn-secondary" style="padding: 3px 6px; font-size: 0.75rem;" title="Lanzar Traceroute" onclick="window.dashboard.requestTraceTo('${nodeId}', this)">
-                Trace
+              <button class="btn-secondary" style="padding: 4px 7px; font-size: 0.85rem;" title="Lanzar Traceroute" onclick="window.dashboard.requestTraceTo('${nodeId}', this)">
+                📍
               </button>
-              <button class="btn-secondary ${isWatched ? "active" : ""}" style="padding: 3px 6px; font-size: 0.75rem;" title="${isWatched ? "Dejar de vigilar" : "Marcar para vigilar en pestaña Vigilancia"}" onclick="window.dashboard.toggleWatched('${nodeId}', ${!isWatched})">
-                👁️
-              </button>
-              <button class="btn-secondary" style="padding: 3px 6px; font-size: 0.75rem;" title="Pedir NodeInfo por LoRa" onclick="window.dashboard.requestNodeInfo('${nodeId}', this)">
-                ℹ️ Info
+              <button class="btn-secondary" style="padding: 4px 7px; font-size: 0.85rem;" title="Pedir NodeInfo por LoRa" onclick="window.dashboard.requestNodeInfo('${nodeId}', this)">
+                ℹ️
               </button>
             </div>
           </td>
@@ -2001,12 +2032,11 @@ class MeshDashboard {
         activityStr = `<div class="card-row"><span>Actividad:</span><span style="font-size: 0.85rem; color: var(--text-dim);">${activityItems.join(" · ")}</span></div>`;
       }
 
-      // Badge de aviso de seguridad si está en auto_reported_nodes
-      let securityBadge = "";
-      if (n.auto_report_count && Number(n.auto_report_count) > 0) {
-        const reasonTooltip = n.auto_report_reason ? `Motivo: ${this.escapeHtml(n.auto_report_reason)}` : "Detectado por vigilancia de red";
-        securityBadge = `<span class="badge" style="background: rgba(239, 68, 68, 0.2); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.4);" title="${reasonTooltip}">⚠️ ${n.auto_report_count} ${Number(n.auto_report_count) === 1 ? "aviso" : "avisos"}</span>`;
-      }
+      // Avisos de seguridad si está en auto_reported_nodes
+      const reportCount = (n.auto_report_count !== undefined && n.auto_report_count !== null) ? Number(n.auto_report_count) : 0;
+      const warningsHtml = reportCount > 0
+        ? `<span style="color: #ef4444; font-weight: 600;" title="${n.auto_report_reason ? this.escapeHtml(n.auto_report_reason) : "Avisos de vigilancia"}">⚠️ ${reportCount} ${reportCount === 1 ? "aviso" : "avisos"}</span>`
+        : `<span style="color: var(--text-dim);">0 avisos</span>`;
 
       // Última señal
       let lastSeen = "sin señal";
@@ -2022,15 +2052,54 @@ class MeshDashboard {
 
       // Botón de gestión (desmarcar de favoritos o vigilados)
       const manageBtn = isFavTab
-        ? `<button class="btn-secondary card-action-btn" style="border-color: rgba(245, 158, 11, 0.4); color: #f59e0b;" onclick="window.dashboard.toggleFavorite('${nodeId}', false)">★ Quitar de Favoritos</button>`
-        : `<button class="btn-secondary card-action-btn" style="border-color: rgba(59, 130, 246, 0.4); color: #3b82f6;" onclick="window.dashboard.toggleWatched('${nodeId}', false)">👁️ Dejar de vigilar</button>`;
+        ? `<button class="btn-secondary card-action-btn" style="width: 100%; border-color: rgba(245, 158, 11, 0.4); color: #f59e0b;" onclick="window.dashboard.toggleFavorite('${nodeId}', false)">★ Quitar</button>`
+        : `<button class="btn-secondary card-action-btn" style="width: 100%; border-color: rgba(59, 130, 246, 0.4); color: #3b82f6;" onclick="window.dashboard.toggleWatched('${nodeId}', false)">👁️ Quitar</button>`;
+
+      let actionsHtml = "";
+      if (hasIna) {
+        actionsHtml = `
+          <div class="card-actions">
+            <div class="card-actions-row">
+              <button class="btn-secondary card-action-btn" style="flex: 1;" onclick="window.dashboard.requestTelemetry('${nodeId}', this)">
+                🔋 Batería
+              </button>
+              <button class="btn-secondary card-action-btn" style="flex: 1;" title="Pedir Telemetría de Potencia (INA) por LoRa" onclick="window.dashboard.requestTelemetry('${nodeId}', this, 'pwr')">
+                🔌 PWR
+              </button>
+            </div>
+            <div class="card-actions-row">
+              <button class="btn-secondary card-action-btn" style="flex: 1;" onclick="window.dashboard.requestTraceTo('${nodeId}', this)">
+                📍 Trace
+              </button>
+              <div style="flex: 1; display: flex;">
+                ${manageBtn}
+              </div>
+            </div>
+          </div>
+        `;
+      } else {
+        actionsHtml = `
+          <div class="card-actions">
+            <div class="card-actions-row">
+              <button class="btn-secondary card-action-btn" style="flex: 1;" onclick="window.dashboard.requestTelemetry('${nodeId}', this)">
+                🔋 Batería
+              </button>
+              <button class="btn-secondary card-action-btn" style="flex: 1;" onclick="window.dashboard.requestTraceTo('${nodeId}', this)">
+                📍 Trace
+              </button>
+            </div>
+            <div style="width: 100%; display: flex;">
+              ${manageBtn}
+            </div>
+          </div>
+        `;
+      }
 
       return `
         <div class="card">
           <div class="card-header">
             <span>${this.escapeHtml(n.name || nodeId)}</span>
             <div style="display: flex; gap: 4px; align-items: center; flex-wrap: wrap;">
-              ${securityBadge}
               ${routeBadge}
               <span class="badge" style="background: ${isOnline ? "var(--success-bg)" : "var(--danger-bg)"}; color: ${isOnline ? "var(--success)" : "var(--danger)"};">
                 ${isOnline ? "ONLINE" : "OFFLINE"}
@@ -2052,22 +2121,11 @@ class MeshDashboard {
             <span>Última señal:</span>
             <span>${lastSeen}</span>
           </div>
-          <div style="display: flex; gap: 6px; margin-bottom: 6px;">
-            <button class="btn-secondary card-action-btn" style="flex: 1;" onclick="window.dashboard.requestTelemetry('${nodeId}', this)">
-              🔋 Pedir Batería
-            </button>
-            ${hasIna ? `
-            <button class="btn-secondary card-action-btn" style="flex: 1;" title="Pedir Telemetría de Potencia (INA) por LoRa" onclick="window.dashboard.requestTelemetry('${nodeId}', this, 'pwr')">
-              🔌 Pedir PWR
-            </button>
-            ` : ""}
+          <div class="card-row">
+            <span>Avisos de red:</span>
+            <span>${warningsHtml}</span>
           </div>
-          <div style="display: flex; gap: 6px;">
-            <button class="btn-secondary card-action-btn" style="flex: 1;" onclick="window.dashboard.requestTraceTo('${nodeId}', this)">
-              📍 Lanzar Trace
-            </button>
-            ${manageBtn}
-          </div>
+          ${actionsHtml}
         </div>
       `;
     }).join("");
