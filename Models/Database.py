@@ -373,12 +373,20 @@ class Database:
         with closing(self._connect()) as conn:
             cur = conn.execute(
                 """
-                SELECT node_id, name, num, short_name, mac_addr, hw_model, role, is_favorite,
-                       snr, rssi, public_key, hops, hop_start, uptime, via_mqtt,
-                       battery, voltage, power_ina1, power_ina2, power_ina3, channel_util, air_util_tx,
-                       last_heard, traces_detected, created_at, updated_at
+                SELECT nodes.node_id, nodes.name, nodes.num, nodes.short_name, nodes.mac_addr, nodes.hw_model, nodes.role,
+                       nodes.is_favorite, nodes.is_watched, nodes.snr, nodes.rssi, nodes.public_key, nodes.hops, nodes.hop_start,
+                       nodes.uptime, nodes.via_mqtt, nodes.battery, nodes.voltage, nodes.power_ina1, nodes.power_ina2, nodes.power_ina3,
+                       nodes.channel_util, nodes.air_util_tx, nodes.last_heard, nodes.traces_detected, nodes.telemetry_count,
+                       nodes.created_at, nodes.updated_at,
+                       COALESCE(ar.total_events, 0) AS auto_report_count,
+                       ar.reasons AS auto_report_reason
                 FROM nodes
-                WHERE node_id = ?
+                LEFT JOIN (
+                    SELECT node_id, SUM(event_count) AS total_events, GROUP_CONCAT(DISTINCT reason_code) AS reasons
+                    FROM auto_reported_nodes
+                    GROUP BY node_id
+                ) ar ON ar.node_id = nodes.node_id
+                WHERE nodes.node_id = ?
                 """,
                 (node_id,),
             )
@@ -392,15 +400,23 @@ class Database:
         with closing(self._connect()) as conn:
             cur = conn.execute(
                 """
-                SELECT node_id, name, num, short_name, mac_addr, hw_model, role, is_favorite,
-                       snr, rssi, public_key, hops, hop_start, uptime, via_mqtt,
-                       battery, voltage, power_ina1, power_ina2, power_ina3, channel_util, air_util_tx,
-                       last_heard, traces_detected, created_at, updated_at
+                SELECT nodes.node_id, nodes.name, nodes.num, nodes.short_name, nodes.mac_addr, nodes.hw_model, nodes.role,
+                       nodes.is_favorite, nodes.is_watched, nodes.snr, nodes.rssi, nodes.public_key, nodes.hops, nodes.hop_start,
+                       nodes.uptime, nodes.via_mqtt, nodes.battery, nodes.voltage, nodes.power_ina1, nodes.power_ina2, nodes.power_ina3,
+                       nodes.channel_util, nodes.air_util_tx, nodes.last_heard, nodes.traces_detected, nodes.telemetry_count,
+                       nodes.created_at, nodes.updated_at,
+                       COALESCE(ar.total_events, 0) AS auto_report_count,
+                       ar.reasons AS auto_report_reason
                 FROM nodes
-                WHERE UPPER(node_id) = UPPER(?)
-                   OR UPPER(short_name) = UPPER(?)
-                   OR UPPER(name) = UPPER(?)
-                ORDER BY updated_at DESC LIMIT 1
+                LEFT JOIN (
+                    SELECT node_id, SUM(event_count) AS total_events, GROUP_CONCAT(DISTINCT reason_code) AS reasons
+                    FROM auto_reported_nodes
+                    GROUP BY node_id
+                ) ar ON ar.node_id = nodes.node_id
+                WHERE UPPER(nodes.node_id) = UPPER(?)
+                   OR UPPER(nodes.short_name) = UPPER(?)
+                   OR UPPER(nodes.name) = UPPER(?)
+                ORDER BY nodes.updated_at DESC LIMIT 1
                 """,
                 (identifier, identifier, identifier),
             )
@@ -439,15 +455,24 @@ class Database:
         # 2. Auto-detectar nodos con role ROUTER, ROUTER_LATE o REPEATER
         with closing(self._connect()) as conn:
             query = """
-                SELECT node_id, name, num, short_name, mac_addr, hw_model, role, is_favorite,
-                       snr, rssi, public_key, hops, hop_start, uptime, via_mqtt, battery, voltage,
-                       power_ina1, power_ina2, power_ina3, channel_util, air_util_tx, last_heard, created_at, updated_at
+                SELECT nodes.node_id, nodes.name, nodes.num, nodes.short_name, nodes.mac_addr, nodes.hw_model, nodes.role,
+                       nodes.is_favorite, nodes.is_watched, nodes.snr, nodes.rssi, nodes.public_key, nodes.hops, nodes.hop_start,
+                       nodes.uptime, nodes.via_mqtt, nodes.battery, nodes.voltage, nodes.power_ina1, nodes.power_ina2, nodes.power_ina3,
+                       nodes.channel_util, nodes.air_util_tx, nodes.last_heard, nodes.traces_detected, nodes.telemetry_count,
+                       nodes.created_at, nodes.updated_at,
+                       COALESCE(ar.total_events, 0) AS auto_report_count,
+                       ar.reasons AS auto_report_reason
                 FROM nodes
+                LEFT JOIN (
+                    SELECT node_id, SUM(event_count) AS total_events, GROUP_CONCAT(DISTINCT reason_code) AS reasons
+                    FROM auto_reported_nodes
+                    GROUP BY node_id
+                ) ar ON ar.node_id = nodes.node_id
                 WHERE (
-                    role IN (2, 4, 9)
-                 OR UPPER(COALESCE(role, '')) IN ('ROUTER', 'ROUTER_LATE', 'REPEATER')
+                    nodes.role IN (2, 4, 9)
+                 OR UPPER(COALESCE(nodes.role, '')) IN ('ROUTER', 'ROUTER_LATE', 'REPEATER')
                 )
-                AND COALESCE(via_mqtt, 0) = 0
+                AND COALESCE(nodes.via_mqtt, 0) = 0
             """
             params: List[Any] = []
 
@@ -525,6 +550,7 @@ class Database:
             "hw_model",
             "role",
             "is_favorite",
+            "is_watched",
             "snr",
             "rssi",
             "public_key",
@@ -541,6 +567,7 @@ class Database:
             "air_util_tx",
             "last_heard",
             "traces_detected",
+            "telemetry_count",
         }
 
         # Filtrar y preparar valores
@@ -550,7 +577,7 @@ class Database:
         for k, v in data.items():
             if k not in allowed:
                 continue
-            if k in ("is_favorite", "via_mqtt") and v is not None:
+            if k in ("is_favorite", "is_watched", "via_mqtt") and v is not None:
                 v = 1 if bool(v) else 0
             fields.append(f"{k} = ?")
             values.append(v)
@@ -586,6 +613,31 @@ class Database:
             cur = conn.execute("SELECT traces_detected FROM nodes WHERE node_id = ?", (clean_id,))
             row = cur.fetchone()
             return int(row["traces_detected"]) if row and row["traces_detected"] is not None else 1
+
+    def increment_node_telemetry_count(self, node_id: str) -> int:
+        """Incrementa en 1 el contador de paquetes de telemetría recibidos para este nodo."""
+        if not node_id or str(node_id).strip() in ("", "None", "null", "Desconocido", "none"):
+            return 0
+        clean_id = str(node_id).strip()
+        self.create_node_if_not_exists(clean_id)
+        when_str = datetime.now().isoformat(timespec="seconds")
+        with closing(self._connect()) as conn:
+            conn.execute(
+                "UPDATE nodes SET telemetry_count = COALESCE(telemetry_count, 0) + 1, updated_at = ? WHERE node_id = ?",
+                (when_str, clean_id),
+            )
+            conn.commit()
+            cur = conn.execute("SELECT telemetry_count FROM nodes WHERE node_id = ?", (clean_id,))
+            row = cur.fetchone()
+            return int(row["telemetry_count"]) if row and row["telemetry_count"] is not None else 1
+
+    def set_node_watched(self, node_id: str, is_watched: bool) -> None:
+        """Marca o desmarca un nodo como vigilado."""
+        if not node_id or str(node_id).strip() in ("", "None", "null", "Desconocido", "none"):
+            return
+        clean_id = str(node_id).strip()
+        self.create_node_if_not_exists(clean_id)
+        self.update_node(clean_id, {"is_watched": 1 if bool(is_watched) else 0})
 
     # ---------- TASKS CONTROL ----------
     def get_task_last_run(self, name: str) -> Optional[str]:
@@ -2032,17 +2084,24 @@ class Database:
         """Devuelve la lista de nodos ordenados por favoritos y actividad reciente."""
         with closing(self._connect()) as conn:
             sql = """
-                SELECT node_id AS id, node_id, name, num, short_name, mac_addr, hw_model, role,
-                       is_favorite, snr, rssi, hops, uptime, via_mqtt, battery, voltage,
-                       power_ina1, power_ina2, power_ina3, channel_util, air_util_tx,
-                       last_heard, traces_detected, created_at, updated_at
+                SELECT nodes.node_id AS id, nodes.node_id, nodes.name, nodes.num, nodes.short_name, nodes.mac_addr, nodes.hw_model, nodes.role,
+                       nodes.is_favorite, nodes.is_watched, nodes.snr, nodes.rssi, nodes.hops, nodes.uptime, nodes.via_mqtt, nodes.battery, nodes.voltage,
+                       nodes.power_ina1, nodes.power_ina2, nodes.power_ina3, nodes.channel_util, nodes.air_util_tx,
+                       nodes.last_heard, nodes.traces_detected, nodes.telemetry_count, nodes.created_at, nodes.updated_at,
+                       COALESCE(ar.total_events, 0) AS auto_report_count,
+                       ar.reasons AS auto_report_reason
                 FROM nodes
-                WHERE node_id IS NOT NULL AND trim(node_id) != '' AND node_id NOT IN ('None', 'null', 'Desconocido')
+                LEFT JOIN (
+                    SELECT node_id, SUM(event_count) AS total_events, GROUP_CONCAT(DISTINCT reason_code) AS reasons
+                    FROM auto_reported_nodes
+                    GROUP BY node_id
+                ) ar ON ar.node_id = nodes.node_id
+                WHERE nodes.node_id IS NOT NULL AND trim(nodes.node_id) != '' AND nodes.node_id NOT IN ('None', 'null', 'Desconocido')
             """
             params: List[Any] = []
             if only_rf:
-                sql += " AND COALESCE(via_mqtt, 0) = 0"
-            sql += " ORDER BY is_favorite DESC, COALESCE(last_heard, 0) DESC, updated_at DESC"
+                sql += " AND COALESCE(nodes.via_mqtt, 0) = 0"
+            sql += " ORDER BY nodes.is_favorite DESC, COALESCE(nodes.last_heard, 0) DESC, nodes.updated_at DESC"
             if limit is not None:
                 sql += " LIMIT ?"
                 params.append(int(limit))

@@ -463,6 +463,13 @@ main {
   background-color: var(--bg-card-hover);
 }
 
+.btn-secondary.active {
+  background-color: var(--primary-bg, rgba(37, 99, 235, 0.15));
+  border-color: var(--primary, #2563eb);
+  color: var(--primary, #2563eb);
+  font-weight: 600;
+}
+
 /* ==========================================================================
    Grids & Cards (Routers, Traces, Stats)
    ========================================================================== */

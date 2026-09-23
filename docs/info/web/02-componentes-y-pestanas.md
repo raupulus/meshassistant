@@ -36,6 +36,9 @@ La aplicación web está estructurada como una SPA (Single Page Application) rea
   - **Directo a Base (RAU0):** Indicador verde con el SNR exterior del enlace.
   - **Vía Repetidores:** Indicador azul con la ruta completa y nombres legibles (`RAU0 ➔ CO01 ➔ CO04`).
 - **Telemetría de Batería y Sensores INA:** Nivel de carga (`⚡ 100%`) y voltaje (`4.18V`), o mediciones externas de potencia con sensor INA (`🔌 3.7/4.1/3.5`) cuando el router está alimentado por USB o monitorizado externamente.
+- **Carga de Canal y Transmisión (`Carga (Ch/Tx)`):** Ocupación instantánea del canal (`chutil %`) y tiempo de emisión al aire (`tx %`) reportados por el repetidor.
+- **Actividad de Telemetría y Traces:** Conteo ligero acumulado de telemetrías recibidas (`📊 X telems.`) y traceroutes detectados (`📍 Y traces`).
+- **Avisos de Seguridad:** Badge destacado `⚠️ X avisos` con tooltip explicativo de la razón en caso de que el router esté registrado en `auto_reported_nodes`.
 - **Acciones Rápidas:**
   - Botón **`🔋 Pedir Batería`**: Solicita por radio LoRa la telemetría de batería y voltaje actualizada al router.
   - Botón **`🔌 Pedir PWR`**: Si el router cuenta con sensor INA, solicita de forma directa la telemetría de potencia/batería externa.
@@ -43,7 +46,25 @@ La aplicación web está estructurada como una SPA (Single Page Application) rea
 
 ---
 
-## 4. Pestaña 3 · Nodos de la Red
+## 4. Pestaña 3 · Vigilancia (Favoritos y Vigilados)
+
+Sección dedicada a la agrupación, seguimiento estrecho y diagnóstico rápido de nodos seleccionados por el operador de la estación:
+- **Subpestañas de Navegación:**
+  - **`⭐ Favoritos`:** Nodos marcados como favoritos (`is_favorite = 1`). Se sincronizan automáticamente desde la estrella `★` de la tabla de nodos sin necesidad de añadirlos manualmente ni poder borrarlos salvo quitando el favorito.
+  - **`👁️ Vigilados`:** Nodos en seguimiento activo (`is_watched = 1`) marcados explícitamente mediante el botón `👁️`.
+- **Formato de Tarjetas Idéntico a Routers:**
+  - Estado `ONLINE` / `OFFLINE` y enlace de ruta / calidad SNR.
+  - Telemetría de batería y sensores INA (`🔌 PWR`).
+  - Métricas de saturación instantánea `Carga (Ch/Tx)`.
+  - Actividad recogida (`📊 telemetrías` y `📍 traces detectados`).
+  - Alertas automáticas de seguridad (`⚠️ avisos`).
+- **Acciones Directas en Tarjeta:**
+  - `🔋 Pedir Batería`, `🔌 Pedir PWR` y `📍 Lanzar Trace`.
+  - Botón de gestión rápida: **`★ Quitar de Favoritos`** en subpestaña Favoritos y **`👁️ Dejar de vigilar`** en subpestaña Vigilados.
+
+---
+
+## 5. Pestaña 4 · Nodos de la Red
 
 - **Buscador en Vivo y Filtros de Cabecera:**
   - **Texto:** Búsqueda instantánea por nombre, alias o ID hexadecimal.
@@ -60,26 +81,28 @@ La aplicación web está estructurada como una SPA (Single Page Application) rea
     - `Apagados > 1 mes`: Nodos desaparecidos hace más de 30 días.
 - **Filtros Rápidos:**
   - `Todos`: Censo íntegro de la red.
-  - `Con Batería 🔋`: Muestra exclusivamente los nodos con telemetría de batería/voltaje o medición INA reportada, activando por defecto la ordenación ascendente para identificar nodos con batería baja (ideal para monitorizar repetidores solares en días nublados).
-  - `Con Traceroutes 📍`: Filtra de inmediato los nodos a los que se les ha detectado emisión de traceroutes (`traces_detected > 0`) ordenando de mayor a menor actividad.
+  - `Con Batería 🔋`: Muestra exclusivamente los nodos con telemetría de batería/voltaje o medición INA reportada.
+  - `Con Traceroutes 📍`: Filtra de inmediato los nodos con emisión de traceroutes (`traces_detected > 0`).
   - `Solo RF`: Excluye tráfico que llega por pasarelas MQTT.
   - `Favoritos ⭐`: Nodos destacados persistidos en SQLite.
+  - `Vigilados 👁️`: Nodos marcados activamente para seguimiento en la pestaña Vigilancia.
 - **Paginación Ágil:** Selector de 50, 100, 250 por página o "Ver todos", manteniendo el censo completo en memoria.
-- **Ordenación Multidimensional Inteligente:** Posibilidad de ordenar por favoritos, rol, nombre, alias, saltos, batería (incluyendo mediciones INA), saturación de canal y emisión (`Carga (Ch/Tx)`), SNR, Traceroutes detectados (`traces_detected`), última señal o primera vez visto, manteniendo siempre los nodos con dato real arriba y los nulos al final.
+- **Ordenación Multidimensional Inteligente:** Posibilidad de ordenar por favoritos, vigilados, rol, nombre, alias, saltos, batería, carga (`Carga (Ch/Tx)`), SNR, Traceroutes detectados, última señal o primera vez visto.
 - **Detalle de Columnas:**
-  - **Carga (Ch/Tx):** Ocupación instantánea del canal en porcentaje (`chutil %`) y tiempo empleado en el aire transmitiendo (`tx %`), con tooltip descriptivo y realce de colorimetría para nodos bajo alta carga (≥20% aviso, ≥40% alerta). Cabecera ordenable para identificar de un vistazo los nodos con mayor saturación de la malla.
-  - **Traces:** Contador de paquetes de traceroute emitidos por ese nodo (`📍 X`), ordenable directamente haciendo clic en la cabecera.
+  - **Carga (Ch/Tx):** Ocupación instantánea del canal en porcentaje (`chutil %`) y tiempo empleado en el aire transmitiendo (`tx %`).
+  - **Traces:** Contador de paquetes de traceroute emitidos por ese nodo (`📍 X`).
   - **Primera Vez:** Fecha en que el nodo fue descubierto por primera vez (`DD/MM/YYYY`).
   - **Última Señal:** Formateo dinámico (`HH:MM:SS` para hoy / `DD/MM HH:MM` para días previos).
   - **Acciones:**
     - Botón **`🔋 Bat`**: Solicita por radio LoRa la telemetría de batería y voltaje del nodo bajo demanda.
     - Botón **`🔌 PWR`**: Presente en nodos con telemetría de potencia/INA para solicitar actualización de potencia externa bajo demanda.
     - Botón **`Trace`**: Lanza y encola un traceroute hacia el nodo.
+    - Botón **`👁️`**: Activa o desactiva la vigilancia del nodo para agruparlo en la pestaña Vigilancia.
     - Botón **`ℹ️ Info`**: Solicita NodeInfo por radio LoRa bajo demanda.
 
 ---
 
-## 5. Pestaña 4 · Traceroutes
+## 6. Pestaña 5 · Traceroutes
 
 - **Visualizador de Saltos:** Representación gráfica de la ruta de ida (`Bot ➔ RPT1 (8.5dB) ➔ Destino`).
 - **Control de Trazas Fallidas:** Muestra claramente el aviso `⚠️ Sin respuesta del nodo destino (Timeout / Sin cobertura)` en caso de expiración.
@@ -87,7 +110,7 @@ La aplicación web está estructurada como una SPA (Single Page Application) rea
 
 ---
 
-## 6. Pestaña 5 · Encuestas Comunitarias
+## 7. Pestaña 6 · Encuestas Comunitarias
 
 - **Formulario de Creación:**
   - Pregunta y hasta 5 opciones dinámicas con botón `+ Añadir Opción`.
@@ -104,7 +127,7 @@ La aplicación web está estructurada como una SPA (Single Page Application) rea
 
 ---
 
-## 7. Pestaña 6 · Meteorología, Mar y Astronomía
+## 8. Pestaña 7 · Meteorología, Mar y Astronomía
 
 - **Widgets Visuales Superiores:**
   - 🌊 **Mareas:** Pleamares y bajamares del día con hora, nivel en metros, coeficiente y fuente oficial (IHM / Estación).
@@ -117,14 +140,14 @@ La aplicación web está estructurada como una SPA (Single Page Application) rea
 
 ---
 
-## 8. Pestaña 7 · Mensajes Programados
+## 9. Pestaña 8 · Mensajes Programados
 
 - **Gestión de Automatizaciones:** Programación de difusiones periódicas o diferidas (boletines, recordatorios de encuestas).
 - **Control de Estado:** Activación/desactivación instantánea, edición y eliminación.
 
 ---
 
-## 9. Pestaña 8 · Seguridad & Vigilancia de Malla
+## 10. Pestaña 9 · Seguridad & Vigilancia de Malla
 
 - **Nodos Auto-reportados por Mala Praxis:** Tabla en tiempo real con incidencias detectadas por `MeshWatcher`:
   - Infracción con badge e icono (`🔀 Saltos Excesivos ≥6`, `⚡ Telemetría Rápida <30m`, `📍 GPS Rápido <30m`, `👥 NodeInfo Rápido <30m`, `🌡️ Clima Rápido <30m`, `📍 Exceso Traceroutes`, `🛑 Spam Comandos`).
@@ -138,7 +161,7 @@ La aplicación web está estructurada como una SPA (Single Page Application) rea
 
 ---
 
-## 10. Pestaña 9 · Auditoría y Estadísticas de Comandos
+## 11. Pestaña 10 · Auditoría y Estadísticas de Comandos
 
 - **Filtros de Período:** Selección instantánea entre **`Última hora`** (1h), **`Últimas 24h`** (por defecto), **`Últimos 7 días`** (168h) e **`Histórico Total`**.
 - **Tarjetas de Resumen:** Total de comandos, nodos únicos, comando más solicitado y usuario más activo.
@@ -147,7 +170,7 @@ La aplicación web está estructurada como una SPA (Single Page Application) rea
 
 ---
 
-## 11. Pestaña 10 · Guía de Comandos
+## 12. Pestaña 11 · Guía de Comandos
 
 - **Catálogo Interactivo Clasificado:**
   - Agrupación temática: *🌦️ Meteorología, Marítimo y Naturaleza*, *📻 Red Meshtastic y Repetidores*, *🤖 Asistente de IA y Comunidad*, *⚙️ Sistema y Telemetría*.
@@ -157,7 +180,7 @@ La aplicación web está estructurada como una SPA (Single Page Application) rea
 
 ---
 
-## 12. Navegación y Diseño Adaptativo
+## 13. Navegación y Diseño Adaptativo
 
 - **Barra Lateral Izquierda:**
   - **Pantallas > 900px:** Barra fija de `120px` de ancho con icono y texto en salto de línea natural (`overflow-wrap: break-word`).

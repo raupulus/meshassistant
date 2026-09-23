@@ -69,6 +69,11 @@
         <span class="tab-label">Routers</span>
         <span class="badge-count" id="count-routers">0</span>
       </button>
+      <button class="tab-btn" data-tab="watch" title="👁️ Vigilancia">
+        <span class="tab-icon">👁️</span>
+        <span class="tab-label">Vigilancia</span>
+        <span class="badge-count" id="count-watched">0</span>
+      </button>
       <button class="tab-btn" data-tab="nodes" title="👥 Nodos">
         <span class="tab-icon">👥</span>
         <span class="tab-label">Nodos</span>
@@ -155,6 +160,20 @@
       </div>
     </section>
 
+    <!-- Pestaña: Vigilancia -->
+    <section id="pane-watch" class="tab-pane">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 10px;">
+        <div style="display: flex; gap: 8px;">
+          <button class="btn-secondary watch-subtab-btn active" id="subtab-watch-fav" data-subtab="fav">⭐ Favoritos (<span id="count-watch-fav">0</span>)</button>
+          <button class="btn-secondary watch-subtab-btn" id="subtab-watch-vig" data-subtab="vig">👁️ Vigilados (<span id="count-watch-vig">0</span>)</button>
+        </div>
+        <button class="btn-secondary" id="btn-refresh-watch">Actualizar Estado</button>
+      </div>
+      <div class="grid-cards" id="watch-grid">
+        <div style="color: var(--text-dim);">Cargando nodos en vigilancia...</div>
+      </div>
+    </section>
+
     <!-- Pestaña 3: Nodos de la Red -->
     <section id="pane-nodes" class="tab-pane">
       <div style="display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 16px;">
@@ -192,6 +211,7 @@
           <button class="btn-secondary filter-nodes" data-filter="traces">Con Traceroutes 📍</button>
           <button class="btn-secondary filter-nodes" data-filter="rf">Solo RF</button>
           <button class="btn-secondary filter-nodes" data-filter="fav">Favoritos ⭐</button>
+          <button class="btn-secondary filter-nodes" data-filter="watched">Vigilados 👁️</button>
         </div>
       </div>
 
@@ -211,7 +231,7 @@
               <th style="cursor: pointer;" class="sort-header" data-sort="traces_detected">Traces <span class="sort-arrow">↕</span></th>
               <th style="cursor: pointer;" class="sort-header" data-sort="last_heard">Última Señal <span class="sort-arrow">↕</span></th>
               <th style="cursor: pointer;" class="sort-header" data-sort="created_at">Primera Vez <span class="sort-arrow">↕</span></th>
-              <th style="width: 110px;">Acciones</th>
+              <th style="width: 140px;">Acciones</th>
             </tr>
           </thead>
           <tbody id="nodes-tbody">
@@ -905,6 +925,6 @@
   <!-- Contenedor de Alertas Toast -->
   <div id="toast-container"></div>
 
-  <script src="app.js?v=3.0"></script>
+  <script src="app.js?v=3.1"></script>
 </body>
 </html>

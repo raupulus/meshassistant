@@ -279,6 +279,19 @@ Emitido cuando un usuario marca o desmarca un nodo como favorito (estrella en la
 }
 ```
 
+### 2.14. `node_watched_changed` (Cambio de Estado Vigilado)
+Emitido cuando un usuario marca o desmarca un nodo para seguimiento en la sección Vigilancia (botón ojo 👁️ en la tabla de nodos o en las tarjetas de vigilancia) para sincronizar en tiempo real a todos los clientes web conectados:
+```json
+{
+  "event": "node_watched_changed",
+  "ts": "2026-09-23T11:50:00",
+  "data": {
+    "node_id": "!16cd4834",
+    "is_watched": true
+  }
+}
+```
+
 ---
 
 ## 3. Catálogo de Acciones de Entrada (Cliente ➔ Servidor)
@@ -620,6 +633,33 @@ Encola una solicitud `TELEMETRY_APP` por radio LoRa dirigida al nodo especificad
   "data": {
     "node_id": "!12345678",
     "is_favorite": true
+  },
+  "error": null
+}
+```
+
+### 3.12. `set_node_watched` (Marcar/Desmarcar Nodo Vigilado)
+- **Petición:**
+```json
+{
+  "action": "set_node_watched",
+  "req_id": "wat_01",
+  "params": {
+    "node_id": "!12345678",
+    "is_watched": true
+  }
+}
+```
+- **Respuesta:**
+```json
+{
+  "type": "response",
+  "action": "set_node_watched",
+  "req_id": "wat_01",
+  "success": true,
+  "data": {
+    "node_id": "!12345678",
+    "is_watched": true
   },
   "error": null
 }

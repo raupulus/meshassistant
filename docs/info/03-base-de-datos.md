@@ -36,7 +36,8 @@ con `CREATE TABLE IF NOT EXISTS`. Además realiza **migraciones idempotentes**:
 | `mac_addr` | TEXT | MAC. |
 | `hw_model` | INTEGER | Modelo de hardware. |
 | `role` | INTEGER | Rol oficial Meshtastic (`2=ROUTER`, `4=REPEATER`, `9=ROUTER_LATE`). |
-| `is_favorite` | INTEGER | 0/1. |
+| `is_favorite` | INTEGER | 0/1 (nodo favorito en dashboard). |
+| `is_watched` | INTEGER | 0/1 (nodo vigilado en sección Vigilancia). |
 | `snr`, `rssi` | REAL | Calidad de señal. |
 | `public_key` | TEXT | Clave pública. |
 | `hops`, `hop_start` | INTEGER | Saltos. |
@@ -49,12 +50,13 @@ con `CREATE TABLE IF NOT EXISTS`. Además realiza **migraciones idempotentes**:
 | `power_ina3` | REAL NULL | Voltaje canal 3 sensor INA (INA3221). |
 | `channel_util` | REAL NULL | Saturación de canal instantánea (`channelUtilization`, %). |
 | `air_util_tx` | REAL NULL | Tiempo de transmisión al aire instantáneo (`airUtilTx`, %). |
+| `telemetry_count` | INTEGER | Contador acumulado ligero de paquetes de telemetría recibidos del nodo. |
 | `last_heard` | INTEGER | Último contacto (epoch). |
 | `traces_detected` | INTEGER | Contador de traceroutes emitidos y detectados en la malla por este nodo. |
 | `created_at` | TEXT | Fecha y hora en que fue descubierto por primera vez. |
 | `updated_at` | TEXT | ISO 8601 de última actualización. |
 
-Índices: `idx_nodes_short_name`, `idx_nodes_num`, `idx_nodes_role`.
+Índices: `idx_nodes_short_name`, `idx_nodes_num`, `idx_nodes_role`, `idx_nodes_is_watched`.
 
 ### `pings` — histórico de pings
 | Columna | Tipo | Notas |

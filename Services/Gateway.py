@@ -578,6 +578,21 @@ class GatewayService:
                 except Exception:
                     pass
 
+            elif action == "set_node_watched":
+                node_id = params.get("node_id")
+                is_watched = bool(params.get("is_watched", True))
+                if not node_id:
+                    raise ValueError("Parámetro 'node_id' obligatorio")
+                self.db.set_node_watched(str(node_id), is_watched)
+                response["data"] = {"node_id": node_id, "is_watched": is_watched}
+                try:
+                    asyncio.create_task(self._broadcast_ws({
+                        "event": "node_watched_changed",
+                        "data": {"node_id": str(node_id), "is_watched": is_watched}
+                    }))
+                except Exception:
+                    pass
+
             elif action == "send_message":
                 text = params.get("text")
                 dest = params.get("dest", "^all")

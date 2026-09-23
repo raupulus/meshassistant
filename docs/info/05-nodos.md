@@ -24,15 +24,15 @@ node.refresh_from_db()     # recarga desde BD
 - Fusiona los campos presentes en `node_info` sobre los actuales (los ausentes se
   conservan).
 - Calcula `hops = hop_start - hop_limit` cuando ambos están disponibles.
-- **Protección de Favoritos (`is_favorite`):** Es una preferencia administrativa fijada desde el dashboard web (`Services/Gateway.py`). Los paquetes ordinarios recibidos por radio LoRa (telemetría, posición, `NODEINFO_APP`, mensajes) **nunca** sobrescriben ni eliminan el estado favorito de un nodo. Solo se activa si un paquete o importación inicial lo define explícitamente como `True`.
+- **Protección de Favoritos y Vigilancia (`is_favorite`, `is_watched`):** Son preferencias del usuario fijadas desde el dashboard web (`Services/Gateway.py`). Los paquetes ordinarios recibidos por radio LoRa (telemetría, posición, `NODEINFO_APP`, mensajes) **nunca** sobrescriben ni eliminan el estado favorito o vigilado de un nodo. Solo se activan o desactivan explícitamente desde la interfaz o base de datos.
 - Persiste vía `Database.create_node_if_not_exists` + `Database.update_node`
   (también con `try/except` defensivo).
 
 ## Campos
 
-`id`, `name`, `num`, `short_name`, `mac_addr`, `hw_model`, `role`, `is_favorite`, `snr`,
+`id`, `name`, `num`, `short_name`, `mac_addr`, `hw_model`, `role`, `is_favorite`, `is_watched`, `snr`,
 `rssi`, `public_key`, `hops`, `hop_start`, `uptime`, `via_mqtt`, `battery`, `voltage`,
-`power_ina1`, `power_ina2`, `power_ina3`, `channel_util`, `air_util_tx`, `last_heard`, `created_at`, `updated_at`.
+`power_ina1`, `power_ina2`, `power_ina3`, `channel_util`, `air_util_tx`, `telemetry_count`, `traces_detected`, `last_heard`, `created_at`, `updated_at`.
 
 Valores por defecto: `name='Desconocido'`, `short_name='N/A'`, `via_mqtt=False`,
 señales, métricas de canal y voltajes INA en `None`.

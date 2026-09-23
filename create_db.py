@@ -92,6 +92,7 @@ def _execute_schema(conn: sqlite3.Connection) -> None:
             hw_model INTEGER,
             role INTEGER,
             is_favorite INTEGER,
+            is_watched INTEGER NOT NULL DEFAULT 0,
             snr REAL,
             rssi REAL,
             public_key TEXT,
@@ -101,6 +102,7 @@ def _execute_schema(conn: sqlite3.Connection) -> None:
             via_mqtt INTEGER,
             last_heard INTEGER,
             traces_detected INTEGER NOT NULL DEFAULT 0,
+            telemetry_count INTEGER NOT NULL DEFAULT 0,
             battery REAL,
             voltage REAL,
             channel_util REAL,
@@ -384,8 +386,15 @@ def _execute_schema(conn: sqlite3.Connection) -> None:
     if not _has_column('nodes', 'air_util_tx'):
         conn.execute('ALTER TABLE nodes ADD COLUMN air_util_tx REAL NULL')
         conn.commit()
+    if not _has_column('nodes', 'is_watched'):
+        conn.execute('ALTER TABLE nodes ADD COLUMN is_watched INTEGER NOT NULL DEFAULT 0')
+        conn.commit()
+    if not _has_column('nodes', 'telemetry_count'):
+        conn.execute('ALTER TABLE nodes ADD COLUMN telemetry_count INTEGER NOT NULL DEFAULT 0')
+        conn.commit()
 
     # Create indexes if not exist
+    cur.execute('CREATE INDEX IF NOT EXISTS idx_nodes_is_watched ON nodes(is_watched)')
     cur.execute('CREATE INDEX IF NOT EXISTS idx_chistes_need_upload ON chistes(need_upload)')
     cur.execute('CREATE INDEX IF NOT EXISTS idx_chistes_need_approve ON chistes(need_approve)')
     cur.execute('CREATE UNIQUE INDEX IF NOT EXISTS idx_chistes_chiste_id ON chistes(chiste_id)')

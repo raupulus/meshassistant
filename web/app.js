@@ -30,6 +30,7 @@ class MeshDashboard {
     this.scheduledMessages = [];
     this.blockedNodes = [];
     this.abuseLogs = [];
+    this.currentWatchSubTab = "fav";
 
     this.initElements();
     this.bindEvents();
@@ -49,9 +50,18 @@ class MeshDashboard {
     // Conteo Badges
     this.countMsgs = document.getElementById("count-msgs");
     this.countRouters = document.getElementById("count-routers");
+    this.countWatched = document.getElementById("count-watched");
+    this.countWatchFav = document.getElementById("count-watch-fav");
+    this.countWatchVig = document.getElementById("count-watch-vig");
     this.countNodes = document.getElementById("count-nodes");
     this.countScheds = document.getElementById("count-scheds");
     this.countBlocked = document.getElementById("count-blocked");
+
+    // Vigilancia
+    this.watchGrid = document.getElementById("watch-grid");
+    this.subtabWatchFav = document.getElementById("subtab-watch-fav");
+    this.subtabWatchVig = document.getElementById("subtab-watch-vig");
+    this.btnRefreshWatch = document.getElementById("btn-refresh-watch");
 
     // Footer Telemetría Hardware (Módulo 05)
     this.ftCpuTemp = document.getElementById("ft-cpu-temp");
@@ -177,6 +187,29 @@ class MeshDashboard {
         this.switchTab(tab);
       });
     });
+
+    // Subpestañas de Vigilancia (Favoritos / Vigilados)
+    if (this.subtabWatchFav) {
+      this.subtabWatchFav.addEventListener("click", () => {
+        this.currentWatchSubTab = "fav";
+        this.subtabWatchFav.classList.add("active");
+        if (this.subtabWatchVig) this.subtabWatchVig.classList.remove("active");
+        this.renderWatchCards();
+      });
+    }
+    if (this.subtabWatchVig) {
+      this.subtabWatchVig.addEventListener("click", () => {
+        this.currentWatchSubTab = "vig";
+        this.subtabWatchVig.classList.add("active");
+        if (this.subtabWatchFav) this.subtabWatchFav.classList.remove("active");
+        this.renderWatchCards();
+      });
+    }
+    if (this.btnRefreshWatch) {
+      this.btnRefreshWatch.addEventListener("click", () => {
+        this.sendAction("get_nodes");
+      });
+    }
 
     // Búsqueda en Guía de Comandos
     if (this.commandsSearchInput) {
@@ -631,6 +664,8 @@ class MeshDashboard {
       this.loadPolls();
     } else if (tabName === "weather") {
       this.loadWeather();
+    } else if (tabName === "watch") {
+      this.renderWatchCards();
     }
   }
 
@@ -810,6 +845,14 @@ class MeshDashboard {
         if (data.node_id && this.nodesMap.has(data.node_id)) {
           this.nodesMap.get(data.node_id).is_favorite = data.is_favorite;
           this.renderNodesTable();
+          this.renderWatchCards();
+        }
+        break;
+      case "node_watched_changed":
+        if (data.node_id && this.nodesMap.has(data.node_id)) {
+          this.nodesMap.get(data.node_id).is_watched = data.is_watched;
+          this.renderNodesTable();
+          this.renderWatchCards();
         }
         break;
       case "node_updated":
@@ -825,6 +868,7 @@ class MeshDashboard {
           });
           this.nodesMap.set(data.id, merged);
           this.renderNodesTable();
+          this.renderWatchCards();
         }
         break;
       case "device_telemetry":
@@ -837,7 +881,9 @@ class MeshDashboard {
           if (data.power_ina3 !== undefined) node.power_ina3 = data.power_ina3;
           if (data.channel_util !== undefined) node.channel_util = data.channel_util;
           if (data.air_util_tx !== undefined) node.air_util_tx = data.air_util_tx;
+          if (data.telemetry_count !== undefined && data.telemetry_count !== null) node.telemetry_count = data.telemetry_count;
           this.renderNodesTable();
+          this.renderWatchCards();
         }
         break;
       case "system_status":
@@ -949,7 +995,16 @@ class MeshDashboard {
             this.nodesMap.set(id, { ...(this.nodesMap.get(id) || {}), ...n });
           }
         });
+        if (data.routers && Array.isArray(data.routers)) {
+          data.routers.forEach(r => {
+            const id = r.id || r.node_id;
+            if (id && this.nodesMap.has(id)) {
+              this.nodesMap.set(id, { ...this.nodesMap.get(id), ...r });
+            }
+          });
+        }
         this.renderNodesTable();
+        this.renderWatchCards();
         this.renderChannelFiltersAndDestinations();
       }
 
@@ -1045,6 +1100,13 @@ class MeshDashboard {
       if (data.node_id && this.nodesMap.has(data.node_id)) {
         this.nodesMap.get(data.node_id).is_favorite = data.is_favorite;
         this.renderNodesTable();
+        this.renderWatchCards();
+      }
+    } else if (resp.action === "set_node_watched") {
+      if (data.node_id && this.nodesMap.has(data.node_id)) {
+        this.nodesMap.get(data.node_id).is_watched = data.is_watched;
+        this.renderNodesTable();
+        this.renderWatchCards();
       }
     }
   }
@@ -1381,6 +1443,34 @@ class MeshDashboard {
         batteryStr = `<div class="card-row"><span>Voltaje:</span><span>${Number(r.voltage).toFixed(2)}V</span></div>`;
       }
 
+      // Carga de Canal y Transmisión al aire (Ch/Tx)
+      let chTxStr = "";
+      if ((r.channel_util !== undefined && r.channel_util !== null) || (r.air_util_tx !== undefined && r.air_util_tx !== null)) {
+        const chVal = (r.channel_util !== undefined && r.channel_util !== null) ? `${Number(r.channel_util).toFixed(1)}%` : "--";
+        const txVal = (r.air_util_tx !== undefined && r.air_util_tx !== null) ? `${Number(r.air_util_tx).toFixed(1)}%` : "--";
+        chTxStr = `<div class="card-row"><span>Carga (Ch/Tx):</span><span style="font-weight: 600;">${chVal} / ${txVal}</span></div>`;
+      }
+
+      // Actividad: telemetría y traces detectados
+      let activityItems = [];
+      if (r.telemetry_count !== undefined && r.telemetry_count !== null && Number(r.telemetry_count) > 0) {
+        activityItems.push(`📊 ${r.telemetry_count} ${Number(r.telemetry_count) === 1 ? "telem." : "telems."}`);
+      }
+      if (r.traces_detected !== undefined && r.traces_detected !== null && Number(r.traces_detected) > 0) {
+        activityItems.push(`📍 ${r.traces_detected} ${Number(r.traces_detected) === 1 ? "trace" : "traces"}`);
+      }
+      let activityStr = "";
+      if (activityItems.length > 0) {
+        activityStr = `<div class="card-row"><span>Actividad:</span><span style="font-size: 0.85rem; color: var(--text-dim);">${activityItems.join(" · ")}</span></div>`;
+      }
+
+      // Badge de aviso de seguridad si está en auto_reported_nodes
+      let securityBadge = "";
+      if (r.auto_report_count && Number(r.auto_report_count) > 0) {
+        const reasonTooltip = r.auto_report_reason ? `Motivo: ${this.escapeHtml(r.auto_report_reason)}` : "Detectado por vigilancia de red";
+        securityBadge = `<span class="badge" style="background: rgba(239, 68, 68, 0.2); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.4);" title="${reasonTooltip}">⚠️ ${r.auto_report_count} ${Number(r.auto_report_count) === 1 ? "aviso" : "avisos"}</span>`;
+      }
+
       let lastSeen = "sin señal";
       if (r.last_seen_sec !== undefined && r.last_seen_sec !== null) {
         const s = r.last_seen_sec;
@@ -1396,7 +1486,8 @@ class MeshDashboard {
         <div class="card">
           <div class="card-header">
             <span>${this.escapeHtml(r.name || routerId)}</span>
-            <div style="display: flex; gap: 4px; align-items: center;">
+            <div style="display: flex; gap: 4px; align-items: center; flex-wrap: wrap;">
+              ${securityBadge}
               ${routeBadge}
               <span class="badge" style="background: ${isOnline ? "var(--success-bg)" : "var(--danger-bg)"}; color: ${isOnline ? "var(--success)" : "var(--danger)"};">
                 ${isOnline ? "ONLINE" : "OFFLINE"}
@@ -1412,6 +1503,8 @@ class MeshDashboard {
             <span>${signalDetails}</span>
           </div>
           ${batteryStr}
+          ${chTxStr}
+          ${activityStr}
           <div class="card-row">
             <span>Última señal:</span>
             <span>${lastSeen}</span>
@@ -1531,6 +1624,8 @@ class MeshDashboard {
       nodes = nodes.filter(n => !n.via_mqtt);
     } else if (this.currentNodeFilter === "fav") {
       nodes = nodes.filter(n => n.is_favorite);
+    } else if (this.currentNodeFilter === "watched") {
+      nodes = nodes.filter(n => n.is_watched);
     } else if (this.currentNodeFilter === "battery") {
       nodes = nodes.filter(n => (n.battery !== undefined && n.battery !== null) || (n.voltage !== undefined && n.voltage !== null) || (n.power_ina1 !== undefined && n.power_ina1 !== null) || (n.power_ina2 !== undefined && n.power_ina2 !== null) || (n.power_ina3 !== undefined && n.power_ina3 !== null));
     } else if (this.currentNodeFilter === "traces") {
@@ -1545,7 +1640,7 @@ class MeshDashboard {
       let valA = a[field];
       let valB = b[field];
 
-      if (field === "is_favorite") {
+      if (field === "is_favorite" || field === "is_watched") {
         valA = valA ? 1 : 0;
         valB = valB ? 1 : 0;
       } else if (field === "battery") {
@@ -1650,6 +1745,7 @@ class MeshDashboard {
 
     this.nodesTbody.innerHTML = pageNodes.map(n => {
       const isFav = !!n.is_favorite;
+      const isWatched = !!n.is_watched;
       
       // Formateo de Batería y Voltaje (preferir medición INA si existe)
       let battery = "--";
@@ -1742,6 +1838,9 @@ class MeshDashboard {
               <button class="btn-secondary" style="padding: 3px 6px; font-size: 0.75rem;" title="Lanzar Traceroute" onclick="window.dashboard.requestTraceTo('${nodeId}', this)">
                 Trace
               </button>
+              <button class="btn-secondary ${isWatched ? "active" : ""}" style="padding: 3px 6px; font-size: 0.75rem;" title="${isWatched ? "Dejar de vigilar" : "Marcar para vigilar en pestaña Vigilancia"}" onclick="window.dashboard.toggleWatched('${nodeId}', ${!isWatched})">
+                👁️
+              </button>
               <button class="btn-secondary" style="padding: 3px 6px; font-size: 0.75rem;" title="Pedir NodeInfo por LoRa" onclick="window.dashboard.requestNodeInfo('${nodeId}', this)">
                 ℹ️ Info
               </button>
@@ -1750,10 +1849,228 @@ class MeshDashboard {
         </tr>
       `;
     }).join("");
+
+    this.updateWatchCounts();
   }
 
   toggleFavorite(nodeId, makeFav) {
     this.sendAction("set_node_favorite", { node_id: nodeId, is_favorite: makeFav });
+  }
+
+  toggleWatched(nodeId, makeWatched) {
+    this.sendAction("set_node_watched", { node_id: nodeId, is_watched: makeWatched });
+  }
+
+  updateWatchCounts() {
+    let favCount = 0;
+    let vigCount = 0;
+    for (const n of this.nodesMap.values()) {
+      if (n.is_favorite) favCount++;
+      if (n.is_watched) vigCount++;
+    }
+    if (this.countWatchFav) this.countWatchFav.textContent = favCount;
+    if (this.countWatchVig) this.countWatchVig.textContent = vigCount;
+    if (this.countWatched) this.countWatched.textContent = (favCount + vigCount);
+  }
+
+  // ==========================================================================
+  // Renderizado: Vigilancia (Favoritos y Vigilados)
+  // ==========================================================================
+  renderWatchCards() {
+    this.updateWatchCounts();
+    if (!this.watchGrid) return;
+
+    const allNodes = Array.from(this.nodesMap.values()).filter(n => {
+      const id = n.id || n.node_id;
+      return id && String(id).trim() && id !== "None" && id !== "null" && id !== "Desconocido";
+    });
+
+    const isFavTab = this.currentWatchSubTab === "fav";
+    const targetNodes = allNodes.filter(n => isFavTab ? Boolean(n.is_favorite) : Boolean(n.is_watched));
+
+    if (targetNodes.length === 0) {
+      if (isFavTab) {
+        this.watchGrid.innerHTML = `
+          <div style="color: var(--text-dim); grid-column: 1 / -1; padding: 32px 16px; text-align: center;">
+            <p style="font-size: 1.1rem; margin-bottom: 8px;">⭐ No tienes nodos marcados como favoritos</p>
+            <p style="font-size: 0.85rem; color: var(--text-muted);">Haz clic en la estrella ★ de cualquier nodo en la pestaña Nodos para que aparezca aquí automáticamente.</p>
+          </div>
+        `;
+      } else {
+        this.watchGrid.innerHTML = `
+          <div style="color: var(--text-dim); grid-column: 1 / -1; padding: 32px 16px; text-align: center;">
+            <p style="font-size: 1.1rem; margin-bottom: 8px;">👁️ No tienes nodos marcados para vigilar</p>
+            <p style="font-size: 0.85rem; color: var(--text-muted);">Haz clic en el botón 👁️ en las acciones de cualquier nodo para añadirlo a tu lista de vigilancia activa.</p>
+          </div>
+        `;
+      }
+      return;
+    }
+
+    // Ordenación idéntica a los Routers:
+    // 1. ONLINE primero, OFFLINE al final
+    // 2. En ONLINE: Menor número de saltos primero, luego mayor SNR
+    const sortedNodes = [...targetNodes].sort((a, b) => {
+      const isOnlineA = (a.status === "online") || (a.last_seen_sec !== undefined && a.last_seen_sec !== null && a.last_seen_sec < 86400) || (() => {
+        const ts = this.parseDateTimestamp(a.last_heard || a.updated_at);
+        return ts > 0 && Math.floor((Date.now() - ts) / 1000) < 86400;
+      })();
+      const isOnlineB = (b.status === "online") || (b.last_seen_sec !== undefined && b.last_seen_sec !== null && b.last_seen_sec < 86400) || (() => {
+        const ts = this.parseDateTimestamp(b.last_heard || b.updated_at);
+        return ts > 0 && Math.floor((Date.now() - ts) / 1000) < 86400;
+      })();
+
+      if (isOnlineA !== isOnlineB) return isOnlineB ? 1 : -1;
+
+      const hopsA = a.trace_hops !== undefined ? a.trace_hops : (a.hops !== undefined ? a.hops : 99);
+      const hopsB = b.trace_hops !== undefined ? b.trace_hops : (b.hops !== undefined ? b.hops : 99);
+      if (hopsA !== hopsB) return hopsA - hopsB;
+
+      const snrA = a.snr !== undefined && a.snr !== null ? Number(a.snr) : -99;
+      const snrB = b.snr !== undefined && b.snr !== null ? Number(b.snr) : -99;
+      return snrB - snrA;
+    });
+
+    this.watchGrid.innerHTML = sortedNodes.map(n => {
+      const nodeId = n.id || n.node_id;
+      const isOnline = (n.status === "online") || (n.last_seen_sec !== undefined && n.last_seen_sec !== null && n.last_seen_sec < 86400) || (() => {
+        const ts = this.parseDateTimestamp(n.last_heard || n.updated_at);
+        return ts > 0 && Math.floor((Date.now() - ts) / 1000) < 86400;
+      })();
+
+      // Construir indicador de Enlace y Ruta
+      let routeBadge = "";
+      let signalDetails = "";
+      if (n.trace_hops !== undefined && n.trace_hops !== null) {
+        if (n.trace_hops === 0) {
+          routeBadge = `<span class="badge" style="background: var(--success-bg); color: var(--success);">Directo a Base (RAU0)</span>`;
+          signalDetails = `<strong>${this.escapeHtml(n.trace_snr_text || "")}</strong>`;
+        } else {
+          routeBadge = `<span class="badge" style="background: var(--primary-bg); color: var(--primary);">${n.trace_hops} ${n.trace_hops === 1 ? "salto" : "saltos"}</span>`;
+          const inters = (n.trace_intermediates && n.trace_intermediates.length > 0) ? n.trace_intermediates.join(" ➔ ") : "";
+          const routeStr = inters ? `RAU0 ➔ ${inters} ➔ ${n.name || nodeId}` : `RAU0 ➔ ${n.name || nodeId}`;
+          signalDetails = `<div><strong>${this.escapeHtml(n.trace_snr_text || "")}</strong></div><div style="font-size: 0.75rem; color: var(--text-dim); margin-top: 2px;">Ruta: ${this.escapeHtml(routeStr)}</div>`;
+        }
+      } else if (n.snr !== undefined && n.snr !== null) {
+        let hopBadgeText = "Señal RF";
+        if (n.hops !== undefined && n.hops !== null) {
+          hopBadgeText = (n.hops === 0) ? "Directo (RF)" : `${n.hops} ${n.hops === 1 ? "salto" : "saltos"} (RF)`;
+        }
+        routeBadge = `<span class="badge badge-ch0">${hopBadgeText}</span>`;
+        signalDetails = `<strong>${Number(n.snr).toFixed(1)} dB</strong>${n.rssi !== undefined && n.rssi !== null ? ` <span style="font-size: 0.8rem; color: var(--text-dim);">(${n.rssi} dBm)</span>` : ""}`;
+      } else {
+        signalDetails = "--";
+      }
+
+      // Batería si está disponible (preferir medición INA si existe)
+      let batteryStr = "";
+      const hasIna = (n.power_ina1 !== undefined && n.power_ina1 !== null) ||
+                     (n.power_ina2 !== undefined && n.power_ina2 !== null) ||
+                     (n.power_ina3 !== undefined && n.power_ina3 !== null);
+      if (hasIna) {
+        const rInaVals = [n.power_ina1, n.power_ina2, n.power_ina3]
+          .filter(v => v !== undefined && v !== null)
+          .map(v => Number(v).toFixed(1));
+        batteryStr = `<div class="card-row"><span>Batería (INA):</span><span style="color: var(--primary); font-weight: 600;">🔌 ${rInaVals.join("/")}</span></div>`;
+      } else if (n.battery !== undefined && n.battery !== null) {
+        const bVal = n.battery > 100 ? "⚡ 100%" : `${n.battery}%`;
+        const vVal = (n.voltage !== undefined && n.voltage !== null) ? ` (${Number(n.voltage).toFixed(2)}V)` : "";
+        batteryStr = `<div class="card-row"><span>Batería:</span><span style="color: var(--success); font-weight: 600;">${bVal}${vVal}</span></div>`;
+      } else if (n.voltage !== undefined && n.voltage !== null) {
+        batteryStr = `<div class="card-row"><span>Voltaje:</span><span>${Number(n.voltage).toFixed(2)}V</span></div>`;
+      }
+
+      // Carga de Canal y Transmisión al aire (Ch/Tx)
+      let chTxStr = "";
+      if ((n.channel_util !== undefined && n.channel_util !== null) || (n.air_util_tx !== undefined && n.air_util_tx !== null)) {
+        const chVal = (n.channel_util !== undefined && n.channel_util !== null) ? `${Number(n.channel_util).toFixed(1)}%` : "--";
+        const txVal = (n.air_util_tx !== undefined && n.air_util_tx !== null) ? `${Number(n.air_util_tx).toFixed(1)}%` : "--";
+        chTxStr = `<div class="card-row"><span>Carga (Ch/Tx):</span><span style="font-weight: 600;">${chVal} / ${txVal}</span></div>`;
+      }
+
+      // Actividad: telemetría y traces detectados
+      let activityItems = [];
+      if (n.telemetry_count !== undefined && n.telemetry_count !== null && Number(n.telemetry_count) > 0) {
+        activityItems.push(`📊 ${n.telemetry_count} ${Number(n.telemetry_count) === 1 ? "telem." : "telems."}`);
+      }
+      if (n.traces_detected !== undefined && n.traces_detected !== null && Number(n.traces_detected) > 0) {
+        activityItems.push(`📍 ${n.traces_detected} ${Number(n.traces_detected) === 1 ? "trace" : "traces"}`);
+      }
+      let activityStr = "";
+      if (activityItems.length > 0) {
+        activityStr = `<div class="card-row"><span>Actividad:</span><span style="font-size: 0.85rem; color: var(--text-dim);">${activityItems.join(" · ")}</span></div>`;
+      }
+
+      // Badge de aviso de seguridad si está en auto_reported_nodes
+      let securityBadge = "";
+      if (n.auto_report_count && Number(n.auto_report_count) > 0) {
+        const reasonTooltip = n.auto_report_reason ? `Motivo: ${this.escapeHtml(n.auto_report_reason)}` : "Detectado por vigilancia de red";
+        securityBadge = `<span class="badge" style="background: rgba(239, 68, 68, 0.2); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.4);" title="${reasonTooltip}">⚠️ ${n.auto_report_count} ${Number(n.auto_report_count) === 1 ? "aviso" : "avisos"}</span>`;
+      }
+
+      // Última señal
+      let lastSeen = "sin señal";
+      if (n.last_seen_sec !== undefined && n.last_seen_sec !== null) {
+        const s = n.last_seen_sec;
+        if (s < 60) lastSeen = `hace ${s}s`;
+        else if (s < 3600) lastSeen = `hace ${Math.floor(s / 60)}m`;
+        else if (s < 86400) lastSeen = `hace ${Math.floor(s / 3600)}h ${Math.floor((s % 3600) / 60)}m`;
+        else lastSeen = `hace ${Math.floor(s / 86400)}d`;
+      } else if (n.last_heard || n.updated_at) {
+        lastSeen = this.formatRelativeOrDate(n.last_heard || n.updated_at);
+      }
+
+      // Botón de gestión (desmarcar de favoritos o vigilados)
+      const manageBtn = isFavTab
+        ? `<button class="btn-secondary card-action-btn" style="border-color: rgba(245, 158, 11, 0.4); color: #f59e0b;" onclick="window.dashboard.toggleFavorite('${nodeId}', false)">★ Quitar de Favoritos</button>`
+        : `<button class="btn-secondary card-action-btn" style="border-color: rgba(59, 130, 246, 0.4); color: #3b82f6;" onclick="window.dashboard.toggleWatched('${nodeId}', false)">👁️ Dejar de vigilar</button>`;
+
+      return `
+        <div class="card">
+          <div class="card-header">
+            <span>${this.escapeHtml(n.name || nodeId)}</span>
+            <div style="display: flex; gap: 4px; align-items: center; flex-wrap: wrap;">
+              ${securityBadge}
+              ${routeBadge}
+              <span class="badge" style="background: ${isOnline ? "var(--success-bg)" : "var(--danger-bg)"}; color: ${isOnline ? "var(--success)" : "var(--danger)"};">
+                ${isOnline ? "ONLINE" : "OFFLINE"}
+              </span>
+            </div>
+          </div>
+          <div class="card-row">
+            <span>ID Hex / Alias:</span>
+            <span style="font-family: monospace;">${this.escapeHtml(nodeId)}${n.short_name ? ` (${this.escapeHtml(n.short_name)})` : ""}</span>
+          </div>
+          <div class="card-row">
+            <span>Calidad / Ruta:</span>
+            <span>${signalDetails}</span>
+          </div>
+          ${batteryStr}
+          ${chTxStr}
+          ${activityStr}
+          <div class="card-row">
+            <span>Última señal:</span>
+            <span>${lastSeen}</span>
+          </div>
+          <div style="display: flex; gap: 6px; margin-bottom: 6px;">
+            <button class="btn-secondary card-action-btn" style="flex: 1;" onclick="window.dashboard.requestTelemetry('${nodeId}', this)">
+              🔋 Pedir Batería
+            </button>
+            ${hasIna ? `
+            <button class="btn-secondary card-action-btn" style="flex: 1;" title="Pedir Telemetría de Potencia (INA) por LoRa" onclick="window.dashboard.requestTelemetry('${nodeId}', this, 'pwr')">
+              🔌 Pedir PWR
+            </button>
+            ` : ""}
+          </div>
+          <div style="display: flex; gap: 6px;">
+            <button class="btn-secondary card-action-btn" style="flex: 1;" onclick="window.dashboard.requestTraceTo('${nodeId}', this)">
+              📍 Lanzar Trace
+            </button>
+            ${manageBtn}
+          </div>
+        </div>
+      `;
+    }).join("");
   }
 
   parseDateTimestamp(val) {

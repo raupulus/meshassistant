@@ -375,6 +375,10 @@ class SerialInterface:
                         "snr": packet.get('rxSnr'),
                         "rssi": packet.get('rxRssi'),
                         "hops": fromNodeInfo.hops,
+                        "is_favorite": fromNodeInfo.is_favorite,
+                        "is_watched": fromNodeInfo.is_watched,
+                        "telemetry_count": fromNodeInfo.telemetry_count,
+                        "traces_detected": fromNodeInfo.traces_detected,
                     })
                 except Exception:
                     pass
@@ -483,7 +487,9 @@ class SerialInterface:
                             db.create_node_if_not_exists(from_node_id)
                             db.update_node(from_node_id, db_data)
                         
+                        db.increment_node_telemetry_count(from_node_id)
                         if from_node_id in self.node_dict:
+                            self.node_dict[from_node_id].telemetry_count = (getattr(self.node_dict[from_node_id], 'telemetry_count', 0) or 0) + 1
                             self.node_dict[from_node_id].update_metadata(db_data)
                     except Exception:
                         pass
@@ -496,6 +502,9 @@ class SerialInterface:
                     "air_util_tx": air_tx,
                     "uptime_seconds": uptime_val,
                 }
+                telem_cnt = getattr(self.node_dict.get(from_node_id), 'telemetry_count', None) if self.node_dict.get(from_node_id) else None
+                if telem_cnt is not None:
+                    telem_payload["telemetry_count"] = telem_cnt
                 if ina1 is not None:
                     telem_payload["power_ina1"] = round(float(ina1), 2)
                 if ina2 is not None:
@@ -774,6 +783,10 @@ class SerialInterface:
                     "voltage": fromNodeInfo.voltage,
                     "channel_util": fromNodeInfo.channel_util,
                     "air_util_tx": fromNodeInfo.air_util_tx,
+                    "is_favorite": fromNodeInfo.is_favorite,
+                    "is_watched": fromNodeInfo.is_watched,
+                    "telemetry_count": fromNodeInfo.telemetry_count,
+                    "traces_detected": fromNodeInfo.traces_detected,
                     "last_heard": fromNodeInfo.last_heard,
                 })
 

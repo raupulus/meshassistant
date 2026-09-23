@@ -10,6 +10,9 @@ class Node:
     hw_model = 'Desconocido'
     role = None
     is_favorite = False
+    is_watched = False
+    telemetry_count = 0
+    traces_detected = 0
     snr = None
     rssi = None
     public_key = None
@@ -47,6 +50,7 @@ class Node:
                 self.hw_model = row.get('hw_model', self.hw_model)
                 self.role = row.get('role', self.role)
                 self.is_favorite = bool(row.get('is_favorite')) if row.get('is_favorite') is not None else self.is_favorite
+                self.is_watched = bool(row.get('is_watched')) if row.get('is_watched') is not None else self.is_watched
                 self.snr = row.get('snr', self.snr)
                 self.rssi = row.get('rssi', self.rssi)
                 self.public_key = row.get('public_key', self.public_key)
@@ -61,6 +65,8 @@ class Node:
                 self.power_ina3 = row.get('power_ina3', self.power_ina3)
                 self.channel_util = row.get('channel_util', self.channel_util)
                 self.air_util_tx = row.get('air_util_tx', self.air_util_tx)
+                self.traces_detected = int(row.get('traces_detected')) if row.get('traces_detected') is not None else 0
+                self.telemetry_count = int(row.get('telemetry_count')) if row.get('telemetry_count') is not None else 0
                 self.last_heard = row.get('last_heard', self.last_heard)
             else:
                 db.create_node_if_not_exists(self.id)
@@ -80,6 +86,18 @@ class Node:
         # Solo se actualiza si viene explícitamente como True (ej. importación inicial desde la radio).
         if node_info.get('is_favorite') is True or node_info.get('isFavorite') is True:
             self.is_favorite = True
+        if node_info.get('is_watched') is not None:
+            self.is_watched = bool(node_info.get('is_watched'))
+        if node_info.get('telemetry_count') is not None:
+            try:
+                self.telemetry_count = int(node_info.get('telemetry_count'))
+            except Exception:
+                pass
+        if node_info.get('traces_detected') is not None:
+            try:
+                self.traces_detected = int(node_info.get('traces_detected'))
+            except Exception:
+                pass
         self.uptime = node_info.get('uptime', self.uptime)
         self.via_mqtt = node_info.get('via_mqtt', self.via_mqtt)
         
@@ -198,6 +216,10 @@ class Node:
                 db_update["air_util_tx"] = self.air_util_tx
             if node_info.get('is_favorite') is True or node_info.get('isFavorite') is True:
                 db_update["is_favorite"] = 1
+            if node_info.get('is_watched') is not None:
+                db_update["is_watched"] = 1 if self.is_watched else 0
+            if node_info.get('telemetry_count') is not None:
+                db_update["telemetry_count"] = self.telemetry_count
             db.update_node(self.id, db_update)
         except Exception:
             # En caso de error al guardar, continuar sin interrumpir
@@ -218,6 +240,7 @@ class Node:
             "mac_addr": self.mac_addr,
             "hw_model": self.hw_model,
             "is_favorite": self.is_favorite,
+            "is_watched": self.is_watched,
             "public_key": self.public_key,
             "snr": self.snr,
             "rssi": self.rssi,
@@ -232,6 +255,8 @@ class Node:
             "power_ina3": self.power_ina3,
             "channel_util": self.channel_util,
             "air_util_tx": self.air_util_tx,
+            "traces_detected": self.traces_detected,
+            "telemetry_count": self.telemetry_count,
             "last_heard": self.last_heard,
         }
 
@@ -243,12 +268,17 @@ class Node:
                 fav = row.get('is_favorite')
                 if fav is not None:
                     self.is_favorite = bool(fav)
+                wat = row.get('is_watched')
+                if wat is not None:
+                    self.is_watched = bool(wat)
                 self.update_metadata({
                     "name": row.get('name', None),
                     "num": row.get('num', None),
                     "short_name": row.get('short_name', None),
                     "mac_addr": row.get('mac_addr', None),
                     "hw_model": row.get('hw_model', None),
+                    "is_favorite": self.is_favorite,
+                    "is_watched": self.is_watched,
                     "snr": row.get('snr', None),
                     "rssi": row.get('rssi', None),
                     "public_key": row.get('public_key', None),
@@ -263,7 +293,11 @@ class Node:
                     "power_ina3": row.get('power_ina3', None),
                     "channel_util": row.get('channel_util', None),
                     "air_util_tx": row.get('air_util_tx', None),
+                    "traces_detected": row.get('traces_detected', 0),
+                    "telemetry_count": row.get('telemetry_count', 0),
                     "last_heard": row.get('last_heard', None),
                 })
+        except Exception:
+            pass
         except Exception:
             pass
