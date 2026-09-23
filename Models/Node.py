@@ -22,6 +22,8 @@ class Node:
     power_ina1 = None
     power_ina2 = None
     power_ina3 = None
+    channel_util = None
+    air_util_tx = None
     last_heard = None
 
 
@@ -57,6 +59,8 @@ class Node:
                 self.power_ina1 = row.get('power_ina1', self.power_ina1)
                 self.power_ina2 = row.get('power_ina2', self.power_ina2)
                 self.power_ina3 = row.get('power_ina3', self.power_ina3)
+                self.channel_util = row.get('channel_util', self.channel_util)
+                self.air_util_tx = row.get('air_util_tx', self.air_util_tx)
                 self.last_heard = row.get('last_heard', self.last_heard)
             else:
                 db.create_node_if_not_exists(self.id)
@@ -88,6 +92,20 @@ class Node:
                 self.voltage = dev_m.get('voltage')
             if dev_m.get('uptimeSeconds') is not None:
                 self.uptime = dev_m.get('uptimeSeconds')
+            ch_u = dev_m.get('channelUtilization') if dev_m.get('channelUtilization') is not None else dev_m.get('channel_utilization')
+            if ch_u is None:
+                ch_u = dev_m.get('channel_util')
+            if ch_u is not None:
+                try:
+                    self.channel_util = round(float(ch_u), 2)
+                except Exception:
+                    pass
+            a_tx = dev_m.get('airUtilTx') if dev_m.get('airUtilTx') is not None else dev_m.get('air_util_tx')
+            if a_tx is not None:
+                try:
+                    self.air_util_tx = round(float(a_tx), 2)
+                except Exception:
+                    pass
         
         if node_info.get('battery') is not None:
             self.battery = node_info.get('battery')
@@ -95,6 +113,16 @@ class Node:
             self.battery = node_info.get('batteryLevel')
         if node_info.get('voltage') is not None:
             self.voltage = node_info.get('voltage')
+        if node_info.get('channel_util') is not None:
+            try:
+                self.channel_util = round(float(node_info.get('channel_util')), 2)
+            except Exception:
+                pass
+        if node_info.get('air_util_tx') is not None:
+            try:
+                self.air_util_tx = round(float(node_info.get('air_util_tx')), 2)
+            except Exception:
+                pass
 
         # Telemetría de potencia / sensores INA externos
         power_m = node_info.get('powerMetrics') or node_info.get('power_metrics') or {}
@@ -164,6 +192,10 @@ class Node:
                 db_update["power_ina2"] = self.power_ina2
             if self.power_ina3 is not None:
                 db_update["power_ina3"] = self.power_ina3
+            if self.channel_util is not None:
+                db_update["channel_util"] = self.channel_util
+            if self.air_util_tx is not None:
+                db_update["air_util_tx"] = self.air_util_tx
             if node_info.get('is_favorite') is True or node_info.get('isFavorite') is True:
                 db_update["is_favorite"] = 1
             db.update_node(self.id, db_update)
@@ -198,6 +230,8 @@ class Node:
             "power_ina1": self.power_ina1,
             "power_ina2": self.power_ina2,
             "power_ina3": self.power_ina3,
+            "channel_util": self.channel_util,
+            "air_util_tx": self.air_util_tx,
             "last_heard": self.last_heard,
         }
 
@@ -227,6 +261,8 @@ class Node:
                     "power_ina1": row.get('power_ina1', None),
                     "power_ina2": row.get('power_ina2', None),
                     "power_ina3": row.get('power_ina3', None),
+                    "channel_util": row.get('channel_util', None),
+                    "air_util_tx": row.get('air_util_tx', None),
                     "last_heard": row.get('last_heard', None),
                 })
         except Exception:

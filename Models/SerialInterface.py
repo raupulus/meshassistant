@@ -465,6 +465,16 @@ class SerialInterface:
                             db_data['power_ina2'] = round(float(ina2), 2)
                         if ina3 is not None:
                             db_data['power_ina3'] = round(float(ina3), 2)
+                        if ch_util is not None:
+                            try:
+                                db_data['channel_util'] = round(float(ch_util), 2)
+                            except Exception:
+                                pass
+                        if air_tx is not None:
+                            try:
+                                db_data['air_util_tx'] = round(float(air_tx), 2)
+                            except Exception:
+                                pass
                         if packet.get('rxSnr') is not None:
                             db_data['snr'] = packet.get('rxSnr')
                         if packet.get('rxRssi') is not None:
@@ -762,6 +772,8 @@ class SerialInterface:
                     "hops": fromNodeInfo.hops,
                     "battery": fromNodeInfo.battery,
                     "voltage": fromNodeInfo.voltage,
+                    "channel_util": fromNodeInfo.channel_util,
+                    "air_util_tx": fromNodeInfo.air_util_tx,
                     "last_heard": fromNodeInfo.last_heard,
                 })
 

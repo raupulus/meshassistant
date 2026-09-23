@@ -103,6 +103,8 @@ def _execute_schema(conn: sqlite3.Connection) -> None:
             traces_detected INTEGER NOT NULL DEFAULT 0,
             battery REAL,
             voltage REAL,
+            channel_util REAL,
+            air_util_tx REAL,
             power_ina1 REAL,
             power_ina2 REAL,
             power_ina3 REAL,
@@ -375,6 +377,12 @@ def _execute_schema(conn: sqlite3.Connection) -> None:
         conn.commit()
     if not _has_column('nodes', 'power_ina3'):
         conn.execute('ALTER TABLE nodes ADD COLUMN power_ina3 REAL NULL')
+        conn.commit()
+    if not _has_column('nodes', 'channel_util'):
+        conn.execute('ALTER TABLE nodes ADD COLUMN channel_util REAL NULL')
+        conn.commit()
+    if not _has_column('nodes', 'air_util_tx'):
+        conn.execute('ALTER TABLE nodes ADD COLUMN air_util_tx REAL NULL')
         conn.commit()
 
     # Create indexes if not exist

@@ -835,6 +835,8 @@ class MeshDashboard {
           if (data.power_ina1 !== undefined) node.power_ina1 = data.power_ina1;
           if (data.power_ina2 !== undefined) node.power_ina2 = data.power_ina2;
           if (data.power_ina3 !== undefined) node.power_ina3 = data.power_ina3;
+          if (data.channel_util !== undefined) node.channel_util = data.channel_util;
+          if (data.air_util_tx !== undefined) node.air_util_tx = data.air_util_tx;
           this.renderNodesTable();
         }
         break;
@@ -1568,6 +1570,15 @@ class MeshDashboard {
           valA = tA;
           valB = tB;
         }
+      } else if (field === "channel_util") {
+        const hasA = (a.channel_util !== undefined && a.channel_util !== null) || (a.air_util_tx !== undefined && a.air_util_tx !== null);
+        const hasB = (b.channel_util !== undefined && b.channel_util !== null) || (b.air_util_tx !== undefined && b.air_util_tx !== null);
+        if (hasA !== hasB) {
+          // Nodos sin métricas de canal van siempre al final
+          return hasA ? -1 : 1;
+        }
+        valA = a.channel_util !== undefined && a.channel_util !== null ? Number(a.channel_util) : (a.air_util_tx !== undefined && a.air_util_tx !== null ? Number(a.air_util_tx) : -999);
+        valB = b.channel_util !== undefined && b.channel_util !== null ? Number(b.channel_util) : (b.air_util_tx !== undefined && b.air_util_tx !== null ? Number(b.air_util_tx) : -999);
       } else if (field === "snr" || field === "hops" || field === "uptime") {
         const hasA = valA !== undefined && valA !== null;
         const hasB = valB !== undefined && valB !== null;
@@ -1666,6 +1677,23 @@ class MeshDashboard {
       const hops = n.hops !== undefined && n.hops !== null ? n.hops : "--";
       const nodeId = n.id || n.node_id;
 
+      // Carga de canal (ChUtil) y tiempo de emisión al aire (Tx)
+      let loadCell = `<span style="color: var(--text-dim); font-size: 0.8rem;">--</span>`;
+      const hasCh = n.channel_util !== undefined && n.channel_util !== null;
+      const hasTx = n.air_util_tx !== undefined && n.air_util_tx !== null;
+      if (hasCh || hasTx) {
+        const chVal = hasCh ? Number(n.channel_util).toFixed(1) : "--";
+        const txVal = hasTx ? Number(n.air_util_tx).toFixed(1) : "--";
+        const chNum = hasCh ? Number(n.channel_util) : 0;
+        let loadColor = "var(--text-main)";
+        if (chNum >= 40) {
+          loadColor = "var(--danger, #ff4d4f)";
+        } else if (chNum >= 20) {
+          loadColor = "var(--warning, #faad14)";
+        }
+        loadCell = `<div style="font-size: 0.85rem; line-height: 1.2;" title="Ocupación de canal: ${chVal}% | Tiempo de transmisión: ${txVal}%"><span style="font-weight: 600; color: ${loadColor};">${chVal}%</span><span style="color: var(--text-dim); font-size: 0.75rem;"> / ${txVal}%</span></div>`;
+      }
+
       // Traceroutes emitidos detectados
       const tracesCount = n.traces_detected ? Number(n.traces_detected) : 0;
       const tracesCell = tracesCount > 0
@@ -1696,6 +1724,7 @@ class MeshDashboard {
           <td>${hops}</td>
           <td>${battery}</td>
           <td>${snr}</td>
+          <td>${loadCell}</td>
           <td>${tracesCell}</td>
           <td style="font-size: 0.8rem; color: var(--text-muted);">${lastHeardStr}</td>
           <td style="font-size: 0.8rem; color: var(--text-dim);">${createdAtStr}</td>

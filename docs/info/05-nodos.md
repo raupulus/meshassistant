@@ -31,17 +31,18 @@ node.refresh_from_db()     # recarga desde BD
 ## Campos
 
 `id`, `name`, `num`, `short_name`, `mac_addr`, `hw_model`, `role`, `is_favorite`, `snr`,
-`rssi`, `public_key`, `hops`, `hop_start`, `uptime`, `via_mqtt`, `battery`, `voltage`, `power_ina1`, `power_ina2`, `power_ina3`, `last_heard`, `created_at`, `updated_at`.
+`rssi`, `public_key`, `hops`, `hop_start`, `uptime`, `via_mqtt`, `battery`, `voltage`,
+`power_ina1`, `power_ina2`, `power_ina3`, `channel_util`, `air_util_tx`, `last_heard`, `created_at`, `updated_at`.
 
 Valores por defecto: `name='Desconocido'`, `short_name='N/A'`, `via_mqtt=False`,
-señales y voltajes INA en `None`.
+señales, métricas de canal y voltajes INA en `None`.
 
 ## Quién crea/actualiza nodos
 
 - `SerialInterface.get_nodes()` — al conectar, carga toda la lista del nodo local.
 - `SerialInterface.on_receive_user()` — al recibir info de usuario de un nodo.
 - `SerialInterface.on_receive_text()` — al recibir un mensaje (actualiza señal, saltos, `via_mqtt`, etc.).
-- `SerialInterface.on_receive_data()` / `on_node_update()` — al recibir paquetes de telemetría (`deviceMetrics` y `powerMetrics`), persistiendo nivel de batería, voltaje, lecturas de sensores de potencia INA (`power_ina1/2/3`) y uptime.
+- `SerialInterface.on_receive_data()` / `on_node_update()` — al recibir paquetes de telemetría (`deviceMetrics` y `powerMetrics`), persistiendo nivel de batería, voltaje, saturación de canal (`channel_util`), tiempo de transmisión (`air_util_tx`), lecturas de sensores de potencia INA (`power_ina1/2/3`) y uptime.
 - `SerialInterface.request_node_info(destination_id)` — solicita a un nodo por radio LoRa que emita sus metadatos (`NODEINFO_APP`).
 
 ## Relación con traces

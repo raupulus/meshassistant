@@ -65,8 +65,9 @@ La aplicación web está estructurada como una SPA (Single Page Application) rea
   - `Solo RF`: Excluye tráfico que llega por pasarelas MQTT.
   - `Favoritos ⭐`: Nodos destacados persistidos en SQLite.
 - **Paginación Ágil:** Selector de 50, 100, 250 por página o "Ver todos", manteniendo el censo completo en memoria.
-- **Ordenación Multidimensional Inteligente:** Posibilidad de ordenar por favoritos, rol, nombre, alias, saltos, batería (incluyendo mediciones INA), SNR, Traceroutes detectados (`traces_detected`), última señal o primera vez visto, manteniendo siempre los nodos con dato real arriba y los nulos al final.
+- **Ordenación Multidimensional Inteligente:** Posibilidad de ordenar por favoritos, rol, nombre, alias, saltos, batería (incluyendo mediciones INA), saturación de canal y emisión (`Carga (Ch/Tx)`), SNR, Traceroutes detectados (`traces_detected`), última señal o primera vez visto, manteniendo siempre los nodos con dato real arriba y los nulos al final.
 - **Detalle de Columnas:**
+  - **Carga (Ch/Tx):** Ocupación instantánea del canal en porcentaje (`chutil %`) y tiempo empleado en el aire transmitiendo (`tx %`), con tooltip descriptivo y realce de colorimetría para nodos bajo alta carga (≥20% aviso, ≥40% alerta). Cabecera ordenable para identificar de un vistazo los nodos con mayor saturación de la malla.
   - **Traces:** Contador de paquetes de traceroute emitidos por ese nodo (`📍 X`), ordenable directamente haciendo clic en la cabecera.
   - **Primera Vez:** Fecha en que el nodo fue descubierto por primera vez (`DD/MM/YYYY`).
   - **Última Señal:** Formateo dinámico (`HH:MM:SS` para hoy / `DD/MM HH:MM` para días previos).

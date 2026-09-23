@@ -375,7 +375,8 @@ class Database:
                 """
                 SELECT node_id, name, num, short_name, mac_addr, hw_model, role, is_favorite,
                        snr, rssi, public_key, hops, hop_start, uptime, via_mqtt,
-                       battery, voltage, power_ina1, power_ina2, power_ina3, last_heard, traces_detected, created_at, updated_at
+                       battery, voltage, power_ina1, power_ina2, power_ina3, channel_util, air_util_tx,
+                       last_heard, traces_detected, created_at, updated_at
                 FROM nodes
                 WHERE node_id = ?
                 """,
@@ -393,7 +394,8 @@ class Database:
                 """
                 SELECT node_id, name, num, short_name, mac_addr, hw_model, role, is_favorite,
                        snr, rssi, public_key, hops, hop_start, uptime, via_mqtt,
-                       battery, voltage, power_ina1, power_ina2, power_ina3, last_heard, traces_detected, created_at, updated_at
+                       battery, voltage, power_ina1, power_ina2, power_ina3, channel_util, air_util_tx,
+                       last_heard, traces_detected, created_at, updated_at
                 FROM nodes
                 WHERE UPPER(node_id) = UPPER(?)
                    OR UPPER(short_name) = UPPER(?)
@@ -439,7 +441,7 @@ class Database:
             query = """
                 SELECT node_id, name, num, short_name, mac_addr, hw_model, role, is_favorite,
                        snr, rssi, public_key, hops, hop_start, uptime, via_mqtt, battery, voltage,
-                       power_ina1, power_ina2, power_ina3, last_heard, created_at, updated_at
+                       power_ina1, power_ina2, power_ina3, channel_util, air_util_tx, last_heard, created_at, updated_at
                 FROM nodes
                 WHERE (
                     role IN (2, 4, 9)
@@ -535,6 +537,8 @@ class Database:
             "power_ina1",
             "power_ina2",
             "power_ina3",
+            "channel_util",
+            "air_util_tx",
             "last_heard",
             "traces_detected",
         }
@@ -2030,7 +2034,8 @@ class Database:
             sql = """
                 SELECT node_id AS id, node_id, name, num, short_name, mac_addr, hw_model, role,
                        is_favorite, snr, rssi, hops, uptime, via_mqtt, battery, voltage,
-                       power_ina1, power_ina2, power_ina3, last_heard, traces_detected, created_at, updated_at
+                       power_ina1, power_ina2, power_ina3, channel_util, air_util_tx,
+                       last_heard, traces_detected, created_at, updated_at
                 FROM nodes
                 WHERE node_id IS NOT NULL AND trim(node_id) != '' AND node_id NOT IN ('None', 'null', 'Desconocido')
             """

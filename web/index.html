@@ -207,6 +207,7 @@
               <th style="cursor: pointer;" class="sort-header" data-sort="hops">Saltos <span class="sort-arrow">↕</span></th>
               <th style="cursor: pointer;" class="sort-header" data-sort="battery">Batería <span class="sort-arrow">↕</span></th>
               <th style="cursor: pointer;" class="sort-header" data-sort="snr">SNR / RSSI <span class="sort-arrow">↕</span></th>
+              <th style="cursor: pointer;" class="sort-header" data-sort="channel_util" title="Ocupación de canal (ChUtil %) y tiempo en el aire transmitiendo (Tx %)">Carga (Ch/Tx) <span class="sort-arrow">↕</span></th>
               <th style="cursor: pointer;" class="sort-header" data-sort="traces_detected">Traces <span class="sort-arrow">↕</span></th>
               <th style="cursor: pointer;" class="sort-header" data-sort="last_heard">Última Señal <span class="sort-arrow">↕</span></th>
               <th style="cursor: pointer;" class="sort-header" data-sort="created_at">Primera Vez <span class="sort-arrow">↕</span></th>
@@ -215,7 +216,7 @@
           </thead>
           <tbody id="nodes-tbody">
             <tr>
-              <td colspan="12" style="text-align: center; color: var(--text-dim); padding: 20px;">Cargando lista de nodos...</td>
+              <td colspan="13" style="text-align: center; color: var(--text-dim); padding: 20px;">Cargando lista de nodos...</td>
             </tr>
           </tbody>
         </table>
@@ -904,6 +905,6 @@
   <!-- Contenedor de Alertas Toast -->
   <div id="toast-container"></div>
 
-  <script src="app.js?v=2.9"></script>
+  <script src="app.js?v=3.0"></script>
 </body>
 </html>
