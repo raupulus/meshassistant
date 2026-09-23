@@ -24,6 +24,7 @@ node.refresh_from_db()     # recarga desde BD
 - Fusiona los campos presentes en `node_info` sobre los actuales (los ausentes se
   conservan).
 - Calcula `hops = hop_start - hop_limit` cuando ambos están disponibles.
+- **Preservación y Avance de `last_heard`:** Extrae `last_heard`, `lastHeard` o `rx_time` del paquete de radio recibido y garantiza que el timestamp del nodo avance siempre (`max`) sin retroceder jamás ni sobreescribirse con `None`.
 - **Protección de Favoritos y Vigilancia (`is_favorite`, `is_watched`):** Son preferencias del usuario fijadas desde el dashboard web (`Services/Gateway.py`). Los paquetes ordinarios recibidos por radio LoRa (telemetría, posición, `NODEINFO_APP`, mensajes) **nunca** sobrescriben ni eliminan el estado favorito o vigilado de un nodo. Solo se activan o desactivan explícitamente desde la interfaz o base de datos.
 - Persiste vía `Database.create_node_if_not_exists` + `Database.update_node`
   (también con `try/except` defensivo).

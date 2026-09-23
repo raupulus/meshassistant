@@ -101,6 +101,19 @@ class Node:
         self.uptime = node_info.get('uptime', self.uptime)
         self.via_mqtt = node_info.get('via_mqtt', self.via_mqtt)
         
+        # last_heard: actualizar si viene en node_info (last_heard, lastHeard o rx_time)
+        lh = node_info.get('last_heard') or node_info.get('lastHeard')
+        if lh is not None:
+            try:
+                self.last_heard = max(self.last_heard or 0, int(lh))
+            except Exception:
+                pass
+        elif node_info.get('rx_time') is not None:
+            try:
+                self.last_heard = max(self.last_heard or 0, int(node_info.get('rx_time')))
+            except Exception:
+                pass
+
         # Telemetría de batería si está presente
         dev_m = node_info.get('deviceMetrics') or node_info.get('device_metrics') or {}
         if isinstance(dev_m, dict):
@@ -202,8 +215,9 @@ class Node:
                 "via_mqtt": self.via_mqtt,
                 "battery": self.battery,
                 "voltage": self.voltage,
-                "last_heard": self.last_heard,
             }
+            if self.last_heard is not None:
+                db_update["last_heard"] = self.last_heard
             if self.power_ina1 is not None:
                 db_update["power_ina1"] = self.power_ina1
             if self.power_ina2 is not None:

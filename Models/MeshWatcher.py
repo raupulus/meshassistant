@@ -171,6 +171,21 @@ class MeshWatcher:
             log_p(f"[Watcher] Paquete descartado: nodo {short_name or name or from_id} está en DISCARDED_NODES", level="DEBUG")
             return True
 
+        # 2.2 Actualizar last_heard del nodo emisor en BD (presencia viva en la malla)
+        rx_ts = int(packet.get("rxTime") or time.time())
+        try:
+            db = Database()
+            db.touch_node_last_heard(
+                node_id=from_id,
+                last_heard=rx_ts,
+                short_name=short_name,
+                name=name,
+                snr=packet.get("rxSnr"),
+                rssi=packet.get("rxRssi"),
+            )
+        except Exception:
+            pass
+
         # 3. Si el nodo está marcado como ignorado, descartar inmediatamente
         if from_id in cls._ignored_nodes:
             log_p(f"[Watcher] Paquete descartado: nodo {from_id} está ignorado en bot", level="DEBUG")
@@ -432,9 +447,16 @@ class MeshWatcher:
         if cls.is_local_node(nid, name, short_name):
             return
 
-        # 1. Incrementar contador persistido en BD (+1 en nodes.traces_detected)
+        # 1. Incrementar contador persistido en BD (+1 en nodes.traces_detected) y actualizar last_heard
         try:
             db = Database()
+            rx_ts = int(packet.get("rxTime") or time.time()) if isinstance(packet, dict) else int(time.time())
+            db.touch_node_last_heard(
+                node_id=nid,
+                last_heard=rx_ts,
+                short_name=short_name,
+                name=name,
+            )
             db.increment_node_traces_detected(nid)
             try:
                 from Models.EventBroadcaster import broadcast_event

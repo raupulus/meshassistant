@@ -408,6 +408,36 @@ def _execute_schema(conn: sqlite3.Connection) -> None:
     conn.execute("DELETE FROM nodes WHERE node_id IS NULL OR trim(node_id) = '' OR node_id IN ('None', 'null', 'Desconocido')")
     conn.execute("DELETE FROM commands_sent WHERE node_id IS NULL OR trim(node_id) = '' OR command IS NULL OR trim(command) IN ('', '/', '!')")
     conn.execute("UPDATE auto_reported_nodes SET reason_desc = REPLACE(reason_desc, ' (máx recomendado 3-5)', '') WHERE reason_desc LIKE '%(máx recomendado%'")
+    
+    # Sincronización de last_heard para nodos existentes:
+    # 1. Si last_heard es NULL, poblar a partir de updated_at
+    # 2. Si auto_reported_nodes tiene un last_detected_at más reciente, sincronizarlo
+    if _has_column('nodes', 'last_heard'):
+        conn.execute("UPDATE nodes SET last_heard = strftime('%s', updated_at) WHERE last_heard IS NULL AND updated_at IS NOT NULL")
+        conn.execute(
+            """
+            UPDATE nodes
+            SET last_heard = strftime('%s', (
+                SELECT MAX(last_detected_at)
+                FROM auto_reported_nodes
+                WHERE auto_reported_nodes.node_id = nodes.node_id
+            )),
+            updated_at = (
+                SELECT MAX(last_detected_at)
+                FROM auto_reported_nodes
+                WHERE auto_reported_nodes.node_id = nodes.node_id
+            )
+            WHERE node_id IN (SELECT node_id FROM auto_reported_nodes)
+              AND (
+                  last_heard IS NULL 
+                  OR last_heard < strftime('%s', (
+                      SELECT MAX(last_detected_at)
+                      FROM auto_reported_nodes
+                      WHERE auto_reported_nodes.node_id = nodes.node_id
+                  ))
+              )
+            """
+        )
     conn.commit()
 
     # Migración idempotente para adaptar la tabla traces existente

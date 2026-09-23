@@ -292,6 +292,27 @@ class SerialInterface:
 
             decoded = packet.get('decoded', {})
             pos = decoded.get('position', {}) if isinstance(decoded, dict) else {}
+
+            if from_id:
+                rx_ts = int(pos.get('time') or packet.get('rxTime') or time.time())
+                try:
+                    from Models.Database import Database
+                    Database().touch_node_last_heard(
+                        node_id=from_id,
+                        last_heard=rx_ts,
+                        short_name=s_name,
+                        name=l_name,
+                        snr=packet.get('rxSnr'),
+                        rssi=packet.get('rxRssi'),
+                    )
+                    if from_id in self.node_dict:
+                        self.node_dict[from_id].last_heard = max(
+                            getattr(self.node_dict[from_id], 'last_heard', 0) or 0,
+                            rx_ts,
+                        )
+                except Exception:
+                    pass
+
             if pos:
                 from Models.EventBroadcaster import broadcast_event
                 lat = pos.get('latitude')
@@ -348,6 +369,7 @@ class SerialInterface:
 
                 log_p(f"Nodo Actualizado: {user.get('longName', None)} ({id})")
 
+                rx_time = int(packet.get('rxTime') or time.time())
                 fromNodeInfo.update_metadata({
                     "name": user.get('longName', None),
                     "num": nodenumber,
@@ -360,7 +382,21 @@ class SerialInterface:
                     "rssi": packet.get('rxRssi', None),
                     "hop_limit": packet.get('hopLimit', None),
                     "hop_start": packet.get('hopStart', None),
+                    "last_heard": rx_time,
                 })
+
+                try:
+                    from Models.Database import Database
+                    Database().touch_node_last_heard(
+                        node_id=id,
+                        last_heard=rx_time,
+                        short_name=user.get('shortName'),
+                        name=user.get('longName'),
+                        snr=packet.get('rxSnr'),
+                        rssi=packet.get('rxRssi'),
+                    )
+                except Exception:
+                    pass
 
                 try:
                     from Models.EventBroadcaster import broadcast_event
@@ -379,6 +415,7 @@ class SerialInterface:
                         "is_watched": fromNodeInfo.is_watched,
                         "telemetry_count": fromNodeInfo.telemetry_count,
                         "traces_detected": fromNodeInfo.traces_detected,
+                        "last_heard": fromNodeInfo.last_heard,
                     })
                 except Exception:
                     pass
@@ -409,6 +446,26 @@ class SerialInterface:
             if is_node_discarded(node_id=from_node_id, short_name=s_name, name=l_name, interface=interface or self.interface):
                 log_p(f"[Discard] Paquete data descartado de nodo {from_node_id}", level="DEBUG")
                 return
+
+            rx_time = int(packet.get('rxTime') or time.time())
+            if from_node_id:
+                try:
+                    from Models.Database import Database
+                    Database().touch_node_last_heard(
+                        node_id=from_node_id,
+                        last_heard=rx_time,
+                        short_name=s_name,
+                        name=l_name,
+                        snr=packet.get('rxSnr'),
+                        rssi=packet.get('rxRssi'),
+                    )
+                    if from_node_id in self.node_dict:
+                        self.node_dict[from_node_id].last_heard = max(
+                            getattr(self.node_dict[from_node_id], 'last_heard', 0) or 0,
+                            rx_time,
+                        )
+                except Exception:
+                    pass
 
             # Comprobar vigilancia y descarte de ignorados
             try:
@@ -456,7 +513,7 @@ class SerialInterface:
                     try:
                         from Models.Database import Database
                         db = Database()
-                        db_data = {}
+                        db_data = {'last_heard': rx_time}
                         if battery_lvl is not None:
                             db_data['battery'] = battery_lvl
                         if voltage_val is not None:
@@ -765,6 +822,8 @@ class SerialInterface:
                 fromNodeInfo = Node(node_id)
                 self.node_dict[node_id] = fromNodeInfo
 
+            lh = node.get('lastHeard') or node.get('last_heard') or int(time.time())
+            node['last_heard'] = int(lh)
             fromNodeInfo.update_metadata(node)
             log_p(f"Nodo reactivo actualizado: {fromNodeInfo.name} ({node_id})", level="DEBUG")
 
@@ -1334,6 +1393,7 @@ class SerialInterface:
                 except Exception:
                     pass
 
+                rx_time = int(packet.get('rxTime') or time.time())
                 if fromNodeInfo:
                     fromNodeInfo.update_metadata({
                         "num": packet.get('from', None),
@@ -1343,6 +1403,7 @@ class SerialInterface:
                         "hop_start": packet.get('hopStart', None),
                         "is_direct": is_direct,
                         "via_mqtt": packet.get('viaMqtt', False),
+                        "last_heard": rx_time,
                     })
 
 

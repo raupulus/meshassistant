@@ -597,6 +597,69 @@ class Database:
             )
             conn.commit()
 
+    def touch_node_last_heard(
+        self,
+        node_id: str,
+        last_heard: Optional[int] = None,
+        short_name: Optional[str] = None,
+        name: Optional[str] = None,
+        hops: Optional[int] = None,
+        snr: Optional[float] = None,
+        rssi: Optional[float] = None,
+    ) -> None:
+        """Actualiza last_heard y updated_at de un nodo al recibir cualquier paquete o señal de radio.
+        
+        Garantiza que el nodo exista en la tabla nodes y que last_heard nunca retroceda en el tiempo.
+        """
+        if not node_id or str(node_id).strip() in ("", "None", "null", "Desconocido", "none"):
+            return
+        clean_id = str(node_id).strip()
+        if is_node_discarded(node_id=clean_id, short_name=short_name, name=name):
+            return
+
+        ts = int(last_heard) if last_heard is not None else int(datetime.now().timestamp())
+        now_iso = datetime.now().isoformat(timespec="seconds")
+
+        with closing(self._connect()) as conn:
+            conn.execute(
+                "INSERT OR IGNORE INTO nodes (node_id, last_heard, created_at, updated_at) VALUES (?, ?, ?, ?)",
+                (clean_id, ts, now_iso, now_iso),
+            )
+            set_parts = ["last_heard = MAX(COALESCE(last_heard, 0), ?)", "updated_at = ?"]
+            params: List[Any] = [ts, now_iso]
+
+            if short_name:
+                set_parts.append("short_name = COALESCE(short_name, ?)")
+                params.append(short_name)
+            if name:
+                set_parts.append("name = COALESCE(name, ?)")
+                params.append(name)
+            if hops is not None:
+                try:
+                    set_parts.append("hops = ?")
+                    params.append(int(hops))
+                except Exception:
+                    pass
+            if snr is not None:
+                try:
+                    set_parts.append("snr = ?")
+                    params.append(float(snr))
+                except Exception:
+                    pass
+            if rssi is not None:
+                try:
+                    set_parts.append("rssi = ?")
+                    params.append(float(rssi))
+                except Exception:
+                    pass
+
+            params.append(clean_id)
+            conn.execute(
+                f"UPDATE nodes SET {', '.join(set_parts)} WHERE node_id = ?",
+                tuple(params),
+            )
+            conn.commit()
+
     def increment_node_traces_detected(self, node_id: str) -> int:
         """Incrementa en 1 el contador de traceroutes emitidos y detectados por este nodo."""
         if not node_id or str(node_id).strip() in ("", "None", "null", "Desconocido", "none"):
