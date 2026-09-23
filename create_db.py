@@ -631,12 +631,21 @@ def _migrate_timestamps_to_utc(conn: sqlite3.Connection) -> None:
                 if new_val != old_val:
                     cur.execute(f"UPDATE {table} SET {col} = ? WHERE rowid = ?", (new_val, rowid))
 
-    # Poblar last_heard en nodes si es NULL o 0 basado en updated_at ya migrado a UTC
+    # Sincronizar y corregir last_heard en nodes:
+    # 1. Si last_heard es NULL o 0, poblar desde updated_at ya en UTC.
+    # 2. Si last_heard es mayor que updated_at (anomalía originada por la antigua interpretación
+    #    de strings naive en hora local como UTC en SQLite), corregirlo fijándolo al epoch UTC de updated_at.
     try:
         conn.execute("""
             UPDATE nodes
             SET last_heard = CAST(strftime('%s', updated_at) AS INTEGER)
-            WHERE (last_heard IS NULL OR last_heard = 0) AND updated_at IS NOT NULL AND updated_at LIKE '%Z'
+            WHERE updated_at IS NOT NULL 
+              AND updated_at LIKE '%Z'
+              AND (
+                  last_heard IS NULL 
+                  OR last_heard = 0 
+                  OR last_heard > CAST(strftime('%s', updated_at) AS INTEGER)
+              )
         """)
     except Exception:
         pass

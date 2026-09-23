@@ -738,7 +738,19 @@ class GatewayService:
                     raise ValueError("Parámetro 'node_id' obligatorio")
                 is_blocked = bool(params.get("is_blocked", True))
                 ok = self.db.set_node_fw_blocked(str(node_id), is_blocked)
-                response["data"] = {"node_id": node_id, "is_blocked": is_blocked, "success": ok}
+            elif action == "reset_security_stats":
+                self.db.reset_security_stats()
+                try:
+                    from Models.MeshWatcher import MeshWatcher
+                    MeshWatcher.reset_stats()
+                except Exception:
+                    pass
+                try:
+                    from Models.EventBroadcaster import broadcast_event
+                    broadcast_event("security_stats_reset", {})
+                except Exception:
+                    pass
+                response["data"] = {"reset": True, "message": "Estadísticas y alertas de seguridad reiniciadas con éxito."}
 
             elif action == "restart_serial":
                 response["data"] = {"requested": True, "message": "Solicitud de reinicio de enlace serie registrada"}

@@ -833,7 +833,30 @@ Encola una solicitud `TELEMETRY_APP` por radio LoRa dirigida al nodo especificad
     "is_blocked": true,
     "success": true
   },
+```
+
+### 3.13. `reset_security_stats` (Reiniciar Estadísticas de Seguridad)
+- **Petición:**
+```json
+{
+  "action": "reset_security_stats",
+  "req_id": "rss_01",
+  "params": {}
+}
+```
+- **Respuesta:**
+```json
+{
+  "type": "response",
+  "action": "reset_security_stats",
+  "req_id": "rss_01",
+  "success": true,
+  "data": {
+    "reset": true,
+    "message": "Estadísticas y alertas de seguridad reiniciadas con éxito."
+  },
   "error": null
 }
 ```
+
 

@@ -530,3 +530,10 @@ class MeshWatcher:
                     pass
             except Exception as e:
                 log_p(f"[Watcher] Error registrando exceso horario de traceroutes: {e}", level="WARN")
+
+    @classmethod
+    def reset_stats(cls) -> None:
+        """Limpia los historiales en memoria RAM de telemetría y traceroutes."""
+        cls._last_telemetry.clear()
+        cls._trace_history.clear()
+        log_p("[Watcher] Estadísticas e historiales en memoria reiniciados", level="DEBUG")

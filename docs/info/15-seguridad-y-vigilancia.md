@@ -115,6 +115,11 @@ En la pestaña **🛡️ Seguridad** del Dashboard Web se dispone de control dir
 ### C) `🛡️ Bloqueo Manual Administrativo`
 - Formulario para bloquear un nodo por ID o nombre con duración configurable (1 hora, 24 horas, 7 días o Permanente).
 
+### D) `🗑️ Reiniciar Estadísticas de Seguridad`
+- Botón con modal de confirmación defensivo para poner a cero las estadísticas de vigilancia e incidencias pasadas.
+- **Alcance:** Elimina las filas de `auto_reported_nodes` y `abuse_logs`, y limpia el rastreo en memoria RAM de `MeshWatcher`.
+- **Preservación:** No borra los bloqueos activos de nodos (`blocked_nodes`) ni altera el censo de nodos ni ningún otro dato de la red.
+
 ---
 
 ## 5. API y Eventos WebSocket
@@ -124,7 +129,10 @@ La pasarela WiFi (`Services/Gateway.py`) expone las siguientes acciones:
 - **`get_auto_reported_nodes`**: `{ limit: 100, offset: 0, reason_code: "EXCESSIVE_HOPS" | null }` -> `{ auto_reported_nodes: [...], total: N }`
 - **`set_node_bot_ignored`**: `{ node_id: "!xxxxxxxx", is_ignored: true | false }` -> `{ success: true }`
 - **`set_node_fw_blocked`**: `{ node_id: "!xxxxxxxx", is_blocked: true | false }` -> `{ success: true }`
+- **`reset_security_stats`**: `{}` -> `{ reset: true, message: "..." }` (reinicia alertas de vigilancia y abusos sin tocar bloqueos).
 - **Eventos en tiempo real:**
   - `auto_report_event`: Emitido al detectar una nueva infracción de vigilancia.
   - `node_ignore_toggled`: Emitido al cambiar el estado de ignorado de un nodo.
   - `node_blocked`: Emitido ante disparos del sistema anti-abuso.
+  - `security_stats_reset`: Emitido al resetear las estadísticas para que todos los clientes conectados refresquen sus vistas.
+

@@ -114,6 +114,7 @@ class MeshDashboard {
     this.blockReason = document.getElementById("block-reason");
     this.blockDuration = document.getElementById("block-duration");
     this.btnRefreshSecurity = document.getElementById("btn-refresh-security");
+    this.btnResetSecurityStats = document.getElementById("btn-reset-security-stats");
     this.blockedNodesTbody = document.getElementById("blocked-nodes-tbody");
     this.abuseLogsTbody = document.getElementById("abuse-logs-tbody");
     this.autoReportedTbody = document.getElementById("auto-reported-tbody");
@@ -323,6 +324,20 @@ class MeshDashboard {
       this.btnRefreshSecurity.addEventListener("click", () => {
         this.loadSecurityData();
         this.showToast("Listas de seguridad actualizadas");
+      });
+    }
+
+    // Botón reiniciar estadísticas de seguridad
+    if (this.btnResetSecurityStats) {
+      this.btnResetSecurityStats.addEventListener("click", () => {
+        const ok = confirm(
+          "⚠️ ATENCIÓN: ¿Deseas reiniciar por completo todas las estadísticas y registros de seguridad?\n\n" +
+          "Esta acción eliminará el histórico de alertas de la malla (telemetrías excesivas, exceso de saltos, traceroutes rápidos y registros de abusos).\n\n" +
+          "Los bloqueos activos y los nodos de la red NO se eliminarán."
+        );
+        if (ok) {
+          this.sendAction("reset_security_stats", {});
+        }
       });
     }
 
@@ -917,6 +932,16 @@ class MeshDashboard {
       case "node_ignore_toggled":
         this.loadAutoReportedNodes();
         break;
+      case "security_stats_reset":
+        this.loadSecurityData();
+        for (const node of this.nodesMap.values()) {
+          node.auto_report_count = 0;
+          node.auto_report_reason = null;
+        }
+        this.renderNodesTable();
+        this.renderWatchCards();
+        this.renderRouters();
+        break;
       case "message_ack":
         this.showToast(`Mensaje entregado con éxito a ${data.dest}`);
         break;
@@ -1108,6 +1133,16 @@ class MeshDashboard {
         this.renderNodesTable();
         this.renderWatchCards();
       }
+    } else if (resp.action === "reset_security_stats") {
+      this.showToast("Estadísticas y alertas de seguridad reiniciadas con éxito", "success");
+      this.loadSecurityData();
+      for (const node of this.nodesMap.values()) {
+        node.auto_report_count = 0;
+        node.auto_report_reason = null;
+      }
+      this.renderNodesTable();
+      this.renderWatchCards();
+      this.renderRouters();
     }
   }
 

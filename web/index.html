@@ -695,7 +695,12 @@
           <h2 style="font-size: 1.2rem;">Control Anti-Abuso y Bloqueos de Nodos</h2>
           <p style="font-size: 0.85rem; color: var(--text-dim); margin-top: 2px;">Protección contra saturación de la malla LoRa y gestión de listas negras</p>
         </div>
-        <button class="btn-secondary" id="btn-refresh-security">Actualizar Listas</button>
+        <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+          <button class="btn-secondary" id="btn-refresh-security">Actualizar Listas</button>
+          <button class="btn-secondary" id="btn-reset-security-stats" style="color: var(--danger); border-color: rgba(239, 68, 68, 0.4);" title="Reiniciar el historial de alertas y estadísticas de seguridad">
+            🗑️ Reiniciar Estadísticas
+          </button>
+        </div>
       </div>
 
       <!-- Tabla de Nodos Auto-reportados por Mala Praxis (Vigilancia) -->

@@ -2765,3 +2765,14 @@ class Database:
             )
             conn.commit()
             return (cur.rowcount or 0) > 0
+
+    def reset_security_stats(self) -> None:
+        """Reinicia las estadísticas y registros de alertas de vigilancia de seguridad.
+
+        Elimina los registros de incidencias en auto_reported_nodes y el registro de eventos en abuse_logs.
+        Preserva la lista de bloqueos (blocked_nodes) y todos los datos generales de los nodos.
+        """
+        with closing(self._connect()) as conn:
+            conn.execute("DELETE FROM auto_reported_nodes")
+            conn.execute("DELETE FROM abuse_logs")
+            conn.commit()

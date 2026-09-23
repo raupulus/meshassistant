@@ -121,6 +121,47 @@ class TestLastHeardSync(unittest.TestCase):
         # La migración convierte la hora local naive (Madrid CEST UTC+2) a UTC estricto con sufijo Z
         self.assertEqual(n["updated_at"], "2026-09-23T06:31:30Z")
 
+    def test_migration_corrects_future_last_heard(self):
+        """Comprueba que last_heard mayor que updated_at (anomalía por offset naive antiguo) se corrige."""
+        node_id = "!future_node"
+        self.db.create_node_if_not_exists(node_id, {"name": "Future Test Node"})
+        with self.db._connect() as conn:
+            # 1790162338 representa 11:18:58 UTC (+2h de desfase respecto a 09:18:58Z)
+            conn.execute("UPDATE nodes SET last_heard = 1790162338, updated_at = '2026-09-23T09:18:58Z' WHERE node_id = ?", (node_id,))
+            conn.commit()
+
+        # Ejecutar migración idempotente
+        ensure_database(self.db_path)
+
+        n = self.db.get_node(node_id)
+        self.assertIsNotNone(n)
+        # 1790155138 es el epoch exacto de 2026-09-23T09:18:58Z
+        self.assertEqual(n["last_heard"], 1790155138)
+
+    def test_reset_security_stats(self):
+        """Verifica que reset_security_stats limpia alertas y abusos sin tocar bloqueos ni nodos."""
+        node_id = "!node_abuse"
+        self.db.create_node_if_not_exists(node_id, {"name": "Abuse Node"})
+        self.db.record_auto_reported_node(node_id, "EXCESSIVE_HOPS", "Saltos")
+        self.db.log_abuse(node_id, "ping", "bloqueo", "Spam")
+        self.db.block_node(node_id, "Abuse Node", "manual", "Bloqueo admin")
+
+        # Verificar que se crearon los registros
+        self.assertGreater(self.db.count_auto_reported_nodes(), 0)
+        self.assertGreater(len(self.db.get_abuse_logs()), 0)
+        self.assertEqual(len(self.db.get_blocked_nodes(active_only=False)), 1)
+
+        # Reiniciar estadísticas de seguridad
+        self.db.reset_security_stats()
+
+        # Alertas y registros de abusos deben estar vacíos
+        self.assertEqual(self.db.count_auto_reported_nodes(), 0)
+        self.assertEqual(len(self.db.get_abuse_logs()), 0)
+
+        # La lista de bloqueos y el nodo en nodes deben seguir intactos
+        self.assertEqual(len(self.db.get_blocked_nodes(active_only=False)), 1)
+        self.assertIsNotNone(self.db.get_node(node_id))
+
 
 if __name__ == "__main__":
     unittest.main()
