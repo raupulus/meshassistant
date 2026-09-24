@@ -858,9 +858,34 @@ class GatewayService:
                 packet_obj = self.db.get_captured_packet_by_id(int(p_id))
                 response["data"] = {"packet": packet_obj}
 
+            elif action == "delete_captured_packet":
+                p_id = params.get("id")
+                if not p_id:
+                    raise ValueError("Parámetro 'id' obligatorio")
+                ok = self.db.delete_captured_packet(int(p_id))
+                try:
+                    from Models.EventBroadcaster import broadcast_event
+                    broadcast_event("packet_deleted", {"id": int(p_id)})
+                except Exception:
+                    pass
+                response["data"] = {"id": int(p_id), "deleted": ok}
+
             elif action == "clear_captured_packets":
                 deleted_count = self.db.clear_captured_packets()
                 response["data"] = {"cleared": True, "deleted_count": deleted_count}
+
+            elif action == "update_captured_packet_note":
+                p_id = params.get("id")
+                if not p_id:
+                    raise ValueError("Parámetro 'id' obligatorio")
+                note_text = params.get("note")
+                ok = self.db.update_captured_packet_note(int(p_id), note_text)
+                try:
+                    from Models.EventBroadcaster import broadcast_event
+                    broadcast_event("packet_note_updated", {"id": int(p_id), "note": note_text})
+                except Exception:
+                    pass
+                response["data"] = {"id": int(p_id), "note": note_text, "success": ok}
 
             elif action == "restart_serial":
                 response["data"] = {"requested": True, "message": "Solicitud de reinicio de enlace serie registrada"}

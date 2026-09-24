@@ -146,6 +146,8 @@ db = Database(db_path="...")    # ruta explícita (tests)
 | `get_captured_packets(limit=100, offset=0, to_node=None, from_node=None, is_encrypted=None, is_admin=None, channel=None)` | Consulta paquetes capturados con paginación y filtros por nodo origen/destino, cifrado, admin PKI y canal. |
 | `count_captured_packets(to_node=None, from_node=None, is_encrypted=None, is_admin=None, channel=None)` | Devuelve el total numérico de paquetes capturados según los filtros. |
 | `get_captured_packet_by_id(packet_id)` | Recupera los detalles completos de un paquete capturado por su identificador. |
+| `update_captured_packet_note(packet_id, note)` | Actualiza o elimina la anotación personalizada asociada a un paquete capturado. |
+| `delete_captured_packet(packet_id)` | Elimina individualmente un paquete capturado concreto de la base de datos por su ID. |
 | `clear_captured_packets()` | Vacía y reinicia por completo la tabla de paquetes capturados. |
 
 ### Cola (pendiente)

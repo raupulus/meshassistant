@@ -370,7 +370,8 @@ def _execute_schema(conn: sqlite3.Connection) -> None:
             payload_text TEXT NULL,
             payload_size INTEGER NOT NULL DEFAULT 0,
             portnum TEXT NULL,
-            rule_id INTEGER NULL
+            rule_id INTEGER NULL,
+            note TEXT NULL
         );
 
         CREATE INDEX IF NOT EXISTS idx_captured_created ON captured_packets(created_at DESC);
@@ -447,6 +448,9 @@ def _execute_schema(conn: sqlite3.Connection) -> None:
         conn.commit()
     if not _has_column('nodes', 'capture_criteria'):
         conn.execute('ALTER TABLE nodes ADD COLUMN capture_criteria TEXT NULL')
+        conn.commit()
+    if not _has_column('captured_packets', 'note'):
+        conn.execute('ALTER TABLE captured_packets ADD COLUMN note TEXT NULL')
         conn.commit()
 
     # Create indexes if not exist

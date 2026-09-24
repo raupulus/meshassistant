@@ -85,14 +85,21 @@ Cada paquete capturado se descompone celda por celda en la tabla `captured_packe
 
 1. **Pestaña "Cap." (Icono `📷`):**
    - Situada en el menú lateral bajo "Comandos".
-   - Formulario colapsable para crear/editar criterios con autocompletado de nodos conocidos vía `datalist`.
-   - Listado visual de reglas activas con botones para pausar (`⏸️`), reanudar (`▶️`) o eliminar (`🗑️`).
-2. **Acceso Rápido desde Nodos y Routers:**
+   - Formulario colapsable para crear y editar criterios con autocompletado de nodos conocidos vía `datalist`.
+   - Listado visual de reglas con botones para pausar (`⏸️`), reanudar (`▶️`), editar (`✏️`) o eliminar (`🗑️`).
+2. **Edición de Reglas de Captura:**
+   - Pulsando el botón `✏️` en cualquier regla, el formulario carga automáticamente todos sus parámetros (nombre, origen, destino, canal, cifrado, modo de payload), actualiza su título a *"Editar Criterio (Regla #X)"* y hace scroll suave hasta el formulario.
+   - Al guardar, la regla se actualiza en base de datos (`rule_id`) sin duplicarla.
+3. **Acceso Rápido desde Nodos y Routers:**
    - Botón **`📷`** en cada fila de la tabla de Nodos.
    - Botón **`📷 Cap.`** en cada tarjeta de Routers.
    - Ambos preconfiguran el destino en el formulario de captura y abren la pestaña de forma inmediata.
-3. **Visor de Tráfico en Tiempo Real:**
+4. **Visor de Tráfico y Acciones:**
    - Recepción reactiva por WebSocket con animación y alertas toast.
-   - Filtros por búsqueda de texto y tipo de paquete (*Admin PKI*, *Cifrados*, *Plano*).
-   - Modal de inspección completa con volcado hexadecimal estilo Wireshark (`Hex Dump`) y botón para copiar al portapapeles.
-   - Botón para vaciar el historial capturado con diálogo de confirmación.
+   - Filtros por búsqueda de texto (busca en IDs, nombres y también en las notas del operador) y tipo de paquete (*Admin PKI*, *Cifrados*, *Plano*).
+   - Modal de inspección completa con volcado hexadecimal estilo Wireshark (`Hex Dump`), visualización de notas con enlace directo a edición, y botón para copiar al portapapeles.
+   - **Notas del Operador (`📝`):** Cada paquete dispone de un botón de nota en su columna de acciones. Abre un diálogo modal para añadir, editar o borrar observaciones guardadas en `captured_packets.note`. Si tiene nota, se muestra una etiqueta interactiva bajo el destino.
+   - **Eliminación Individual de Paquetes (`❌`):** Si una trama capturada carece de interés para el operador, puede eliminarse directamente desde su fila mediante el botón con aspa roja (`❌`). Se despliega un modal de confirmación con los datos del paquete para evitar borrados accidentales, y tras confirmar se elimina permanentemente de SQLite y de la vista.
+   - **Vaciado Completo:** Botón `🗑️ Limpiar Histórico` para purgar todo el registro de capturas tras confirmación modal.
+
+

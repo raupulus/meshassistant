@@ -322,6 +322,30 @@ Emitido en tiempo real cada vez que una trama recibida por radio cumple los crit
     "payload_size": 8,
     "portnum": "ADMIN_APP"
   }
+```
+
+### 2.16. `packet_note_updated` (Anotación de Paquete Modificada)
+Emitido en tiempo real cuando un operador añade, edita o elimina la nota personalizada de un paquete capturado:
+```json
+{
+  "event": "packet_note_updated",
+  "ts": "2026-09-24T10:15:00Z",
+  "data": {
+    "id": 142,
+    "note": "Posible spoofing de telemetría"
+  }
+}
+```
+
+### 2.17. `packet_deleted` (Paquete Capturado Eliminado)
+Emitido en tiempo real cuando un operador elimina una trama del registro de capturas:
+```json
+{
+  "event": "packet_deleted",
+  "ts": "2026-09-24T10:20:00Z",
+  "data": {
+    "id": 142
+  }
 }
 ```
 
@@ -1128,5 +1152,60 @@ Encola una solicitud `TELEMETRY_APP` por radio LoRa dirigida al nodo especificad
   "error": null
 }
 ```
+
+### 3.22. `update_captured_packet_note` (Añadir, Modificar o Borrar Nota de Paquete)
+- **Petición:**
+```json
+{
+  "action": "update_captured_packet_note",
+  "req_id": "ucpn_01",
+  "params": {
+    "id": 142,
+    "note": "Anotación de análisis del paquete o null para borrar"
+  }
+}
+```
+- **Respuesta:**
+```json
+{
+  "type": "response",
+  "action": "update_captured_packet_note",
+  "req_id": "ucpn_01",
+  "success": true,
+  "data": {
+    "id": 142,
+    "note": "Anotación de análisis del paquete o null para borrar"
+  },
+  "error": null
+}
+```
+
+### 3.23. `delete_captured_packet` (Eliminar Paquete Capturado Individual)
+- **Petición:**
+```json
+{
+  "action": "delete_captured_packet",
+  "req_id": "dcp_01",
+  "params": {
+    "id": 142
+  }
+}
+```
+- **Respuesta:**
+```json
+{
+  "type": "response",
+  "action": "delete_captured_packet",
+  "req_id": "dcp_01",
+  "success": true,
+  "data": {
+    "id": 142,
+    "deleted": true
+  },
+  "error": null
+}
+```
+
+
 
 

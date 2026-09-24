@@ -331,6 +331,7 @@ Almacena tramas de radio seleccionadas que cumplen los criterios de captura, gua
 | `payload_size` | INTEGER | Tamaño en bytes del payload capturado. |
 | `portnum` | TEXT NULL | Tipo de puerto Meshtastic (`TEXT_MESSAGE_APP`, `ADMIN_APP`, etc.). |
 | `rule_id` | INTEGER NULL | ID de la regla de captura que disparó el registro. |
+| `note` | TEXT NULL | Nota o anotación personalizada añadida por el operador desde la web. |
 
 Índices: `idx_captured_created ON captured_packets(created_at DESC)`, `idx_captured_to ON captured_packets(to_id, created_at DESC)`, `idx_captured_from ON captured_packets(from_id, created_at DESC)`, `idx_captured_admin ON captured_packets(is_admin_pki, created_at DESC)`.
 

@@ -269,6 +269,7 @@ class PacketSniffer:
             "payload_size": payload_size,
             "portnum": portnum_str,
             "rule_id": matched_rule.get("id"),
+            "note": None,
         }
 
         # 5. Inserción persistente en SQLite

@@ -882,12 +882,13 @@
       <!-- Tarjeta Formulario: Nueva Regla de Monitorización -->
       <div class="card" id="card-capture-form" style="margin-bottom: 20px; display: none;">
         <div class="card-header" style="border-bottom: 1px solid var(--border-color); padding-bottom: 10px; margin-bottom: 14px;">
-          <h3 style="font-size: 1rem; font-weight: 600; display: flex; align-items: center; gap: 6px;">
+          <h3 id="capture-form-title" style="font-size: 1rem; font-weight: 600; display: flex; align-items: center; gap: 6px;">
             <span>⚙️</span> Configurar Criterio de Guardado
           </h3>
           <span style="font-size: 0.8rem; color: var(--text-muted);">Al menos un nodo (Origen o Destino) debe estar definido</span>
         </div>
         <form id="form-capture-rule" style="display: flex; flex-direction: column; gap: 14px;">
+          <input type="hidden" id="capture-rule-id" value="">
           <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px;">
             <!-- Destino (to) -->
             <div>
@@ -1121,6 +1122,15 @@
           <div><strong style="color: var(--text-muted);">Tamaño:</strong> <span id="insp-size">--</span></div>
         </div>
 
+        <!-- Nota / Observación del Operador -->
+        <div id="insp-note-container" style="display: none;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+            <strong style="font-size: 0.85rem; color: var(--text-main);">📌 Nota del Operador:</strong>
+            <button class="btn-secondary" id="btn-edit-note-from-inspect" style="font-size: 0.75rem; padding: 2px 7px;">✏️ Editar Nota</button>
+          </div>
+          <div id="insp-note-content" style="padding: 10px; background: rgba(56, 189, 248, 0.08); border-radius: var(--radius-sm); font-size: 0.88rem; color: #38bdf8; border-left: 3px solid #38bdf8; white-space: pre-wrap;"></div>
+        </div>
+
         <!-- Texto Plano (si vino descifrado) -->
         <div id="insp-text-container" style="display: none;">
           <strong style="font-size: 0.85rem; color: var(--text-main);">📝 Texto Descifrado:</strong>
@@ -1138,8 +1148,74 @@
         </div>
       </div>
 
-      <div style="display: flex; justify-content: flex-end; margin-top: 16px;">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 16px;">
+        <button class="btn-secondary" id="btn-add-note-from-inspect-bottom" style="font-size: 0.8rem; padding: 4px 10px;">📝 Gestionar Nota</button>
         <button class="btn-secondary" id="btn-close-inspect-modal-bottom">Cerrar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Añadir/Editar Nota de Paquete Capturado -->
+  <div id="modal-packet-note" class="modal" style="display: none;">
+    <div class="modal-content card" style="max-width: 480px;">
+      <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
+        <span style="font-weight: 700; font-size: 1.05rem; display: flex; align-items: center; gap: 6px;">
+          <span>📝</span> Nota de Paquete Capturado
+        </span>
+        <button class="btn-secondary" id="btn-close-note-modal" style="padding: 2px 8px;">✕</button>
+      </div>
+
+      <form id="form-packet-note" style="margin-top: 14px; display: flex; flex-direction: column; gap: 12px;">
+        <input type="hidden" id="note-packet-id" value="">
+        <div style="font-size: 0.82rem; color: var(--text-muted);" id="note-packet-info">
+          Paquete #--
+        </div>
+        <div>
+          <label style="display: block; font-size: 0.85rem; font-weight: 600; margin-bottom: 6px; color: var(--text-main);">
+            Nota u Observaciones:
+          </label>
+          <textarea id="note-text-input" class="input-custom" rows="4" style="width: 100%; box-sizing: border-box; resize: vertical; font-size: 0.88rem; padding: 8px;" placeholder="Escribe aquí observaciones, sospechas o detalles sobre este paquete..."></textarea>
+        </div>
+
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 8px;">
+          <button type="button" class="btn-secondary" id="btn-clear-note" style="color: var(--danger, #ef4444); font-size: 0.8rem;">Borrar Nota</button>
+          <div style="display: flex; gap: 8px;">
+            <button type="button" class="btn-secondary" id="btn-cancel-note-modal">Cancelar</button>
+            <button type="submit" class="btn-primary" id="btn-save-note">💾 Guardar Nota</button>
+          </div>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal: Confirmar Eliminación de Paquete Capturado -->
+  <div id="modal-packet-delete" class="modal" style="display: none;">
+    <div class="modal-content card" style="max-width: 440px;">
+      <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
+        <span style="font-weight: 700; font-size: 1.05rem; display: flex; align-items: center; gap: 6px; color: #ef4444;">
+          <span>❌</span> Eliminar Paquete Capturado
+        </span>
+        <button class="btn-secondary" id="btn-close-delete-packet-modal" style="padding: 2px 8px;">✕</button>
+      </div>
+
+      <div style="margin-top: 14px; display: flex; flex-direction: column; gap: 12px;">
+        <input type="hidden" id="delete-packet-id" value="">
+        <p style="font-size: 0.88rem; margin: 0; line-height: 1.45; color: var(--text-main);">
+          ¿Estás seguro de que deseas eliminar este paquete del registro de capturas?
+        </p>
+        <div id="delete-packet-details" style="font-size: 0.82rem; background: var(--bg-input); padding: 10px; border-radius: var(--radius-sm); border-left: 3px solid #ef4444; color: var(--text-muted); line-height: 1.5;">
+          <!-- Dinámico: ID, de -> para, hora, canal -->
+        </div>
+        <p style="font-size: 0.78rem; color: var(--text-muted); margin: 0;">
+          ⚠️ Esta acción eliminará permanentemente la trama y sus volcados de la base de datos local.
+        </p>
+
+        <div style="display: flex; justify-content: flex-end; gap: 8px; margin-top: 8px;">
+          <button type="button" class="btn-secondary" id="btn-cancel-delete-packet">Cancelar</button>
+          <button type="button" class="btn-primary" id="btn-confirm-delete-packet" style="background: #ef4444; border-color: #ef4444; color: #fff;">
+            🗑️ Eliminar Definitivamente
+          </button>
+        </div>
       </div>
     </div>
   </div>

@@ -191,18 +191,27 @@ Sección dedicada a la monitorización e inspección profunda de paquetes espec�
     - **Regla Condicional Estricta:** Si el canal seleccionado es *Admin Remota*, el modo se fija automáticamente a *Payload completo cifrado* sin permitir cambio.
 - **Gestión de Reglas Activas:**
   - Chips visuales de cada regla configurada con badges descriptivos.
-  - Acciones en línea para **pausar/reanudar** (`⏸️` / `▶️`) o **eliminar** (`🗑️`) reglas.
+  - Acciones en línea para **pausar/reanudar** (`⏸️` / `▶️`), **editar** (`✏️` carga los parámetros en el formulario para modificarlos o adaptarlos) o **eliminar** (`🗑️`) reglas.
 - **Acceso Directo desde Nodos y Routers:**
   - Botón **`📷`** en las acciones de cada fila de la tabla de Nodos y **`📷 Cap.`** en las tarjetas de Routers, que abre el formulario de captura preconfigurando el nodo objetivo al instante.
 - **Tabla de Registro de Tráfico Capturado en Tiempo Real:**
-  - Actualización reactiva instantánea mediante evento WebSocket `packet_captured`.
-  - Columnas completas: Hora (convertida a `Europe/Madrid`), Origen, Destino (con badge Unicast si aplica), Canal (con badge `Admin PKI`), Cifrado, Enrutamiento (`Next Hop`, `Relay`), Flags (`ACK`, `Saltos`), Señal (`SNR / RSSI`) y Tamaño en bytes.
-  - **Buscador y Filtro Rápido:** Búsqueda por nodo y selector por tipo (*Todos*, *Solo Admin PKI*, *Solo Cifrados*, *Solo Texto/Plano*).
+  - Actualización reactiva instantánea mediante eventos WebSocket `packet_captured`, `packet_note_updated` y `packet_deleted`.
+  - Columnas completas: Hora (convertida a `Europe/Madrid`), Origen, Destino (con badge Unicast si aplica y chip azul interactivo con la nota del operador si existe), Canal (con badge `Admin PKI`), Cifrado, Enrutamiento (`Next Hop`, `Relay`), Flags (`ACK`, `Saltos`), Señal (`SNR / RSSI`) y Tamaño en bytes.
+  - **Buscador y Filtro Rápido:** Búsqueda en vivo por ID, nombre o contenido de notas, y selector por tipo (*Todos*, *Solo Admin PKI*, *Solo Cifrados*, *Solo Texto/Plano*).
+  - **Acciones por Paquete:**
+    - Botón **`🔍`**: abre el modal de inspección técnica.
+    - Botón **`📝`**: abre el modal de notas para redactar, actualizar o eliminar observaciones del operador asociadas al paquete.
+    - Botón **`❌`**: abre el modal de advertencia para eliminar individualmente la trama de la base de datos si no resulta de interés.
 - **Modal de Inspección Detallada:**
   - Metadatos completos de cabecera de radio.
   - Visualización del texto plano descifrado (si aplica).
+  - Sección de Nota del Operador con botón de edición directa.
   - **Visor Hex Dump Estilo Wireshark:** Offset hexadecimal, bytes en columnas de a 16 y caracteres ASCII imprimibles (`0000: 01 02 ... |..|`).
   - Botón para copiar el payload hexadecimal al portapapeles con un clic.
+- **Modal de Nota de Paquete:**
+  - Diálogo modal con área de texto para redactar notas, guardar cambios o borrar la nota existente.
+- **Modal de Eliminación de Paquete:**
+  - Diálogo modal de confirmación con los detalles de la trama a purgar para evitar eliminaciones accidentales.
 - **Control de Vaciado:** Botón `🗑️ Limpiar Histórico` para purgar los paquetes capturados de la base de datos tras confirmación modal.
 
 ---

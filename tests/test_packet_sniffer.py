@@ -214,6 +214,103 @@ class TestPacketSniffer(unittest.TestCase):
         self.assertEqual(cleared, 2)
         self.assertEqual(self.db.count_captured_packets(), 0)
 
+    def test_update_captured_packet_note(self):
+        """Prueba añadir, actualizar y borrar notas en un paquete capturado."""
+        pkt_id = self.db.insert_captured_packet({
+            "from_id": "!12345678",
+            "to_id": "!87654321",
+            "channel": 0,
+            "payload_size": 15,
+        })
+        # Inicialmente sin nota
+        p = self.db.get_captured_packet_by_id(pkt_id)
+        self.assertIsNone(p.get("note"))
+
+        # Añadir nota
+        ok = self.db.update_captured_packet_note(pkt_id, "Paquete sospechoso de router norte")
+        self.assertTrue(ok)
+        p = self.db.get_captured_packet_by_id(pkt_id)
+        self.assertEqual(p.get("note"), "Paquete sospechoso de router norte")
+
+        # Verificar que get_captured_packets también incluye la nota
+        pkts = self.db.get_captured_packets(limit=10)
+        self.assertEqual(len(pkts), 1)
+        self.assertEqual(pkts[0].get("note"), "Paquete sospechoso de router norte")
+
+        # Actualizar nota
+        self.db.update_captured_packet_note(pkt_id, "Confirmado: es telemetría estándar")
+        p = self.db.get_captured_packet_by_id(pkt_id)
+        self.assertEqual(p.get("note"), "Confirmado: es telemetría estándar")
+
+        # Borrar nota (None)
+        self.db.update_captured_packet_note(pkt_id, None)
+        p = self.db.get_captured_packet_by_id(pkt_id)
+        self.assertIsNone(p.get("note"))
+
+    def test_edit_existing_capture_rule(self):
+        """Prueba editar una regla de captura existente reutilizando su ID."""
+        rule_id = self.db.save_capture_rule(
+            name="Regla Inicial",
+            to_node_id="!11111111",
+            channel_filter="all",
+            only_encrypted=False,
+            save_payload_mode="full_encrypted",
+        )
+        rules = self.db.get_capture_rules()
+        self.assertEqual(len(rules), 1)
+        self.assertEqual(rules[0]["name"], "Regla Inicial")
+        self.assertEqual(rules[0]["channel_filter"], "all")
+        self.assertEqual(rules[0]["only_encrypted"], 0)
+
+        # Modificar la regla existente
+        updated_id = self.db.save_capture_rule(
+            rule_id=rule_id,
+            name="Regla Editada Router 2",
+            to_node_id="!22222222",
+            channel_filter="admin_pki",
+            only_encrypted=True,
+            save_payload_mode="text_if_available",  # En admin_pki se debe forzar a full_encrypted
+        )
+        self.assertEqual(updated_id, rule_id)
+
+        # Verificar que se actualizó en la BD y no se creó un duplicado
+        rules = self.db.get_capture_rules()
+        self.assertEqual(len(rules), 1)
+        r = rules[0]
+        self.assertEqual(r["id"], rule_id)
+        self.assertEqual(r["name"], "Regla Editada Router 2")
+        self.assertEqual(r["to_node_id"], "!22222222")
+        self.assertEqual(r["channel_filter"], "admin_pki")
+        self.assertEqual(r["only_encrypted"], 1)
+        self.assertEqual(r["save_payload_mode"], "full_encrypted")
+
+    def test_delete_captured_packet(self):
+        """Prueba eliminar un paquete capturado individualmente por su ID."""
+        pkt1 = self.db.insert_captured_packet({
+            "from_id": "!11111111",
+            "to_id": "!22222222",
+            "channel": 0,
+            "payload_size": 10,
+        })
+        pkt2 = self.db.insert_captured_packet({
+            "from_id": "!33333333",
+            "to_id": "!44444444",
+            "channel": 1,
+            "payload_size": 25,
+        })
+        self.assertEqual(self.db.count_captured_packets(), 2)
+
+        # Eliminar paquete 1
+        ok = self.db.delete_captured_packet(pkt1)
+        self.assertTrue(ok)
+        self.assertEqual(self.db.count_captured_packets(), 1)
+        self.assertIsNone(self.db.get_captured_packet_by_id(pkt1))
+        self.assertIsNotNone(self.db.get_captured_packet_by_id(pkt2))
+
+        # Intentar eliminar de nuevo o ID inexistente devuelve False
+        self.assertFalse(self.db.delete_captured_packet(pkt1))
+        self.assertFalse(self.db.delete_captured_packet(999999))
+
 
 if __name__ == "__main__":
     unittest.main()

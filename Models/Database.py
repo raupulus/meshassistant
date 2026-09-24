@@ -2908,7 +2908,7 @@ class Database:
                     hop_limit, hop_start, hops,
                     rx_snr, rx_rssi,
                     payload_raw, payload_hex, payload_text, payload_size,
-                    portnum, rule_id
+                    portnum, rule_id, note
                 ) VALUES (
                     ?, ?, ?,
                     ?, ?, ?,
@@ -2918,7 +2918,7 @@ class Database:
                     ?, ?, ?,
                     ?, ?,
                     ?, ?, ?, ?,
-                    ?, ?
+                    ?, ?, ?
                 )
                 """,
                 (
@@ -2949,6 +2949,7 @@ class Database:
                     data.get("payload_size", 0),
                     data.get("portnum"),
                     data.get("rule_id"),
+                    data.get("note"),
                 ),
             )
             conn.commit()
@@ -2975,7 +2976,7 @@ class Database:
                        hop_limit, hop_start, hops,
                        rx_snr, rx_rssi,
                        payload_hex, payload_text, payload_size,
-                       portnum, rule_id
+                       portnum, rule_id, note
                 FROM captured_packets
                 WHERE 1=1
             """
@@ -3049,10 +3050,32 @@ class Database:
                 del d["payload_raw"]
             return d
 
+    def update_captured_packet_note(self, packet_id: int, note: Optional[str]) -> bool:
+        """Actualiza la nota personalizada asociada a un paquete capturado."""
+        clean_note = str(note).strip() if note and str(note).strip() else None
+        with closing(self._connect()) as conn:
+            cur = conn.execute(
+                "UPDATE captured_packets SET note = ? WHERE id = ?",
+                (clean_note, int(packet_id)),
+            )
+            conn.commit()
+            return (cur.rowcount or 0) > 0
+
+    def delete_captured_packet(self, packet_id: int) -> bool:
+        """Elimina un paquete capturado concreto de la base de datos por su ID."""
+        with closing(self._connect()) as conn:
+            cur = conn.execute(
+                "DELETE FROM captured_packets WHERE id = ?",
+                (int(packet_id),),
+            )
+            conn.commit()
+            return (cur.rowcount or 0) > 0
+
     def clear_captured_packets(self) -> int:
         """Elimina todos los paquetes capturados de la base de datos."""
         with closing(self._connect()) as conn:
             cur = conn.execute("DELETE FROM captured_packets")
             conn.commit()
             return int(cur.rowcount or 0)
+
 

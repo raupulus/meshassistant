@@ -202,11 +202,33 @@ class MeshDashboard {
     this.filterCapturedType = document.getElementById("filter-captured-type");
     this.tbodyCapturedPackets = document.getElementById("tbody-captured-packets");
 
+    this.captureRuleId = document.getElementById("capture-rule-id");
+    this.captureFormTitle = document.getElementById("capture-form-title");
+    this.btnSaveCaptureRule = document.getElementById("btn-save-capture-rule");
+
     // Modal de Inspección de Paquete
     this.modalPacketInspect = document.getElementById("modal-packet-inspect");
     this.btnCloseInspectModal = document.getElementById("btn-close-inspect-modal");
     this.btnCloseInspectModalBottom = document.getElementById("btn-close-inspect-modal-bottom");
     this.btnCopyInspectHex = document.getElementById("btn-copy-inspect-hex");
+    this.btnEditNoteFromInspect = document.getElementById("btn-edit-note-from-inspect");
+    this.btnAddNoteFromInspectBottom = document.getElementById("btn-add-note-from-inspect-bottom");
+
+    // Modal de Nota de Paquete
+    this.modalPacketNote = document.getElementById("modal-packet-note");
+    this.formPacketNote = document.getElementById("form-packet-note");
+    this.notePacketIdInput = document.getElementById("note-packet-id");
+    this.notePacketInfo = document.getElementById("note-packet-info");
+    this.noteTextInput = document.getElementById("note-text-input");
+    this.btnCloseNoteModal = document.getElementById("btn-close-note-modal");
+    this.btnCancelNoteModal = document.getElementById("btn-cancel-note-modal");
+    this.btnClearNote = document.getElementById("btn-clear-note");
+    // Modal de Confirmación de Eliminación de Paquete
+    this.modalPacketDelete = document.getElementById("modal-packet-delete");
+    this.deletePacketIdInput = document.getElementById("delete-packet-id");
+    this.btnCloseDeletePacketModal = document.getElementById("btn-close-delete-packet-modal");
+    this.btnCancelDeletePacket = document.getElementById("btn-cancel-delete-packet");
+    this.btnConfirmDeletePacket = document.getElementById("btn-confirm-delete-packet");
 
     this.captureRules = [];
     this.capturedPackets = [];
@@ -986,6 +1008,14 @@ class MeshDashboard {
       case "packet_captured":
         this.addCapturedPacket(data);
         break;
+      case "packet_note_updated":
+        this.updatePacketNoteInState(data.id, data.note);
+        break;
+      case "packet_deleted":
+        if (data.id) {
+          this.removePacketFromState(data.id);
+        }
+        break;
     }
   }
 
@@ -1191,10 +1221,8 @@ class MeshDashboard {
     } else if (resp.action === "get_capture_rules") {
       this.renderCaptureRules(data.rules || []);
     } else if (resp.action === "save_capture_rule") {
-      this.showToast("Criterio de captura guardado correctamente", "success");
-      if (this.formCaptureRule) this.formCaptureRule.reset();
-      if (this.cardCaptureForm) this.cardCaptureForm.style.display = "none";
-      if (this.capturePayloadMode) this.capturePayloadMode.disabled = false;
+      this.showToast(data.rule_id ? "Criterio de captura guardado correctamente" : "Regla de captura actualizada", "success");
+      this.resetCaptureForm();
       this.loadCaptureData();
     } else if (resp.action === "toggle_capture_rule") {
       this.showToast("Estado de regla de captura actualizado");
@@ -1209,6 +1237,14 @@ class MeshDashboard {
       this.renderCapturedPackets(data.packets || [], data.total);
     } else if (resp.action === "get_captured_packet_by_id") {
       if (data.packet) this.openInspectPacket(data.packet);
+    } else if (resp.action === "update_captured_packet_note") {
+      this.updatePacketNoteInState(data.id, data.note);
+      this.showToast(data.note ? "Nota guardada correctamente" : "Nota eliminada", "success");
+      if (this.modalPacketNote) this.modalPacketNote.style.display = "none";
+    } else if (resp.action === "delete_captured_packet") {
+      this.removePacketFromState(data.id);
+      this.showToast("Paquete eliminado del registro", "info");
+      if (this.modalPacketDelete) this.modalPacketDelete.style.display = "none";
     } else if (resp.action === "clear_captured_packets") {
       this.showToast(`Historial de capturas vaciado (${data.deleted_count || 0} paquetes eliminados)`, "info");
       this.capturedPackets = [];
@@ -3627,15 +3663,20 @@ class MeshDashboard {
     if (this.btnToggleCaptureForm) {
       this.btnToggleCaptureForm.addEventListener("click", () => {
         if (!this.cardCaptureForm) return;
-        const isHidden = this.cardCaptureForm.style.display === "none";
-        this.cardCaptureForm.style.display = isHidden ? "block" : "none";
-        if (isHidden && this.captureInputTo) this.captureInputTo.focus();
+        const isHidden = (this.cardCaptureForm.style.display === "none" || !this.cardCaptureForm.style.display);
+        if (isHidden) {
+          this.resetCaptureForm(false);
+          this.cardCaptureForm.style.display = "block";
+          if (this.captureInputTo) this.captureInputTo.focus();
+        } else {
+          this.cardCaptureForm.style.display = "none";
+        }
       });
     }
 
     if (this.btnCancelCaptureForm) {
       this.btnCancelCaptureForm.addEventListener("click", () => {
-        if (this.cardCaptureForm) this.cardCaptureForm.style.display = "none";
+        this.resetCaptureForm(true);
       });
     }
 
@@ -3680,8 +3721,10 @@ class MeshDashboard {
         const onlyEnc = !!this.captureCheckEncrypted?.checked;
         const payloadMode = (channelVal === "admin_pki") ? "full_encrypted" : (this.capturePayloadMode?.value || "full_encrypted");
         const ruleName = this.captureInputName?.value.trim() || null;
+        const ruleIdVal = this.captureRuleId?.value ? parseInt(this.captureRuleId.value, 10) : null;
 
         this.sendAction("save_capture_rule", {
+          rule_id: ruleIdVal,
           name: ruleName,
           to_node_id: toVal,
           from_node_id: fromVal,
@@ -3748,6 +3791,81 @@ class MeshDashboard {
             this.showToast("Payload hexadecimal copiado al portapapeles", "success");
           });
         }
+      });
+    }
+    if (this.btnEditNoteFromInspect) {
+      this.btnEditNoteFromInspect.addEventListener("click", () => {
+        if (this.currentInspectedPacket?.id) {
+          this.openPacketNoteModal(this.currentInspectedPacket.id);
+        }
+      });
+    }
+    if (this.btnAddNoteFromInspectBottom) {
+      this.btnAddNoteFromInspectBottom.addEventListener("click", () => {
+        if (this.currentInspectedPacket?.id) {
+          this.openPacketNoteModal(this.currentInspectedPacket.id);
+        }
+      });
+    }
+
+    // Modal de Nota de Paquete
+    if (this.btnCloseNoteModal) {
+      this.btnCloseNoteModal.addEventListener("click", () => {
+        if (this.modalPacketNote) this.modalPacketNote.style.display = "none";
+      });
+    }
+    if (this.btnCancelNoteModal) {
+      this.btnCancelNoteModal.addEventListener("click", () => {
+        if (this.modalPacketNote) this.modalPacketNote.style.display = "none";
+      });
+    }
+    if (this.modalPacketNote) {
+      this.modalPacketNote.addEventListener("click", (e) => {
+        if (e.target === this.modalPacketNote) {
+          this.modalPacketNote.style.display = "none";
+        }
+      });
+    }
+    if (this.formPacketNote) {
+      this.formPacketNote.addEventListener("submit", (e) => {
+        e.preventDefault();
+        const pId = this.notePacketIdInput?.value ? parseInt(this.notePacketIdInput.value, 10) : null;
+        if (!pId) return;
+        const noteText = this.noteTextInput?.value.trim() || null;
+        this.sendAction("update_captured_packet_note", { id: pId, note: noteText });
+      });
+    }
+    if (this.btnClearNote) {
+      this.btnClearNote.addEventListener("click", () => {
+        const pId = this.notePacketIdInput?.value ? parseInt(this.notePacketIdInput.value, 10) : null;
+        if (!pId) return;
+        this.sendAction("update_captured_packet_note", { id: pId, note: null });
+      });
+    }
+
+    // Modal de Confirmación de Eliminación de Paquete
+    if (this.btnCloseDeletePacketModal) {
+      this.btnCloseDeletePacketModal.addEventListener("click", () => {
+        if (this.modalPacketDelete) this.modalPacketDelete.style.display = "none";
+      });
+    }
+    if (this.btnCancelDeletePacket) {
+      this.btnCancelDeletePacket.addEventListener("click", () => {
+        if (this.modalPacketDelete) this.modalPacketDelete.style.display = "none";
+      });
+    }
+    if (this.modalPacketDelete) {
+      this.modalPacketDelete.addEventListener("click", (e) => {
+        if (e.target === this.modalPacketDelete) {
+          this.modalPacketDelete.style.display = "none";
+        }
+      });
+    }
+    if (this.btnConfirmDeletePacket) {
+      this.btnConfirmDeletePacket.addEventListener("click", () => {
+        const pId = this.deletePacketIdInput?.value ? parseInt(this.deletePacketIdInput.value, 10) : null;
+        if (!pId) return;
+        this.sendAction("delete_captured_packet", { id: pId });
       });
     }
   }
@@ -3830,6 +3948,9 @@ class MeshDashboard {
             </div>
           </div>
           <div style="display: flex; gap: 6px;">
+            <button class="btn-secondary" style="padding: 3px 8px; font-size: 0.75rem;" title="Editar regla" onclick="dashboard.editCaptureRule(${r.id})">
+              ✏️
+            </button>
             <button class="btn-secondary" style="padding: 3px 8px; font-size: 0.75rem;" title="${r.is_active ? 'Pausar regla' : 'Activar regla'}" onclick="dashboard.toggleCaptureRule(${r.id}, ${!r.is_active})">
               ${r.is_active ? '⏸️' : '▶️'}
             </button>
@@ -3840,6 +3961,72 @@ class MeshDashboard {
         </div>
       `;
     }).join("");
+  }
+
+  resetCaptureForm(hide = true) {
+    if (this.captureRuleId) this.captureRuleId.value = "";
+    if (this.captureFormTitle) {
+      this.captureFormTitle.innerHTML = `<span>⚙️</span> Configurar Criterio de Guardado`;
+    }
+    if (this.btnSaveCaptureRule) {
+      this.btnSaveCaptureRule.innerHTML = `💾 Guardar Criterio`;
+    }
+    if (this.formCaptureRule) this.formCaptureRule.reset();
+    if (this.capturePayloadMode) {
+      this.capturePayloadMode.disabled = false;
+      this.capturePayloadMode.value = "full_encrypted";
+    }
+    if (this.capturePayloadNote) {
+      this.capturePayloadNote.textContent = "En Admin Remota se guarda siempre el payload completo";
+      this.capturePayloadNote.style.color = "var(--text-muted)";
+    }
+    if (hide && this.cardCaptureForm) {
+      this.cardCaptureForm.style.display = "none";
+    }
+  }
+
+  editCaptureRule(ruleId) {
+    const r = (this.captureRules || []).find(x => x.id === ruleId);
+    if (!r) return;
+
+    if (this.captureRuleId) this.captureRuleId.value = r.id;
+    if (this.captureFormTitle) {
+      this.captureFormTitle.innerHTML = `<span>✏️</span> Editar Criterio de Guardado (Regla #${r.id})`;
+    }
+    if (this.btnSaveCaptureRule) {
+      this.btnSaveCaptureRule.innerHTML = `💾 Actualizar Regla`;
+    }
+
+    if (this.captureInputName) this.captureInputName.value = r.name || "";
+    if (this.captureInputTo) this.captureInputTo.value = r.to_node_id || "";
+    if (this.captureInputFrom) this.captureInputFrom.value = r.from_node_id || "";
+    if (this.captureSelectChannel) this.captureSelectChannel.value = r.channel_filter || "all";
+    if (this.captureCheckEncrypted) this.captureCheckEncrypted.checked = Boolean(r.only_encrypted);
+    
+    if (this.capturePayloadMode) {
+      this.capturePayloadMode.value = r.save_payload_mode || "full_encrypted";
+      if (r.channel_filter === "admin_pki") {
+        this.capturePayloadMode.value = "full_encrypted";
+        this.capturePayloadMode.disabled = true;
+        if (this.capturePayloadNote) {
+          this.capturePayloadNote.textContent = "🔒 En Admin Remota el payload es siempre completo cifrado (PKI).";
+          this.capturePayloadNote.style.color = "var(--primary)";
+        }
+      } else {
+        this.capturePayloadMode.disabled = false;
+        if (this.capturePayloadNote) {
+          this.capturePayloadNote.textContent = "En Admin Remota se guarda siempre el payload completo";
+          this.capturePayloadNote.style.color = "var(--text-muted)";
+        }
+      }
+    }
+
+    if (this.cardCaptureForm) {
+      this.cardCaptureForm.style.display = "block";
+      this.cardCaptureForm.scrollIntoView({ behavior: "smooth" });
+    }
+    if (this.captureInputName) this.captureInputName.focus();
+    this.showToast(`Editando regla #${r.id}. Modifica los campos y pulsa Actualizar.`);
   }
 
   toggleCaptureRule(ruleId, isActive) {
@@ -3872,7 +4059,8 @@ class MeshDashboard {
         (p.from_id && p.from_id.toLowerCase().includes(search)) ||
         (p.from_name && p.from_name.toLowerCase().includes(search)) ||
         (p.to_id && p.to_id.toLowerCase().includes(search)) ||
-        (p.to_name && p.to_name.toLowerCase().includes(search))
+        (p.to_name && p.to_name.toLowerCase().includes(search)) ||
+        (p.note && p.note.toLowerCase().includes(search))
       );
     }
 
@@ -3902,6 +4090,12 @@ class MeshDashboard {
       const toBadge = isUnicast ? `<span class="badge" style="background: rgba(56, 189, 248, 0.15); color: #38bdf8; font-size: 0.7rem;">Unicast</span>` : "";
       const toStr = `<span style="font-weight: 600;">${this.escapeHtml(p.to_name || p.to_id)}</span> ${toBadge} <span style="font-family: monospace; font-size: 0.75rem; color: var(--text-dim);">${this.escapeHtml(p.to_id)}</span>`;
 
+      const noteHtml = p.note
+        ? `<div style="font-size: 0.75rem; color: #38bdf8; margin-top: 3px; display: flex; align-items: center; gap: 4px; cursor: pointer;" title="Editar nota" onclick="dashboard.openPacketNoteModal(${p.id})">
+            <span>📝</span> <span style="background: rgba(56, 189, 248, 0.1); padding: 1px 6px; border-radius: 4px; border: 1px dashed rgba(56, 189, 248, 0.3); max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${this.escapeHtml(p.note)}</span>
+           </div>`
+        : "";
+
       let chanBadge = "";
       if (p.is_admin_pki) {
         chanBadge = `<span class="badge" style="background: rgba(168, 85, 247, 0.2); color: #c084fc; font-weight: 600;">🔐 Admin PKI (Ch 0)</span>`;
@@ -3922,7 +4116,7 @@ class MeshDashboard {
         <tr>
           <td style="white-space: nowrap; font-size: 0.8rem; color: var(--text-muted);">${timeStr}</td>
           <td>${fromStr}</td>
-          <td>${toStr}</td>
+          <td>${toStr}${noteHtml}</td>
           <td>${chanBadge}</td>
           <td>${encBadge}</td>
           <td>${routingStr}</td>
@@ -3930,9 +4124,17 @@ class MeshDashboard {
           <td>${signalStr}</td>
           <td>${sizeStr}</td>
           <td>
-            <button class="btn-secondary" style="padding: 2px 8px; font-size: 0.75rem;" onclick="dashboard.openInspectPacketById(${p.id})">
-              🔍 Ver
-            </button>
+            <div style="display: flex; gap: 4px; align-items: center;">
+              <button class="btn-secondary" style="padding: 2px 7px; font-size: 0.75rem;" title="Inspeccionar payload y metadatos" onclick="dashboard.openInspectPacketById(${p.id})">
+                🔍 Ver
+              </button>
+              <button class="btn-secondary" style="padding: 2px 7px; font-size: 0.75rem; ${p.note ? 'color: #38bdf8; border-color: rgba(56, 189, 248, 0.5); background: rgba(56, 189, 248, 0.1);' : ''}" title="${p.note ? 'Editar nota: ' + this.escapeHtml(p.note) : 'Añadir nota al paquete'}" onclick="dashboard.openPacketNoteModal(${p.id})">
+                📝
+              </button>
+              <button class="btn-secondary" style="padding: 2px 7px; font-size: 0.75rem; color: #ef4444; border-color: rgba(239, 68, 68, 0.35);" title="Eliminar este paquete del registro" onclick="dashboard.confirmDeletePacket(${p.id})">
+                ❌
+              </button>
+            </div>
           </td>
         </tr>
       `;
@@ -3974,6 +4176,16 @@ class MeshDashboard {
     document.getElementById("insp-signal").textContent = `${p.rx_snr != null ? Number(p.rx_snr).toFixed(1) + ' dB' : '--'} / ${p.rx_rssi != null ? p.rx_rssi + ' dBm' : '--'}`;
     document.getElementById("insp-size").textContent = `${p.payload_size || 0} bytes`;
 
+    // Nota del operador
+    const noteContainer = document.getElementById("insp-note-container");
+    const noteContent = document.getElementById("insp-note-content");
+    if (p.note && String(p.note).trim()) {
+      if (noteContainer) noteContainer.style.display = "block";
+      if (noteContent) noteContent.textContent = p.note;
+    } else {
+      if (noteContainer) noteContainer.style.display = "none";
+    }
+
     // Texto plano
     const txtContainer = document.getElementById("insp-text-container");
     const txtContent = document.getElementById("insp-text-content");
@@ -3995,6 +4207,84 @@ class MeshDashboard {
     }
 
     this.modalPacketInspect.style.display = "flex";
+  }
+
+  openPacketNoteModal(packetId) {
+    const pkt = (this.capturedPackets || []).find(p => p.id === packetId);
+    if (!pkt) return;
+    this.editingNotePacketId = packetId;
+    if (this.notePacketIdInput) this.notePacketIdInput.value = packetId;
+    if (this.notePacketInfo) {
+      const from = pkt.from_name ? `${pkt.from_name} (${pkt.from_id})` : pkt.from_id;
+      const to = pkt.to_name ? `${pkt.to_name} (${pkt.to_id})` : pkt.to_id;
+      this.notePacketInfo.textContent = `Paquete #${pkt.id} • De ${from} a ${to} • ${pkt.channel_name || ('Ch ' + pkt.channel)}`;
+    }
+    if (this.noteTextInput) {
+      this.noteTextInput.value = pkt.note || "";
+      this.noteTextInput.focus();
+    }
+    if (this.modalPacketNote) {
+      this.modalPacketNote.style.display = "flex";
+    }
+  }
+
+  updatePacketNoteInState(packetId, note) {
+    if (this.capturedPackets) {
+      const pkt = this.capturedPackets.find(p => p.id === packetId);
+      if (pkt) {
+        pkt.note = note;
+      }
+    }
+    if (this.currentInspectedPacket && this.currentInspectedPacket.id === packetId) {
+      this.currentInspectedPacket.note = note;
+      const noteContainer = document.getElementById("insp-note-container");
+      const noteContent = document.getElementById("insp-note-content");
+      if (note && String(note).trim()) {
+        if (noteContainer) noteContainer.style.display = "block";
+        if (noteContent) noteContent.textContent = note;
+      } else {
+        if (noteContainer) noteContainer.style.display = "none";
+      }
+    }
+    this.renderCapturedPackets();
+  }
+
+  confirmDeletePacket(packetId) {
+    const pkt = (this.capturedPackets || []).find(p => p.id === packetId);
+    if (!pkt) return;
+    if (this.deletePacketIdInput) this.deletePacketIdInput.value = packetId;
+    const detailsEl = document.getElementById("delete-packet-details");
+    if (detailsEl) {
+      const from = pkt.from_name ? `${pkt.from_name} (${pkt.from_id})` : (pkt.from_id || "Desconocido");
+      const to = pkt.to_name ? `${pkt.to_name} (${pkt.to_id})` : (pkt.to_id || "Desconocido");
+      const time = this.formatFullDateTime(pkt.created_at);
+      const ch = pkt.channel_name || `Canal ${pkt.channel}`;
+      const noteHtml = pkt.note ? `<div style="margin-top: 4px; color: #38bdf8;"><strong>Nota:</strong> ${this.escapeHtml(pkt.note)}</div>` : "";
+      detailsEl.innerHTML = `
+        <div><strong>ID:</strong> #${pkt.id} ${pkt.packet_id ? `(Packet ID: ${pkt.packet_id})` : ""}</div>
+        <div><strong>Hora:</strong> ${time}</div>
+        <div><strong>Origen:</strong> ${from} ➔ <strong>Destino:</strong> ${to}</div>
+        <div><strong>Canal:</strong> ${ch} | <strong>Tamaño:</strong> ${pkt.payload_size || 0} bytes</div>
+        ${noteHtml}
+      `;
+    }
+    if (this.modalPacketDelete) {
+      this.modalPacketDelete.style.display = "flex";
+    }
+  }
+
+  removePacketFromState(packetId) {
+    if (this.capturedPackets) {
+      this.capturedPackets = this.capturedPackets.filter(p => p.id !== packetId);
+    }
+    if (this.totalCapturedCount && this.totalCapturedCount > 0) {
+      this.totalCapturedCount--;
+    }
+    if (this.currentInspectedPacket && this.currentInspectedPacket.id === packetId) {
+      if (this.modalPacketInspect) this.modalPacketInspect.style.display = "none";
+      this.currentInspectedPacket = null;
+    }
+    this.renderCapturedPackets();
   }
 
   formatHexDump(hexStr) {
@@ -4020,6 +4310,7 @@ class MeshDashboard {
 
   startCaptureForNode(nodeId, nodeName) {
     this.switchTab("capture");
+    this.resetCaptureForm(false);
     if (this.cardCaptureForm) this.cardCaptureForm.style.display = "block";
     if (this.captureInputTo) this.captureInputTo.value = nodeId;
     if (this.captureInputName) this.captureInputName.value = `Monitor ${nodeName || nodeId}`;
