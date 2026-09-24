@@ -1,0 +1,219 @@
+import unittest
+import tempfile
+from pathlib import Path
+from unittest.mock import patch
+
+from create_db import ensure_database
+from Models.Database import Database
+from Models.PacketSniffer import PacketSniffer
+
+
+class TestPacketSniffer(unittest.TestCase):
+
+    def setUp(self):
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.db_path = Path(self.temp_dir.name) / "test_sniffer.sql"
+        ensure_database(self.db_path)
+        self.db = Database(db_path=self.db_path)
+        # Limpiar caché interno de PacketSniffer
+        PacketSniffer._rules_cache = []
+        PacketSniffer._captured_nodes_cache = set()
+        PacketSniffer._last_cache_time = 0.0
+        PacketSniffer._recent_packet_ids.clear()
+
+    def tearDown(self):
+        self.temp_dir.cleanup()
+
+    def test_rule_validation_to_or_from_required(self):
+        """Valida que to o from sea obligatorio al crear una regla."""
+        with self.assertRaises(ValueError):
+            self.db.save_capture_rule(to_node_id=None, from_node_id=None)
+
+        with self.assertRaises(ValueError):
+            self.db.save_capture_rule(to_node_id="", from_node_id="   ")
+
+    def test_rule_admin_pki_forces_full_encrypted_payload(self):
+        """Si el canal es admin_pki, se fuerza save_payload_mode = 'full_encrypted'."""
+        rule_id = self.db.save_capture_rule(
+            name="Test Admin PKI",
+            to_node_id="!12345678",
+            channel_filter="admin_pki",
+            save_payload_mode="text_if_available",
+        )
+        rules = self.db.get_capture_rules()
+        self.assertEqual(len(rules), 1)
+        self.assertEqual(rules[0]["id"], rule_id)
+        self.assertEqual(rules[0]["channel_filter"], "admin_pki")
+        self.assertEqual(rules[0]["save_payload_mode"], "full_encrypted")
+
+    def test_rule_crud_operations(self):
+        """Prueba inserción, toggle y eliminación de reglas."""
+        r1 = self.db.save_capture_rule(
+            name="Regla 1",
+            from_node_id="!aabbccdd",
+            channel_filter="all",
+            only_encrypted=True,
+        )
+        rules = self.db.get_capture_rules(active_only=True)
+        self.assertEqual(len(rules), 1)
+        self.assertEqual(rules[0]["only_encrypted"], 1)
+
+        # Desactivar regla
+        self.db.toggle_capture_rule(r1, False)
+        active_rules = self.db.get_capture_rules(active_only=True)
+        self.assertEqual(len(active_rules), 0)
+        all_rules = self.db.get_capture_rules(active_only=False)
+        self.assertEqual(len(all_rules), 1)
+
+        # Eliminar regla
+        deleted = self.db.delete_capture_rule(r1)
+        self.assertTrue(deleted)
+        self.assertEqual(len(self.db.get_capture_rules()), 0)
+
+    def test_node_captured_marking(self):
+        """Prueba marcar un nodo como capturado y consultarlo."""
+        node_id = "!router99"
+        self.db.create_node_if_not_exists(node_id)
+        self.db.set_node_captured(node_id, is_captured=True, criteria='{"save":"all"}')
+
+        nodes = self.db.get_all_nodes()
+        match = next((n for n in nodes if n["node_id"] == node_id), None)
+        self.assertIsNotNone(match)
+        self.assertEqual(match.get("is_captured"), 1)
+        self.assertEqual(match.get("capture_criteria"), '{"save":"all"}')
+
+    def test_inspect_packet_matching_rule(self):
+        """Prueba captura de paquetes que coinciden con una regla."""
+        self.db.save_capture_rule(
+            name="Vigilancia Router 1",
+            from_node_id="!11223344",
+            channel_filter="all",
+            save_payload_mode="full_encrypted",
+        )
+
+        with patch("Models.PacketSniffer.Database", return_value=self.db), \
+             patch("Models.EventBroadcaster.broadcast_event") as mock_broadcast:
+
+            PacketSniffer.reload_rules()
+
+            # Paquete 1: viene de otro nodo (no debe capturarse)
+            pkt_other = {
+                "id": 1001,
+                "from": 0x99999999,
+                "fromId": "!99999999",
+                "to": 0xFFFFFFFF,
+                "toId": "^all",
+                "channel": 0,
+                "decoded": {"portnum": "TEXT_MESSAGE_APP", "text": "Hola"},
+            }
+            captured = PacketSniffer.inspect_packet(pkt_other)
+            self.assertFalse(captured)
+            self.assertEqual(self.db.count_captured_packets(), 0)
+
+            # Paquete 2: viene del nodo vigilado (!11223344)
+            pkt_target = {
+                "id": 1002,
+                "from": 0x11223344,
+                "fromId": "!11223344",
+                "to": 0x12345678,
+                "toId": "!12345678",
+                "channel": 0,
+                "encrypted": b"\x01\x02\x03\x04\xaa\xbb\xcc",
+                "rxTime": 1720000000,
+                "rxSnr": 8.5,
+                "rxRssi": -65,
+                "hopLimit": 2,
+                "hopStart": 3,
+                "wantAck": True,
+            }
+            captured2 = PacketSniffer.inspect_packet(pkt_target)
+            self.assertTrue(captured2)
+            self.assertEqual(self.db.count_captured_packets(), 1)
+
+            # Comprobar registro guardado
+            pkts = self.db.get_captured_packets()
+            self.assertEqual(len(pkts), 1)
+            p = pkts[0]
+            self.assertEqual(p["from_id"], "!11223344")
+            self.assertEqual(p["to_id"], "!12345678")
+            self.assertEqual(p["is_encrypted"], 1)
+            self.assertEqual(p["is_admin_pki"], 1)  # Ch 0 unicast
+            self.assertEqual(p["payload_hex"], "01020304aabbcc")
+            self.assertEqual(p["payload_size"], 7)
+            self.assertEqual(p["hops"], 1)  # hopStart 3 - hopLimit 2
+            self.assertEqual(p["want_ack"], 1)
+
+            # Comprobar emisión por IPC
+            mock_broadcast.assert_called_once()
+            args, kwargs = mock_broadcast.call_args
+            self.assertEqual(args[0], "packet_captured")
+            self.assertEqual(args[1]["from_id"], "!11223344")
+
+    def test_inspect_packet_admin_pki_filtering(self):
+        """Prueba que una regla de canal 'admin_pki' solo captura unicast en canal 0."""
+        self.db.save_capture_rule(
+            name="Admin PKI Only",
+            to_node_id="!12345678",
+            channel_filter="admin_pki",
+        )
+
+        with patch("Models.PacketSniffer.Database", return_value=self.db), \
+             patch("Models.EventBroadcaster.broadcast_event"):
+
+            PacketSniffer.reload_rules()
+
+            # Broadcast hacia ^all en canal 0 (NO debe capturarse como Admin PKI)
+            pkt_bcast = {
+                "id": 2001,
+                "from": 0x12345678,
+                "to": 0xFFFFFFFF,
+                "toId": "^all",
+                "channel": 0,
+            }
+            self.assertFalse(PacketSniffer.inspect_packet(pkt_bcast))
+
+            # Unicast en canal 1 hacia el nodo (NO debe capturarse porque no es canal 0)
+            pkt_ch1 = {
+                "id": 2002,
+                "from": 0x99999999,
+                "to": 0x12345678,
+                "toId": "!12345678",
+                "channel": 1,
+            }
+            self.assertFalse(PacketSniffer.inspect_packet(pkt_ch1))
+
+            # Unicast en canal 0 hacia el nodo (SÍ debe capturarse)
+            pkt_pki = {
+                "id": 2003,
+                "from": 0x99999999,
+                "to": 0x12345678,
+                "toId": "!12345678",
+                "channel": 0,
+                "pki_encrypted": b"\xff\xee\xdd",
+            }
+            self.assertTrue(PacketSniffer.inspect_packet(pkt_pki))
+            self.assertEqual(self.db.count_captured_packets(), 1)
+
+    def test_clear_captured_packets(self):
+        """Prueba limpiar la tabla de paquetes capturados."""
+        self.db.insert_captured_packet({
+            "from_id": "!11111111",
+            "to_id": "!22222222",
+            "channel": 0,
+            "payload_size": 10,
+        })
+        self.db.insert_captured_packet({
+            "from_id": "!33333333",
+            "to_id": "!44444444",
+            "channel": 0,
+            "payload_size": 20,
+        })
+        self.assertEqual(self.db.count_captured_packets(), 2)
+
+        cleared = self.db.clear_captured_packets()
+        self.assertEqual(cleared, 2)
+        self.assertEqual(self.db.count_captured_packets(), 0)
+
+
+if __name__ == "__main__":
+    unittest.main()

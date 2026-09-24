@@ -60,12 +60,14 @@ Todas las fechas y tiempos almacenados en la base de datos se rigen por una regl
 | `channel_util` | REAL NULL | Saturación de canal instantánea (`channelUtilization`, %). |
 | `air_util_tx` | REAL NULL | Tiempo de transmisión al aire instantáneo (`airUtilTx`, %). |
 | `telemetry_count` | INTEGER | Contador acumulado ligero de paquetes de telemetría recibidos del nodo. |
+| `is_captured` | INTEGER | 0/1 (nodo con monitorización/captura selectiva activa). |
+| `capture_criteria` | TEXT NULL | Criterios específicos de captura para el nodo en formato JSON. |
 | `last_heard` | INTEGER | Último contacto (epoch). |
 | `traces_detected` | INTEGER | Contador de traceroutes emitidos y detectados en la malla por este nodo. |
 | `created_at` | TEXT | Fecha y hora en que fue descubierto por primera vez. |
 | `updated_at` | TEXT | ISO 8601 de última actualización. |
 
-Índices: `idx_nodes_short_name`, `idx_nodes_num`, `idx_nodes_role`, `idx_nodes_is_watched`.
+Índices: `idx_nodes_short_name`, `idx_nodes_num`, `idx_nodes_role`, `idx_nodes_is_watched`, `idx_nodes_is_captured`.
 
 ### `pings` — histórico de pings
 | Columna | Tipo | Notas |
@@ -280,6 +282,57 @@ Histórico de disparos del sistema anti-abuso.
 | `action_taken` | TEXT NOT NULL | `autoban_15m`, `autoban_24h`, `manual_block`, `dropped`. |
 | `reason` | TEXT NULL | Motivo detallado. |
 | `created_at` | TEXT | Momento del evento. |
+
+### `capture_rules` — reglas de monitorización y captura selectiva de paquetes
+Define las directivas de filtrado para el sniffer de radio LoRa. Al menos uno entre `to_node_id` o `from_node_id` debe estar especificado para evitar almacenar ruido/broadcast general.
+
+| Columna | Tipo | Notas |
+|---|---|---|
+| `id` | INTEGER PK | Identificador único de la regla. |
+| `name` | TEXT NULL | Etiqueta o descripción de la regla (ej. "Vigilancia Router 1"). |
+| `to_node_id` | TEXT NULL | ID del nodo destino (`!xxxxxxxx`, `^all` o NULL). |
+| `from_node_id` | TEXT NULL | ID del nodo origen (`!xxxxxxxx` o NULL). |
+| `channel_filter` | TEXT NOT NULL | `'all'` \| `'admin_pki'` \| canal numérico (`'0'`, `'1'`, ...). |
+| `only_encrypted` | INTEGER | 1 si solo se capturan tramas cifradas, 0 para cualquiera. |
+| `save_payload_mode` | TEXT NOT NULL | `'full_encrypted'` (payload crudo completo) \| `'text_if_available'`. |
+| `is_active` | INTEGER | 1 si la regla está activa, 0 si está pausada. |
+| `created_at` | TEXT | Fecha y hora de creación (ISO 8601 UTC). |
+
+### `captured_packets` — registro de paquetes LoRa capturados (Sniffer)
+Almacena tramas de radio seleccionadas que cumplen los criterios de captura, guardando metadatos completos de radio, enrutamiento, flags y payload íntegro (BLOB binario y Hex dump).
+
+| Columna | Tipo | Notas |
+|---|---|---|
+| `id` | INTEGER PK | Identificador único del paquete capturado. |
+| `created_at` | TEXT | Timestamp de recepción en formato ISO 8601 UTC. |
+| `packet_id` | INTEGER NULL | ID numérico original asignado por el firmware Meshtastic. |
+| `rx_time` | INTEGER NULL | Timestamp epoch en segundos del paquete. |
+| `to_num` | INTEGER NULL | Número entero de nodo destino. |
+| `to_id` | TEXT NULL | ID destino (`!xxxxxxxx` o `^all`). |
+| `to_name` | TEXT NULL | Nombre largo o corto del nodo destino si se conoce. |
+| `from_num` | INTEGER NULL | Número entero de nodo origen. |
+| `from_id` | TEXT NULL | ID origen (`!xxxxxxxx`). |
+| `from_name` | TEXT NULL | Nombre largo o corto del nodo origen si se conoce. |
+| `channel` | INTEGER | Índice del canal (0-7). |
+| `channel_name` | TEXT NULL | Nombre legible del canal o "Admin Remota (PKI)". |
+| `is_encrypted` | INTEGER | 1 si el paquete contiene carga cifrada o no decodificada. |
+| `is_admin_pki` | INTEGER | 1 si es tráfico de administración remota o unicast directo en canal 0. |
+| `next_hop` | INTEGER NULL | ID numérico del siguiente salto en la ruta. |
+| `relay_node` | INTEGER NULL | ID numérico del repetidor que retransmitió la trama. |
+| `want_ack` | INTEGER | 1 si el paquete solicita confirmación (ACK). |
+| `hop_limit` | INTEGER NULL | Límite de saltos restante en el paquete. |
+| `hop_start` | INTEGER NULL | Saltos iniciales configurados al emitir. |
+| `hops` | INTEGER NULL | Saltos efectivos recorridos (`hop_start - hop_limit`). |
+| `rx_snr` | REAL NULL | Relación señal-ruido recibida (dB). |
+| `rx_rssi` | INTEGER NULL | Indicador de fuerza de señal recibida (dBm). |
+| `payload_raw` | BLOB NULL | Bytes binarios completos y crudos del payload sin alterar. |
+| `payload_hex` | TEXT NULL | Representación hexadecimal del payload para inspección. |
+| `payload_text` | TEXT NULL | Texto plano descifrado si estaba disponible. |
+| `payload_size` | INTEGER | Tamaño en bytes del payload capturado. |
+| `portnum` | TEXT NULL | Tipo de puerto Meshtastic (`TEXT_MESSAGE_APP`, `ADMIN_APP`, etc.). |
+| `rule_id` | INTEGER NULL | ID de la regla de captura que disparó el registro. |
+
+Índices: `idx_captured_created ON captured_packets(created_at DESC)`, `idx_captured_to ON captured_packets(to_id, created_at DESC)`, `idx_captured_from ON captured_packets(from_id, created_at DESC)`, `idx_captured_admin ON captured_packets(is_admin_pki, created_at DESC)`.
 
 ## Palabras reservadas
 

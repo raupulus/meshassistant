@@ -444,6 +444,18 @@ class SerialInterface:
             s_name = getattr(from_info, "short_name", None) if from_info else None
             l_name = getattr(from_info, "name", None) if from_info else None
 
+            # Captura selectiva de paquetes de radio LoRa (Sniffer)
+            try:
+                from Models.PacketSniffer import PacketSniffer
+                to_node_id = packet.get('toId')
+                to_num = packet.get('to')
+                if not to_node_id and to_num is not None:
+                    to_node_id = "^all" if to_num in (0xFFFFFFFF, 4294967295) else f"!{int(to_num):08x}"
+                to_info = self.node_dict.get(to_node_id) if to_node_id else None
+                PacketSniffer.inspect_packet(packet, from_info=from_info, to_info=to_info, channels_map=getattr(self, 'channels', None))
+            except Exception as e_sniff:
+                log_p(f"[PacketSniffer] Error en captura: {e_sniff}", level="DEBUG")
+
             if is_node_discarded(node_id=from_node_id, short_name=s_name, name=l_name, interface=interface or self.interface):
                 log_p(f"[Discard] Paquete data descartado de nodo {from_node_id}", level="DEBUG")
                 return

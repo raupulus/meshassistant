@@ -2148,7 +2148,8 @@ class Database:
                 SELECT nodes.node_id AS id, nodes.node_id, nodes.name, nodes.num, nodes.short_name, nodes.mac_addr, nodes.hw_model, nodes.role,
                        nodes.is_favorite, nodes.is_watched, nodes.snr, nodes.rssi, nodes.hops, nodes.uptime, nodes.via_mqtt, nodes.battery, nodes.voltage,
                        nodes.power_ina1, nodes.power_ina2, nodes.power_ina3, nodes.channel_util, nodes.air_util_tx,
-                       nodes.last_heard, nodes.traces_detected, nodes.telemetry_count, nodes.created_at, nodes.updated_at,
+                       nodes.last_heard, nodes.traces_detected, nodes.telemetry_count, nodes.is_captured, nodes.capture_criteria,
+                       nodes.created_at, nodes.updated_at,
                        COALESCE(ar.total_events, 0) AS auto_report_count,
                        ar.reasons AS auto_report_reason
                 FROM nodes
@@ -2776,3 +2777,282 @@ class Database:
             conn.execute("DELETE FROM auto_reported_nodes")
             conn.execute("DELETE FROM abuse_logs")
             conn.commit()
+
+    # =========================================================================
+    # Captura Selectiva de Tráfico LoRa (Sniffer de Paquetes)
+    # =========================================================================
+
+    def get_capture_rules(self, active_only: bool = False) -> List[Dict[str, Any]]:
+        """Obtiene las reglas de captura configuradas."""
+        with closing(self._connect()) as conn:
+            sql = "SELECT * FROM capture_rules"
+            params: List[Any] = []
+            if active_only:
+                sql += " WHERE is_active = 1"
+            sql += " ORDER BY id DESC"
+            cur = conn.execute(sql, tuple(params))
+            return [dict(r) for r in cur.fetchall()]
+
+    def save_capture_rule(
+        self,
+        name: Optional[str] = None,
+        to_node_id: Optional[str] = None,
+        from_node_id: Optional[str] = None,
+        channel_filter: str = "all",
+        only_encrypted: bool = False,
+        save_payload_mode: str = "full_encrypted",
+        is_active: bool = True,
+        rule_id: Optional[int] = None,
+    ) -> int:
+        """Crea o actualiza una regla de captura selectiva."""
+        to_clean = str(to_node_id).strip() if to_node_id and str(to_node_id).strip() else None
+        from_clean = str(from_node_id).strip() if from_node_id and str(from_node_id).strip() else None
+
+        if not to_clean and not from_clean:
+            raise ValueError("Debes especificar al menos un nodo de destino ('to') o de origen ('from')")
+
+        # Regla condicional obligatoria: si el canal es Admin Remota, siempre se guarda payload completo cifrado
+        if str(channel_filter).strip().lower() in ("admin_pki", "admin", "pki", "0_pki"):
+            channel_filter = "admin_pki"
+            save_payload_mode = "full_encrypted"
+
+        now_iso = now_utc_iso()
+        with closing(self._connect()) as conn:
+            if rule_id:
+                conn.execute(
+                    """
+                    UPDATE capture_rules
+                    SET name = ?, to_node_id = ?, from_node_id = ?, channel_filter = ?,
+                        only_encrypted = ?, save_payload_mode = ?, is_active = ?
+                    WHERE id = ?
+                    """,
+                    (
+                        name,
+                        to_clean,
+                        from_clean,
+                        str(channel_filter),
+                        1 if only_encrypted else 0,
+                        str(save_payload_mode),
+                        1 if is_active else 0,
+                        int(rule_id),
+                    ),
+                )
+                conn.commit()
+                return int(rule_id)
+            else:
+                cur = conn.execute(
+                    """
+                    INSERT INTO capture_rules (name, to_node_id, from_node_id, channel_filter,
+                                              only_encrypted, save_payload_mode, is_active, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        name,
+                        to_clean,
+                        from_clean,
+                        str(channel_filter),
+                        1 if only_encrypted else 0,
+                        str(save_payload_mode),
+                        1 if is_active else 0,
+                        now_iso,
+                    ),
+                )
+                conn.commit()
+                return int(cur.lastrowid or 0)
+
+    def toggle_capture_rule(self, rule_id: int, is_active: bool) -> bool:
+        """Activa o desactiva una regla de captura."""
+        with closing(self._connect()) as conn:
+            cur = conn.execute(
+                "UPDATE capture_rules SET is_active = ? WHERE id = ?",
+                (1 if is_active else 0, int(rule_id)),
+            )
+            conn.commit()
+            return (cur.rowcount or 0) > 0
+
+    def delete_capture_rule(self, rule_id: int) -> bool:
+        """Elimina una regla de captura."""
+        with closing(self._connect()) as conn:
+            cur = conn.execute("DELETE FROM capture_rules WHERE id = ?", (int(rule_id),))
+            conn.commit()
+            return (cur.rowcount or 0) > 0
+
+    def set_node_captured(
+        self,
+        node_id: str,
+        is_captured: bool = True,
+        criteria: Optional[str] = None,
+    ) -> bool:
+        """Marca o desmarca un nodo como bajo captura y actualiza sus criterios."""
+        val = 1 if is_captured else 0
+        with closing(self._connect()) as conn:
+            cur = conn.execute(
+                "UPDATE nodes SET is_captured = ?, capture_criteria = ? WHERE node_id = ?",
+                (val, criteria, str(node_id)),
+            )
+            conn.commit()
+            return (cur.rowcount or 0) > 0
+
+    def insert_captured_packet(self, data: Dict[str, Any]) -> int:
+        """Inserta un paquete de radio capturado en la base de datos."""
+        now_iso = data.get("created_at") or now_utc_iso()
+        with closing(self._connect()) as conn:
+            cur = conn.execute(
+                """
+                INSERT INTO captured_packets (
+                    created_at, packet_id, rx_time,
+                    to_num, to_id, to_name,
+                    from_num, from_id, from_name,
+                    channel, channel_name, is_encrypted, is_admin_pki,
+                    next_hop, relay_node, want_ack,
+                    hop_limit, hop_start, hops,
+                    rx_snr, rx_rssi,
+                    payload_raw, payload_hex, payload_text, payload_size,
+                    portnum, rule_id
+                ) VALUES (
+                    ?, ?, ?,
+                    ?, ?, ?,
+                    ?, ?, ?,
+                    ?, ?, ?, ?,
+                    ?, ?, ?,
+                    ?, ?, ?,
+                    ?, ?,
+                    ?, ?, ?, ?,
+                    ?, ?
+                )
+                """,
+                (
+                    now_iso,
+                    data.get("packet_id"),
+                    data.get("rx_time"),
+                    data.get("to_num"),
+                    data.get("to_id"),
+                    data.get("to_name"),
+                    data.get("from_num"),
+                    data.get("from_id"),
+                    data.get("from_name"),
+                    data.get("channel", 0),
+                    data.get("channel_name"),
+                    1 if data.get("is_encrypted") else 0,
+                    1 if data.get("is_admin_pki") else 0,
+                    data.get("next_hop"),
+                    data.get("relay_node"),
+                    1 if data.get("want_ack") else 0,
+                    data.get("hop_limit"),
+                    data.get("hop_start"),
+                    data.get("hops"),
+                    data.get("rx_snr"),
+                    data.get("rx_rssi"),
+                    data.get("payload_raw"),
+                    data.get("payload_hex"),
+                    data.get("payload_text"),
+                    data.get("payload_size", 0),
+                    data.get("portnum"),
+                    data.get("rule_id"),
+                ),
+            )
+            conn.commit()
+            return int(cur.lastrowid or 0)
+
+    def get_captured_packets(
+        self,
+        limit: int = 100,
+        offset: int = 0,
+        to_node: Optional[str] = None,
+        from_node: Optional[str] = None,
+        is_encrypted: Optional[bool] = None,
+        is_admin: Optional[bool] = None,
+        channel: Optional[int] = None,
+    ) -> List[Dict[str, Any]]:
+        """Obtiene la lista de paquetes capturados según los filtros especificados."""
+        with closing(self._connect()) as conn:
+            sql = """
+                SELECT id, created_at, packet_id, rx_time,
+                       to_num, to_id, to_name,
+                       from_num, from_id, from_name,
+                       channel, channel_name, is_encrypted, is_admin_pki,
+                       next_hop, relay_node, want_ack,
+                       hop_limit, hop_start, hops,
+                       rx_snr, rx_rssi,
+                       payload_hex, payload_text, payload_size,
+                       portnum, rule_id
+                FROM captured_packets
+                WHERE 1=1
+            """
+            params: List[Any] = []
+            if to_node:
+                sql += " AND (to_id = ? OR to_name LIKE ?)"
+                params.extend([str(to_node), f"%{to_node}%"])
+            if from_node:
+                sql += " AND (from_id = ? OR from_name LIKE ?)"
+                params.extend([str(from_node), f"%{from_node}%"])
+            if is_encrypted is not None:
+                sql += " AND is_encrypted = ?"
+                params.append(1 if is_encrypted else 0)
+            if is_admin is not None:
+                sql += " AND is_admin_pki = ?"
+                params.append(1 if is_admin else 0)
+            if channel is not None:
+                sql += " AND channel = ?"
+                params.append(int(channel))
+
+            sql += " ORDER BY id DESC LIMIT ? OFFSET ?"
+            params.extend([int(limit), int(offset)])
+
+            cur = conn.execute(sql, tuple(params))
+            return [dict(r) for r in cur.fetchall()]
+
+    def count_captured_packets(
+        self,
+        to_node: Optional[str] = None,
+        from_node: Optional[str] = None,
+        is_encrypted: Optional[bool] = None,
+        is_admin: Optional[bool] = None,
+        channel: Optional[int] = None,
+    ) -> int:
+        """Devuelve el total de paquetes capturados que coinciden con los filtros."""
+        with closing(self._connect()) as conn:
+            sql = "SELECT COUNT(*) AS c FROM captured_packets WHERE 1=1"
+            params: List[Any] = []
+            if to_node:
+                sql += " AND (to_id = ? OR to_name LIKE ?)"
+                params.extend([str(to_node), f"%{to_node}%"])
+            if from_node:
+                sql += " AND (from_id = ? OR from_name LIKE ?)"
+                params.extend([str(from_node), f"%{from_node}%"])
+            if is_encrypted is not None:
+                sql += " AND is_encrypted = ?"
+                params.append(1 if is_encrypted else 0)
+            if is_admin is not None:
+                sql += " AND is_admin_pki = ?"
+                params.append(1 if is_admin else 0)
+            if channel is not None:
+                sql += " AND channel = ?"
+                params.append(int(channel))
+
+            cur = conn.execute(sql, tuple(params))
+            row = cur.fetchone()
+            return int(row["c"]) if row else 0
+
+    def get_captured_packet_by_id(self, packet_id: int) -> Optional[Dict[str, Any]]:
+        """Obtiene un paquete capturado por su ID, incluyendo payload_raw binario si procede."""
+        with closing(self._connect()) as conn:
+            cur = conn.execute("SELECT * FROM captured_packets WHERE id = ?", (int(packet_id),))
+            row = cur.fetchone()
+            if not row:
+                return None
+            d = dict(row)
+            # Asegurar que el BLOB se serialice como hex si se envía por json
+            if isinstance(d.get("payload_raw"), bytes):
+                d["payload_raw_len"] = len(d["payload_raw"])
+                # No enviamos los bytes crudos en JSON, ya tenemos payload_hex
+                del d["payload_raw"]
+            return d
+
+    def clear_captured_packets(self) -> int:
+        """Elimina todos los paquetes capturados de la base de datos."""
+        with closing(self._connect()) as conn:
+            cur = conn.execute("DELETE FROM captured_packets")
+            conn.commit()
+            return int(cur.rowcount or 0)
+

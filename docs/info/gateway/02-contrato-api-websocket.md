@@ -293,6 +293,38 @@ Emitido cuando un usuario marca o desmarca un nodo para seguimiento en la secci�
 }
 ```
 
+### 2.15. `packet_captured` (Trama LoRa Capturada por Sniffer)
+Emitido en tiempo real cada vez que una trama recibida por radio cumple los criterios de captura activos:
+```json
+{
+  "event": "packet_captured",
+  "ts": "2026-09-24T09:40:00Z",
+  "data": {
+    "id": 142,
+    "created_at": "2026-09-24T09:40:00Z",
+    "packet_id": 987654321,
+    "from_id": "!11223344",
+    "from_name": "Nodo Sensor",
+    "to_id": "!12345678",
+    "to_name": "Router Norte",
+    "channel": 0,
+    "channel_name": "Admin Remota (PKI)",
+    "is_encrypted": 1,
+    "is_admin_pki": 1,
+    "next_hop": 12345678,
+    "relay_node": null,
+    "want_ack": 1,
+    "hops": 1,
+    "rx_snr": 7.5,
+    "rx_rssi": -72,
+    "payload_hex": "01020304aabbccdd",
+    "payload_text": null,
+    "payload_size": 8,
+    "portnum": "ADMIN_APP"
+  }
+}
+```
+
 ---
 
 ## 3. Catálogo de Acciones de Entrada (Cliente ➔ Servidor)
@@ -855,6 +887,243 @@ Encola una solicitud `TELEMETRY_APP` por radio LoRa dirigida al nodo especificad
   "data": {
     "reset": true,
     "message": "Estadísticas y alertas de seguridad reiniciadas con éxito."
+  },
+  "error": null
+}
+```
+
+### 3.14. `get_capture_rules` (Obtener Reglas de Captura)
+- **Petición:**
+```json
+{
+  "action": "get_capture_rules",
+  "req_id": "gcr_01",
+  "params": {
+    "active_only": false
+  }
+}
+```
+- **Respuesta:**
+```json
+{
+  "type": "response",
+  "action": "get_capture_rules",
+  "req_id": "gcr_01",
+  "success": true,
+  "data": {
+    "rules": [
+      {
+        "id": 1,
+        "name": "Vigilancia Router 1",
+        "to_node_id": "!12345678",
+        "from_node_id": null,
+        "channel_filter": "admin_pki",
+        "only_encrypted": 1,
+        "save_payload_mode": "full_encrypted",
+        "is_active": 1,
+        "created_at": "2026-09-24T09:30:00Z"
+      }
+    ]
+  },
+  "error": null
+}
+```
+
+### 3.15. `save_capture_rule` (Crear o Actualizar Regla de Captura)
+- **Petición:**
+```json
+{
+  "action": "save_capture_rule",
+  "req_id": "scr_01",
+  "params": {
+    "name": "Monitor Tráfico",
+    "to_node_id": "!12345678",
+    "from_node_id": null,
+    "channel_filter": "admin_pki",
+    "only_encrypted": true,
+    "save_payload_mode": "full_encrypted",
+    "is_active": true,
+    "rule_id": null
+  }
+}
+```
+- **Respuesta:**
+```json
+{
+  "type": "response",
+  "action": "save_capture_rule",
+  "req_id": "scr_01",
+  "success": true,
+  "data": {
+    "rule_id": 1,
+    "saved": true
+  },
+  "error": null
+}
+```
+
+### 3.16. `toggle_capture_rule` (Pausar/Reanudar Regla de Captura)
+- **Petición:**
+```json
+{
+  "action": "toggle_capture_rule",
+  "req_id": "tcr_01",
+  "params": {
+    "rule_id": 1,
+    "is_active": false
+  }
+}
+```
+- **Respuesta:**
+```json
+{
+  "type": "response",
+  "action": "toggle_capture_rule",
+  "req_id": "tcr_01",
+  "success": true,
+  "data": {
+    "success": true
+  },
+  "error": null
+}
+```
+
+### 3.17. `delete_capture_rule` (Eliminar Regla de Captura)
+- **Petición:**
+```json
+{
+  "action": "delete_capture_rule",
+  "req_id": "dcr_01",
+  "params": {
+    "rule_id": 1
+  }
+}
+```
+- **Respuesta:**
+```json
+{
+  "type": "response",
+  "action": "delete_capture_rule",
+  "req_id": "dcr_01",
+  "success": true,
+  "data": {
+    "deleted": true
+  },
+  "error": null
+}
+```
+
+### 3.18. `set_node_captured` (Marcar Captura para un Nodo)
+- **Petición:**
+```json
+{
+  "action": "set_node_captured",
+  "req_id": "snc_01",
+  "params": {
+    "node_id": "!12345678",
+    "is_captured": true,
+    "criteria": "{\"save\": \"full_encrypted\"}"
+  }
+}
+```
+- **Respuesta:**
+```json
+{
+  "type": "response",
+  "action": "set_node_captured",
+  "req_id": "snc_01",
+  "success": true,
+  "data": {
+    "success": true
+  },
+  "error": null
+}
+```
+
+### 3.19. `get_captured_packets` (Listar Paquetes Capturados)
+- **Petición:**
+```json
+{
+  "action": "get_captured_packets",
+  "req_id": "gcp_01",
+  "params": {
+    "limit": 50,
+    "offset": 0,
+    "to_node": null,
+    "from_node": null,
+    "is_encrypted": null,
+    "is_admin": null,
+    "channel": null
+  }
+}
+```
+- **Respuesta:**
+```json
+{
+  "type": "response",
+  "action": "get_captured_packets",
+  "req_id": "gcp_01",
+  "success": true,
+  "data": {
+    "packets": [ ... ],
+    "total": 1,
+    "limit": 50,
+    "offset": 0
+  },
+  "error": null
+}
+```
+
+### 3.20. `get_captured_packet_by_id` (Inspección Detallada de Paquete)
+- **Petición:**
+```json
+{
+  "action": "get_captured_packet_by_id",
+  "req_id": "gcpi_01",
+  "params": {
+    "id": 142
+  }
+}
+```
+- **Respuesta:**
+```json
+{
+  "type": "response",
+  "action": "get_captured_packet_by_id",
+  "req_id": "gcpi_01",
+  "success": true,
+  "data": {
+    "packet": {
+      "id": 142,
+      "created_at": "2026-09-24T09:40:00Z",
+      "payload_hex": "01020304aabbccdd",
+      "payload_text": null,
+      "payload_size": 8
+    }
+  },
+  "error": null
+}
+```
+
+### 3.21. `clear_captured_packets` (Vaciar Tráfico Capturado)
+- **Petición:**
+```json
+{
+  "action": "clear_captured_packets",
+  "req_id": "ccp_01",
+  "params": {}
+}
+```
+- **Respuesta:**
+```json
+{
+  "type": "response",
+  "action": "clear_captured_packets",
+  "req_id": "ccp_01",
+  "success": true,
+  "data": {
+    "cleared": true,
+    "deleted_count": 142
   },
   "error": null
 }

@@ -110,6 +110,11 @@
         <span class="tab-icon">📖</span>
         <span class="tab-label">Comandos</span>
       </button>
+      <button class="tab-btn" data-tab="capture" title="📷 Capturas">
+        <span class="tab-icon">📷</span>
+        <span class="tab-label">Cap.</span>
+        <span class="badge-count" id="count-captured">0</span>
+      </button>
     </nav>
 
   <!-- ==========================================================================
@@ -852,6 +857,167 @@
       <div id="commands-container"></div>
     </section>
 
+    <!-- Pestaña 10: Captura Selectiva de Tráfico LoRa (Sniffer) -->
+    <section id="pane-capture" class="tab-pane">
+      <div class="card" style="margin-bottom: 20px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
+          <div>
+            <h2 style="font-size: 1.2rem; font-weight: 700; margin-bottom: 4px; display: flex; align-items: center; gap: 8px;">
+              <span>📷</span> Captura Selectiva de Tráfico LoRa (Sniffer)
+            </h2>
+            <p style="font-size: 0.85rem; color: var(--text-dim); margin-top: 2px;">
+              Monitoreo granular de paquetes unicast, administración remota (PKI) y tráfico cifrado hacia routers y nodos específicos.
+            </p>
+          </div>
+          <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+            <button class="btn-secondary" id="btn-refresh-captures">🔄 Actualizar</button>
+            <button class="btn-secondary" id="btn-toggle-capture-form">➕ Nueva Regla</button>
+            <button class="btn-secondary" id="btn-clear-captures" style="color: var(--danger); border-color: rgba(239, 68, 68, 0.4);" title="Vaciar todos los paquetes capturados">
+              🗑️ Limpiar Capturas
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tarjeta Formulario: Nueva Regla de Monitorización -->
+      <div class="card" id="card-capture-form" style="margin-bottom: 20px; display: none;">
+        <div class="card-header" style="border-bottom: 1px solid var(--border-color); padding-bottom: 10px; margin-bottom: 14px;">
+          <h3 style="font-size: 1rem; font-weight: 600; display: flex; align-items: center; gap: 6px;">
+            <span>⚙️</span> Configurar Criterio de Guardado
+          </h3>
+          <span style="font-size: 0.8rem; color: var(--text-muted);">Al menos un nodo (Origen o Destino) debe estar definido</span>
+        </div>
+        <form id="form-capture-rule" style="display: flex; flex-direction: column; gap: 14px;">
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px;">
+            <!-- Destino (to) -->
+            <div>
+              <label style="font-size: 0.85rem; font-weight: 600; color: var(--text-main); display: block; margin-bottom: 6px;">
+                🎯 Destino (to):
+              </label>
+              <input type="text" id="capture-input-to" list="capture-nodes-datalist" placeholder="Escribe ID o nombre del nodo (ej. !150dbd0f)..." class="input-custom" style="width: 100%;">
+              <span style="font-size: 0.75rem; color: var(--text-muted);">Filtro principal para vigilar tráfico hacia un router o nodo</span>
+            </div>
+
+            <!-- Origen (from) -->
+            <div>
+              <label style="font-size: 0.85rem; font-weight: 600; color: var(--text-main); display: block; margin-bottom: 6px;">
+                📡 Origen (from):
+              </label>
+              <input type="text" id="capture-input-from" list="capture-nodes-datalist" placeholder="Escribe ID o nombre del emisor..." class="input-custom" style="width: 100%;">
+              <span style="font-size: 0.75rem; color: var(--text-muted);">Filtra paquetes enviados por un nodo concreto</span>
+            </div>
+
+            <!-- Canal -->
+            <div>
+              <label style="font-size: 0.85rem; font-weight: 600; color: var(--text-main); display: block; margin-bottom: 6px;">
+                📻 Canal de Radio:
+              </label>
+              <select id="capture-select-channel" class="select-custom" style="width: 100%;">
+                <option value="all">🌐 Todos / Cualquier canal</option>
+                <option value="admin_pki">🔐 Admin Remota (PKI / Canal 0 Directo)</option>
+              </select>
+              <span style="font-size: 0.75rem; color: var(--text-muted);">Unicast en Ch 0 suele ser administración remota PKI</span>
+            </div>
+
+            <!-- Tipo de Payload -->
+            <div>
+              <label style="font-size: 0.85rem; font-weight: 600; color: var(--text-main); display: block; margin-bottom: 6px;">
+                📦 Modo de Guardado del Payload:
+              </label>
+              <select id="capture-payload-mode" class="select-custom" style="width: 100%;">
+                <option value="full_encrypted">📦 Payload completo cifrado (Hex/Binario)</option>
+                <option value="text_if_available">📝 Texto plano (si viene descifrado)</option>
+              </select>
+              <span id="capture-payload-note" style="font-size: 0.75rem; color: var(--text-muted);">En Admin Remota se guarda siempre el payload completo</span>
+            </div>
+          </div>
+
+          <!-- Opciones Adicionales -->
+          <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; padding-top: 6px; border-top: 1px solid rgba(255,255,255,0.05);">
+            <div style="display: flex; gap: 18px; align-items: center; flex-wrap: wrap;">
+              <label style="display: flex; align-items: center; gap: 6px; font-size: 0.85rem; cursor: pointer;">
+                <input type="checkbox" id="capture-check-encrypted">
+                <span>🔒 Solo paquetes cifrados</span>
+              </label>
+              <div style="display: flex; align-items: center; gap: 6px;">
+                <span style="font-size: 0.85rem; color: var(--text-muted);">Etiqueta:</span>
+                <input type="text" id="capture-input-name" placeholder="Ej: Vigilancia Router 1" class="input-custom" style="width: 200px; padding: 4px 8px; font-size: 0.8rem;">
+              </div>
+            </div>
+
+            <div style="display: flex; gap: 8px;">
+              <button type="button" class="btn-secondary" id="btn-cancel-capture-form">Cancelar</button>
+              <button type="submit" class="btn-primary" id="btn-save-capture-rule">💾 Guardar Criterio</button>
+            </div>
+          </div>
+        </form>
+        <!-- Datalist compartido para autocompletar nodos -->
+        <datalist id="capture-nodes-datalist"></datalist>
+      </div>
+
+      <!-- Tarjeta: Reglas Activas de Monitorización -->
+      <div class="card" style="margin-bottom: 20px;">
+        <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
+          <h3 style="font-size: 0.95rem; font-weight: 600; display: flex; align-items: center; gap: 6px;">
+            <span>🛡️</span> Reglas de Captura Activas
+            <span class="badge" id="badge-rules-count" style="margin-left: 6px;">0</span>
+          </h3>
+        </div>
+        <div id="capture-rules-container" style="display: flex; gap: 10px; flex-wrap: wrap; margin-top: 10px;">
+          <div style="color: var(--text-muted); font-size: 0.85rem;">No hay reglas de captura configuradas. Pulsa en <em>➕ Nueva Regla</em> para añadir una.</div>
+        </div>
+      </div>
+
+      <!-- Tarjeta: Tabla de Paquetes Capturados -->
+      <div class="card">
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 14px;">
+          <div style="display: flex; align-items: center; gap: 10px;">
+            <h3 style="font-size: 1rem; font-weight: 700; display: flex; align-items: center; gap: 6px;">
+              <span>📥</span> Registro de Tráfico Capturado
+            </h3>
+            <span class="badge badge-ch0" id="badge-captured-total">0 paquetes</span>
+          </div>
+
+          <!-- Filtros de la tabla -->
+          <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+            <input type="text" id="filter-captured-search" placeholder="🔍 Filtrar por nodo..." class="input-custom" style="width: 180px; padding: 6px 10px; font-size: 0.82rem;">
+            <select id="filter-captured-type" class="select-custom" style="padding: 6px 10px; font-size: 0.82rem;">
+              <option value="all">Todos los tipos</option>
+              <option value="admin_pki">🔐 Solo Admin PKI</option>
+              <option value="encrypted">🔒 Solo Cifrados</option>
+              <option value="plain">🔓 Solo Texto/Plano</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="table-responsive">
+          <table class="data-table" id="table-captured-packets">
+            <thead>
+              <tr>
+                <th>Hora</th>
+                <th>Origen (from)</th>
+                <th>Destino (to)</th>
+                <th>Canal</th>
+                <th>Cifrado</th>
+                <th>Routing</th>
+                <th>Flags</th>
+                <th>Señal</th>
+                <th>Tamaño</th>
+                <th>Acción</th>
+              </tr>
+            </thead>
+            <tbody id="tbody-captured-packets">
+              <tr>
+                <td colspan="10" style="text-align: center; color: var(--text-muted); padding: 24px;">
+                  No hay paquetes capturados todavía. Las tramas que coincidan con tus reglas aparecerán aquí en tiempo real.
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
   </main>
   </div> <!-- .app-layout -->
 
@@ -925,6 +1091,56 @@
           <button type="submit" class="btn-primary" id="btn-submit-reminder">📢 Confirmar Publicación</button>
         </div>
       </form>
+    </div>
+  </div>
+
+  <!-- Modal: Inspección de Payload y Metadatos de Paquete Capturado -->
+  <div id="modal-packet-inspect" class="modal" style="display: none;">
+    <div class="modal-content card" style="max-width: 680px; max-height: 90vh; overflow-y: auto;">
+      <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
+        <span style="font-weight: 700; font-size: 1.1rem; display: flex; align-items: center; gap: 6px;">
+          <span>🔍</span> Inspección de Paquete de Radio LoRa
+        </span>
+        <button class="btn-secondary" id="btn-close-inspect-modal" style="padding: 2px 8px;">✕</button>
+      </div>
+
+      <div id="packet-inspect-body" style="margin-top: 14px; display: flex; flex-direction: column; gap: 14px;">
+        <!-- Cabecera y Metadatos en Grid -->
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; background: var(--bg-input); padding: 12px; border-radius: var(--radius-sm); font-size: 0.82rem;">
+          <div><strong style="color: var(--text-muted);">Hora:</strong> <span id="insp-time">--</span></div>
+          <div><strong style="color: var(--text-muted);">Packet ID:</strong> <span id="insp-id">--</span></div>
+          <div><strong style="color: var(--text-muted);">Origen:</strong> <span id="insp-from">--</span></div>
+          <div><strong style="color: var(--text-muted);">Destino:</strong> <span id="insp-to">--</span></div>
+          <div><strong style="color: var(--text-muted);">Canal:</strong> <span id="insp-channel">--</span></div>
+          <div><strong style="color: var(--text-muted);">Cifrado:</strong> <span id="insp-encrypted">--</span></div>
+          <div><strong style="color: var(--text-muted);">Next Hop:</strong> <span id="insp-next-hop">--</span></div>
+          <div><strong style="color: var(--text-muted);">Relay:</strong> <span id="insp-relay">--</span></div>
+          <div><strong style="color: var(--text-muted);">Want ACK:</strong> <span id="insp-ack">--</span></div>
+          <div><strong style="color: var(--text-muted);">Saltos:</strong> <span id="insp-hops">--</span></div>
+          <div><strong style="color: var(--text-muted);">SNR / RSSI:</strong> <span id="insp-signal">--</span></div>
+          <div><strong style="color: var(--text-muted);">Tamaño:</strong> <span id="insp-size">--</span></div>
+        </div>
+
+        <!-- Texto Plano (si vino descifrado) -->
+        <div id="insp-text-container" style="display: none;">
+          <strong style="font-size: 0.85rem; color: var(--text-main);">📝 Texto Descifrado:</strong>
+          <div id="insp-text-content" style="margin-top: 4px; padding: 10px; background: var(--bg-input); border-radius: var(--radius-sm); font-size: 0.9rem; font-family: monospace; white-space: pre-wrap; color: var(--success); border-left: 3px solid var(--success);"></div>
+        </div>
+
+        <!-- Volcado Hexadecimal Completo -->
+        <div>
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+            <strong style="font-size: 0.85rem; color: var(--text-main);">📦 Payload Completo (Hex Dump):</strong>
+            <button class="btn-secondary" id="btn-copy-inspect-hex" style="font-size: 0.75rem; padding: 3px 8px;">📋 Copiar Hex</button>
+          </div>
+          <div id="insp-hex-content" style="font-family: monospace; font-size: 0.8rem; background: #0c1017; color: #38bdf8; padding: 12px; border-radius: var(--radius-sm); overflow-x: auto; max-height: 220px; border: 1px solid var(--border-color); white-space: pre-wrap; word-break: break-all; line-height: 1.4;">
+          </div>
+        </div>
+      </div>
+
+      <div style="display: flex; justify-content: flex-end; margin-top: 16px;">
+        <button class="btn-secondary" id="btn-close-inspect-modal-bottom">Cerrar</button>
+      </div>
     </div>
   </div>
 

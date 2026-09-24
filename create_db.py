@@ -327,6 +327,56 @@ def _execute_schema(conn: sqlite3.Connection) -> None:
 
         CREATE INDEX IF NOT EXISTS idx_auto_reported_node ON auto_reported_nodes(node_id);
         CREATE INDEX IF NOT EXISTS idx_auto_reported_last ON auto_reported_nodes(last_detected_at DESC);
+
+        -- Reglas de monitorización y captura selectiva de paquetes
+        CREATE TABLE IF NOT EXISTS capture_rules (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NULL,
+            to_node_id TEXT NULL,
+            from_node_id TEXT NULL,
+            channel_filter TEXT NOT NULL DEFAULT 'all',           -- 'all' | 'admin_pki' | canal num '0', '1'...
+            only_encrypted INTEGER NOT NULL DEFAULT 0,            -- 1: solo cifrados, 0: cualquiera
+            save_payload_mode TEXT NOT NULL DEFAULT 'full_encrypted', -- 'full_encrypted' | 'text_if_available'
+            is_active INTEGER NOT NULL DEFAULT 1,
+            created_at TEXT NOT NULL
+        );
+
+        -- Registro de paquetes capturados con payload completo
+        CREATE TABLE IF NOT EXISTS captured_packets (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            created_at TEXT NOT NULL,
+            packet_id INTEGER NULL,
+            rx_time INTEGER NULL,
+            to_num INTEGER NULL,
+            to_id TEXT NULL,
+            to_name TEXT NULL,
+            from_num INTEGER NULL,
+            from_id TEXT NULL,
+            from_name TEXT NULL,
+            channel INTEGER NOT NULL DEFAULT 0,
+            channel_name TEXT NULL,
+            is_encrypted INTEGER NOT NULL DEFAULT 0,
+            is_admin_pki INTEGER NOT NULL DEFAULT 0,
+            next_hop INTEGER NULL,
+            relay_node INTEGER NULL,
+            want_ack INTEGER NOT NULL DEFAULT 0,
+            hop_limit INTEGER NULL,
+            hop_start INTEGER NULL,
+            hops INTEGER NULL,
+            rx_snr REAL NULL,
+            rx_rssi INTEGER NULL,
+            payload_raw BLOB NULL,
+            payload_hex TEXT NULL,
+            payload_text TEXT NULL,
+            payload_size INTEGER NOT NULL DEFAULT 0,
+            portnum TEXT NULL,
+            rule_id INTEGER NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_captured_created ON captured_packets(created_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_captured_to ON captured_packets(to_id, created_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_captured_from ON captured_packets(from_id, created_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_captured_admin ON captured_packets(is_admin_pki, created_at DESC);
         """
     )
     conn.commit()
@@ -392,9 +442,16 @@ def _execute_schema(conn: sqlite3.Connection) -> None:
     if not _has_column('nodes', 'telemetry_count'):
         conn.execute('ALTER TABLE nodes ADD COLUMN telemetry_count INTEGER NOT NULL DEFAULT 0')
         conn.commit()
+    if not _has_column('nodes', 'is_captured'):
+        conn.execute('ALTER TABLE nodes ADD COLUMN is_captured INTEGER NOT NULL DEFAULT 0')
+        conn.commit()
+    if not _has_column('nodes', 'capture_criteria'):
+        conn.execute('ALTER TABLE nodes ADD COLUMN capture_criteria TEXT NULL')
+        conn.commit()
 
     # Create indexes if not exist
     cur.execute('CREATE INDEX IF NOT EXISTS idx_nodes_is_watched ON nodes(is_watched)')
+    cur.execute('CREATE INDEX IF NOT EXISTS idx_nodes_is_captured ON nodes(is_captured)')
     cur.execute('CREATE INDEX IF NOT EXISTS idx_chistes_need_upload ON chistes(need_upload)')
     cur.execute('CREATE INDEX IF NOT EXISTS idx_chistes_need_approve ON chistes(need_approve)')
     cur.execute('CREATE UNIQUE INDEX IF NOT EXISTS idx_chistes_chiste_id ON chistes(chiste_id)')

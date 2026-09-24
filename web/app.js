@@ -178,6 +178,39 @@ class MeshDashboard {
     this.weatherLocationsContainer = document.getElementById("weather-locations-container");
     this.weatherAlertsContent = document.getElementById("weather-alerts-content");
     this.weatherAlertsCount = document.getElementById("weather-alerts-count");
+
+    // Elementos de Captura de Paquetes (Sniffer)
+    this.btnRefreshCaptures = document.getElementById("btn-refresh-captures");
+    this.btnToggleCaptureForm = document.getElementById("btn-toggle-capture-form");
+    this.btnClearCaptures = document.getElementById("btn-clear-captures");
+    this.cardCaptureForm = document.getElementById("card-capture-form");
+    this.formCaptureRule = document.getElementById("form-capture-rule");
+    this.captureInputTo = document.getElementById("capture-input-to");
+    this.captureInputFrom = document.getElementById("capture-input-from");
+    this.captureSelectChannel = document.getElementById("capture-select-channel");
+    this.capturePayloadMode = document.getElementById("capture-payload-mode");
+    this.capturePayloadNote = document.getElementById("capture-payload-note");
+    this.captureCheckEncrypted = document.getElementById("capture-check-encrypted");
+    this.captureInputName = document.getElementById("capture-input-name");
+    this.btnCancelCaptureForm = document.getElementById("btn-cancel-capture-form");
+    this.captureNodesDatalist = document.getElementById("capture-nodes-datalist");
+    this.captureRulesContainer = document.getElementById("capture-rules-container");
+    this.badgeRulesCount = document.getElementById("badge-rules-count");
+    this.badgeCapturedTotal = document.getElementById("badge-captured-total");
+    this.countCaptured = document.getElementById("count-captured");
+    this.filterCapturedSearch = document.getElementById("filter-captured-search");
+    this.filterCapturedType = document.getElementById("filter-captured-type");
+    this.tbodyCapturedPackets = document.getElementById("tbody-captured-packets");
+
+    // Modal de Inspección de Paquete
+    this.modalPacketInspect = document.getElementById("modal-packet-inspect");
+    this.btnCloseInspectModal = document.getElementById("btn-close-inspect-modal");
+    this.btnCloseInspectModalBottom = document.getElementById("btn-close-inspect-modal-bottom");
+    this.btnCopyInspectHex = document.getElementById("btn-copy-inspect-hex");
+
+    this.captureRules = [];
+    this.capturedPackets = [];
+    this.currentInspectedPacket = null;
   }
 
   bindEvents() {
@@ -644,6 +677,9 @@ class MeshDashboard {
         this.showToast("Actualizando predicción meteorológica...");
       });
     }
+
+    // Eventos de Captura de Paquetes (Pestaña 10)
+    this.initCaptureListeners();
   }
 
   updateSortHeaders() {
@@ -681,6 +717,8 @@ class MeshDashboard {
       this.loadWeather();
     } else if (tabName === "watch") {
       this.renderWatchCards();
+    } else if (tabName === "capture") {
+      this.loadCaptureData();
     }
   }
 
@@ -945,6 +983,9 @@ class MeshDashboard {
       case "message_ack":
         this.showToast(`Mensaje entregado con éxito a ${data.dest}`);
         break;
+      case "packet_captured":
+        this.addCapturedPacket(data);
+        break;
     }
   }
 
@@ -957,6 +998,8 @@ class MeshDashboard {
     this.sendAction("get_scheduled_messages");
     this.sendAction("get_blocked_nodes");
     this.loadAutoReportedNodes();
+    this.sendAction("get_capture_rules");
+    this.sendAction("get_captured_packets", { limit: 150 });
   }
 
   handleActionResponse(resp) {
@@ -1007,6 +1050,7 @@ class MeshDashboard {
       if (data.channels) {
         this.channels = data.channels;
         this.renderChannelFiltersAndDestinations();
+        this.updateCaptureChannels();
       }
 
       // 3. Routers
@@ -1031,6 +1075,7 @@ class MeshDashboard {
         this.renderNodesTable();
         this.renderWatchCards();
         this.renderChannelFiltersAndDestinations();
+        this.updateNodesDatalist();
       }
 
       // 5. Traces
@@ -1143,6 +1188,31 @@ class MeshDashboard {
       this.renderNodesTable();
       this.renderWatchCards();
       this.renderRouters();
+    } else if (resp.action === "get_capture_rules") {
+      this.renderCaptureRules(data.rules || []);
+    } else if (resp.action === "save_capture_rule") {
+      this.showToast("Criterio de captura guardado correctamente", "success");
+      if (this.formCaptureRule) this.formCaptureRule.reset();
+      if (this.cardCaptureForm) this.cardCaptureForm.style.display = "none";
+      if (this.capturePayloadMode) this.capturePayloadMode.disabled = false;
+      this.loadCaptureData();
+    } else if (resp.action === "toggle_capture_rule") {
+      this.showToast("Estado de regla de captura actualizado");
+      this.loadCaptureData();
+    } else if (resp.action === "delete_capture_rule") {
+      this.showToast("Regla de captura eliminada");
+      this.loadCaptureData();
+    } else if (resp.action === "set_node_captured") {
+      this.showToast("Vigilancia de captura del nodo actualizada");
+      this.sendAction("get_nodes");
+    } else if (resp.action === "get_captured_packets") {
+      this.renderCapturedPackets(data.packets || [], data.total);
+    } else if (resp.action === "get_captured_packet_by_id") {
+      if (data.packet) this.openInspectPacket(data.packet);
+    } else if (resp.action === "clear_captured_packets") {
+      this.showToast(`Historial de capturas vaciado (${data.deleted_count || 0} paquetes eliminados)`, "info");
+      this.capturedPackets = [];
+      this.renderCapturedPackets([], 0);
     }
   }
 
@@ -1528,9 +1598,14 @@ class MeshDashboard {
                 🔌 PWR
               </button>
             </div>
-            <button class="btn-secondary card-action-btn" style="width: 100%;" onclick="window.dashboard.requestTraceTo('${routerId}', this)">
-              📍 Trace
-            </button>
+            <div class="card-actions-row">
+              <button class="btn-secondary card-action-btn" style="flex: 1;" onclick="window.dashboard.requestTraceTo('${routerId}', this)">
+                📍 Trace
+              </button>
+              <button class="btn-secondary card-action-btn" style="flex: 1;" title="Capturar tráfico LoRa de este router" onclick="window.dashboard.startCaptureForNode('${routerId}', '${this.escapeHtml(r.name || routerId)}')">
+                📷 Cap.
+              </button>
+            </div>
           </div>
         `;
       } else {
@@ -1542,6 +1617,9 @@ class MeshDashboard {
               </button>
               <button class="btn-secondary card-action-btn" style="flex: 1;" onclick="window.dashboard.requestTraceTo('${routerId}', this)">
                 📍 Trace
+              </button>
+              <button class="btn-secondary card-action-btn" style="flex: 1;" title="Capturar tráfico LoRa de este router" onclick="window.dashboard.startCaptureForNode('${routerId}', '${this.escapeHtml(r.name || routerId)}')">
+                📷 Cap.
               </button>
             </div>
           </div>
@@ -1909,6 +1987,9 @@ class MeshDashboard {
               </button>
               <button class="btn-secondary" style="padding: 4px 7px; font-size: 0.85rem;" title="Pedir NodeInfo por LoRa" onclick="window.dashboard.requestNodeInfo('${nodeId}', this)">
                 ℹ️
+              </button>
+              <button class="btn-secondary" style="padding: 4px 7px; font-size: 0.85rem;" title="Capturar tráfico LoRa de este nodo" onclick="window.dashboard.startCaptureForNode('${nodeId}', '${this.escapeHtml(n.name || nodeId)}')">
+                📷
               </button>
             </div>
           </td>
@@ -3536,6 +3617,414 @@ class MeshDashboard {
     } else {
       this.selectCommandForChat(text);
     }
+  }
+
+  // ==========================================================================
+  // Pestaña 10: Captura Selectiva de Tráfico LoRa (Sniffer de Paquetes)
+  // ==========================================================================
+  initCaptureListeners() {
+    // Abrir/Cerrar formulario de regla
+    if (this.btnToggleCaptureForm) {
+      this.btnToggleCaptureForm.addEventListener("click", () => {
+        if (!this.cardCaptureForm) return;
+        const isHidden = this.cardCaptureForm.style.display === "none";
+        this.cardCaptureForm.style.display = isHidden ? "block" : "none";
+        if (isHidden && this.captureInputTo) this.captureInputTo.focus();
+      });
+    }
+
+    if (this.btnCancelCaptureForm) {
+      this.btnCancelCaptureForm.addEventListener("click", () => {
+        if (this.cardCaptureForm) this.cardCaptureForm.style.display = "none";
+      });
+    }
+
+    // Regla condicional: si se selecciona "Admin Remota", forzar payload completo cifrado
+    if (this.captureSelectChannel) {
+      this.captureSelectChannel.addEventListener("change", (e) => {
+        const val = e.target.value;
+        if (val === "admin_pki") {
+          if (this.capturePayloadMode) {
+            this.capturePayloadMode.value = "full_encrypted";
+            this.capturePayloadMode.disabled = true;
+          }
+          if (this.capturePayloadNote) {
+            this.capturePayloadNote.textContent = "🔒 En Admin Remota el payload es siempre completo cifrado (PKI).";
+            this.capturePayloadNote.style.color = "var(--primary)";
+          }
+        } else {
+          if (this.capturePayloadMode) {
+            this.capturePayloadMode.disabled = false;
+          }
+          if (this.capturePayloadNote) {
+            this.capturePayloadNote.textContent = "En Admin Remota se guarda siempre el payload completo";
+            this.capturePayloadNote.style.color = "var(--text-muted)";
+          }
+        }
+      });
+    }
+
+    // Guardar regla de captura
+    if (this.formCaptureRule) {
+      this.formCaptureRule.addEventListener("submit", (e) => {
+        e.preventDefault();
+        const toVal = this.captureInputTo?.value.trim() || null;
+        const fromVal = this.captureInputFrom?.value.trim() || null;
+
+        if (!toVal && !fromVal) {
+          this.showToast("Debes especificar al menos un nodo de Destino o de Origen", "warning");
+          return;
+        }
+
+        const channelVal = this.captureSelectChannel?.value || "all";
+        const onlyEnc = !!this.captureCheckEncrypted?.checked;
+        const payloadMode = (channelVal === "admin_pki") ? "full_encrypted" : (this.capturePayloadMode?.value || "full_encrypted");
+        const ruleName = this.captureInputName?.value.trim() || null;
+
+        this.sendAction("save_capture_rule", {
+          name: ruleName,
+          to_node_id: toVal,
+          from_node_id: fromVal,
+          channel_filter: channelVal,
+          only_encrypted: onlyEnc,
+          save_payload_mode: payloadMode,
+          is_active: true,
+        });
+      });
+    }
+
+    // Actualizar capturas manualmente
+    if (this.btnRefreshCaptures) {
+      this.btnRefreshCaptures.addEventListener("click", () => {
+        this.loadCaptureData();
+        this.showToast("Actualizando capturas y reglas...");
+      });
+    }
+
+    // Limpiar capturas
+    if (this.btnClearCaptures) {
+      this.btnClearCaptures.addEventListener("click", () => {
+        const ok = confirm("⚠️ ¿Deseas eliminar todo el historial de paquetes capturados de la base de datos?\n\nLas reglas de monitorización configuradas se mantendrán activas.");
+        if (ok) {
+          this.sendAction("clear_captured_packets");
+        }
+      });
+    }
+
+    // Filtros de tabla
+    if (this.filterCapturedSearch) {
+      this.filterCapturedSearch.addEventListener("input", () => this.renderCapturedPackets());
+    }
+    if (this.filterCapturedType) {
+      this.filterCapturedType.addEventListener("change", () => this.renderCapturedPackets());
+    }
+
+    // Modal de Inspección
+    if (this.btnCloseInspectModal) {
+      this.btnCloseInspectModal.addEventListener("click", () => {
+        if (this.modalPacketInspect) this.modalPacketInspect.style.display = "none";
+      });
+    }
+    if (this.btnCloseInspectModalBottom) {
+      this.btnCloseInspectModalBottom.addEventListener("click", () => {
+        if (this.modalPacketInspect) this.modalPacketInspect.style.display = "none";
+      });
+    }
+    if (this.modalPacketInspect) {
+      this.modalPacketInspect.addEventListener("click", (e) => {
+        if (e.target === this.modalPacketInspect) {
+          this.modalPacketInspect.style.display = "none";
+        }
+      });
+    }
+    if (this.btnCopyInspectHex) {
+      this.btnCopyInspectHex.addEventListener("click", () => {
+        if (!this.currentInspectedPacket?.payload_hex) {
+          this.showToast("No hay payload hexadecimal para copiar", "warning");
+          return;
+        }
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(this.currentInspectedPacket.payload_hex).then(() => {
+            this.showToast("Payload hexadecimal copiado al portapapeles", "success");
+          });
+        }
+      });
+    }
+  }
+
+  loadCaptureData() {
+    this.sendAction("get_capture_rules");
+    this.sendAction("get_captured_packets", { limit: 150 });
+  }
+
+  updateCaptureChannels() {
+    if (!this.captureSelectChannel || !this.channels) return;
+    const current = this.captureSelectChannel.value;
+    let html = `
+      <option value="all">🌐 Todos / Cualquier canal</option>
+      <option value="admin_pki">🔐 Admin Remota (PKI / Canal 0 Directo)</option>
+    `;
+    Object.entries(this.channels).forEach(([idx, ch]) => {
+      const name = ch.name || `Canal ${idx}`;
+      html += `<option value="${idx}">📻 Canal ${idx} (${name})</option>`;
+    });
+    this.captureSelectChannel.innerHTML = html;
+    if (current) this.captureSelectChannel.value = current;
+  }
+
+  updateNodesDatalist() {
+    if (!this.captureNodesDatalist || !this.nodesMap) return;
+    let opts = "";
+    for (const node of this.nodesMap.values()) {
+      if (!node.node_id) continue;
+      const label = node.name || node.short_name || node.node_id;
+      opts += `<option value="${this.escapeHtml(node.node_id)}">${this.escapeHtml(label)}</option>`;
+    }
+    this.captureNodesDatalist.innerHTML = opts;
+  }
+
+  renderCaptureRules(rules = []) {
+    this.captureRules = rules;
+    if (this.badgeRulesCount) this.badgeRulesCount.textContent = rules.length;
+    if (!this.captureRulesContainer) return;
+
+    if (rules.length === 0) {
+      this.captureRulesContainer.innerHTML = `
+        <div style="color: var(--text-muted); font-size: 0.85rem; padding: 10px;">
+          No hay reglas de captura configuradas. Pulsa en <em>➕ Nueva Regla</em> para añadir una.
+        </div>`;
+      return;
+    }
+
+    this.captureRulesContainer.innerHTML = rules.map(r => {
+      const nameTitle = r.name ? `<strong>${this.escapeHtml(r.name)}</strong>` : `<em>Regla #${r.id}</em>`;
+      const toBadge = r.to_node_id ? `<span class="badge" style="background: rgba(56, 189, 248, 0.15); color: #38bdf8;">To: ${this.escapeHtml(r.to_node_id)}</span>` : `<span class="badge" style="color: var(--text-muted);">To: Cualquiera</span>`;
+      const fromBadge = r.from_node_id ? `<span class="badge" style="background: rgba(234, 179, 8, 0.15); color: #eab308;">From: ${this.escapeHtml(r.from_node_id)}</span>` : `<span class="badge" style="color: var(--text-muted);">From: Cualquiera</span>`;
+      
+      let chanBadge = "";
+      if (r.channel_filter === "admin_pki") {
+        chanBadge = `<span class="badge" style="background: rgba(168, 85, 247, 0.2); color: #c084fc;">🔐 Admin PKI</span>`;
+      } else if (r.channel_filter === "all" || !r.channel_filter) {
+        chanBadge = `<span class="badge">Todos Ch</span>`;
+      } else {
+        chanBadge = `<span class="badge">Ch ${this.escapeHtml(r.channel_filter)}</span>`;
+      }
+
+      const encBadge = r.only_encrypted ? `<span class="badge" style="background: rgba(239, 68, 68, 0.15); color: #f87171;">🔒 Solo Cifrado</span>` : "";
+      const statusBadge = r.is_active 
+        ? `<span class="badge" style="background: rgba(34, 197, 94, 0.15); color: #4ade80;">● Activa</span>`
+        : `<span class="badge" style="background: rgba(148, 163, 184, 0.15); color: #94a3b8;">⏸️ Pausada</span>`;
+
+      return `
+        <div style="background: var(--bg-input); border: 1px solid var(--border-color); border-radius: var(--radius-sm); padding: 10px 14px; display: flex; align-items: center; justify-content: space-between; gap: 12px; flex: 1 1 320px;">
+          <div style="display: flex; flex-direction: column; gap: 6px;">
+            <div style="font-size: 0.85rem; display: flex; align-items: center; gap: 6px;">
+              ${statusBadge}
+              ${nameTitle}
+            </div>
+            <div style="display: flex; gap: 6px; flex-wrap: wrap; font-size: 0.75rem;">
+              ${toBadge}
+              ${fromBadge}
+              ${chanBadge}
+              ${encBadge}
+            </div>
+          </div>
+          <div style="display: flex; gap: 6px;">
+            <button class="btn-secondary" style="padding: 3px 8px; font-size: 0.75rem;" title="${r.is_active ? 'Pausar regla' : 'Activar regla'}" onclick="dashboard.toggleCaptureRule(${r.id}, ${!r.is_active})">
+              ${r.is_active ? '⏸️' : '▶️'}
+            </button>
+            <button class="btn-secondary" style="padding: 3px 8px; font-size: 0.75rem; color: var(--danger); border-color: rgba(239, 68, 68, 0.3);" title="Eliminar regla" onclick="dashboard.deleteCaptureRule(${r.id})">
+              🗑️
+            </button>
+          </div>
+        </div>
+      `;
+    }).join("");
+  }
+
+  toggleCaptureRule(ruleId, isActive) {
+    this.sendAction("toggle_capture_rule", { rule_id: ruleId, is_active: isActive });
+  }
+
+  deleteCaptureRule(ruleId) {
+    const ok = confirm(`¿Deseas eliminar la regla de captura #${ruleId}?`);
+    if (ok) {
+      this.sendAction("delete_capture_rule", { rule_id: ruleId });
+    }
+  }
+
+  renderCapturedPackets(packets, total) {
+    if (packets !== undefined) this.capturedPackets = packets;
+    if (total !== undefined) this.totalCapturedCount = total;
+
+    const countVal = this.totalCapturedCount !== undefined ? this.totalCapturedCount : this.capturedPackets.length;
+    if (this.badgeCapturedTotal) this.badgeCapturedTotal.textContent = `${countVal} paquetes`;
+    if (this.countCaptured) this.countCaptured.textContent = countVal;
+
+    if (!this.tbodyCapturedPackets) return;
+
+    let list = this.capturedPackets || [];
+    const search = this.filterCapturedSearch?.value.trim().toLowerCase() || "";
+    const typeFilter = this.filterCapturedType?.value || "all";
+
+    if (search) {
+      list = list.filter(p => 
+        (p.from_id && p.from_id.toLowerCase().includes(search)) ||
+        (p.from_name && p.from_name.toLowerCase().includes(search)) ||
+        (p.to_id && p.to_id.toLowerCase().includes(search)) ||
+        (p.to_name && p.to_name.toLowerCase().includes(search))
+      );
+    }
+
+    if (typeFilter === "admin_pki") {
+      list = list.filter(p => p.is_admin_pki);
+    } else if (typeFilter === "encrypted") {
+      list = list.filter(p => p.is_encrypted);
+    } else if (typeFilter === "plain") {
+      list = list.filter(p => !p.is_encrypted);
+    }
+
+    if (list.length === 0) {
+      this.tbodyCapturedPackets.innerHTML = `
+        <tr>
+          <td colspan="10" style="text-align: center; color: var(--text-muted); padding: 24px;">
+            ${this.capturedPackets.length === 0 ? "No hay paquetes capturados todavía." : "No hay paquetes que coincidan con el filtro aplicado."}
+          </td>
+        </tr>`;
+      return;
+    }
+
+    this.tbodyCapturedPackets.innerHTML = list.map(p => {
+      const timeStr = this.formatRelativeOrDate(p.created_at);
+      const fromStr = `<span style="font-weight: 600;">${this.escapeHtml(p.from_name || p.from_id)}</span> <span style="font-family: monospace; font-size: 0.75rem; color: var(--text-dim);">${this.escapeHtml(p.from_id)}</span>`;
+      
+      const isUnicast = (p.to_id && p.to_id !== "^all");
+      const toBadge = isUnicast ? `<span class="badge" style="background: rgba(56, 189, 248, 0.15); color: #38bdf8; font-size: 0.7rem;">Unicast</span>` : "";
+      const toStr = `<span style="font-weight: 600;">${this.escapeHtml(p.to_name || p.to_id)}</span> ${toBadge} <span style="font-family: monospace; font-size: 0.75rem; color: var(--text-dim);">${this.escapeHtml(p.to_id)}</span>`;
+
+      let chanBadge = "";
+      if (p.is_admin_pki) {
+        chanBadge = `<span class="badge" style="background: rgba(168, 85, 247, 0.2); color: #c084fc; font-weight: 600;">🔐 Admin PKI (Ch 0)</span>`;
+      } else {
+        chanBadge = `<span class="badge badge-ch0">${this.escapeHtml(p.channel_name || ('Ch ' + p.channel))}</span>`;
+      }
+
+      const encBadge = p.is_encrypted
+        ? `<span class="badge" style="background: rgba(239, 68, 68, 0.15); color: #f87171;">🔒 Cifrado</span>`
+        : `<span class="badge" style="background: rgba(34, 197, 94, 0.15); color: #4ade80;">🔓 Plano</span>`;
+
+      const routingStr = `<span style="font-size: 0.75rem; font-family: monospace;">Next: ${p.next_hop != null ? p.next_hop : '--'} | Relay: ${p.relay_node != null ? p.relay_node : '--'}</span>`;
+      const flagsStr = `<span style="font-size: 0.75rem;">ACK: ${p.want_ack ? '✅' : '❌'} | Saltos: ${p.hops != null ? p.hops : '--'}</span>`;
+      const signalStr = `<span style="font-size: 0.75rem; font-family: monospace;">${p.rx_snr != null ? Number(p.rx_snr).toFixed(1) + 'dB' : '--'} / ${p.rx_rssi != null ? p.rx_rssi + 'dBm' : '--'}</span>`;
+      const sizeStr = `<span style="font-size: 0.8rem; font-family: monospace;">${p.payload_size || 0} B</span>`;
+
+      return `
+        <tr>
+          <td style="white-space: nowrap; font-size: 0.8rem; color: var(--text-muted);">${timeStr}</td>
+          <td>${fromStr}</td>
+          <td>${toStr}</td>
+          <td>${chanBadge}</td>
+          <td>${encBadge}</td>
+          <td>${routingStr}</td>
+          <td>${flagsStr}</td>
+          <td>${signalStr}</td>
+          <td>${sizeStr}</td>
+          <td>
+            <button class="btn-secondary" style="padding: 2px 8px; font-size: 0.75rem;" onclick="dashboard.openInspectPacketById(${p.id})">
+              🔍 Ver
+            </button>
+          </td>
+        </tr>
+      `;
+    }).join("");
+  }
+
+  addCapturedPacket(packet) {
+    if (!this.capturedPackets) this.capturedPackets = [];
+    this.capturedPackets.unshift(packet);
+    if (this.capturedPackets.length > 200) this.capturedPackets.pop();
+    if (this.totalCapturedCount !== undefined) this.totalCapturedCount++;
+    this.renderCapturedPackets();
+    this.showToast(`📷 Paquete capturado: de ${packet.from_id} a ${packet.to_id}`, "info");
+  }
+
+  openInspectPacketById(packetId) {
+    const cached = this.capturedPackets.find(p => p.id === packetId);
+    if (cached) {
+      this.openInspectPacket(cached);
+    } else {
+      this.sendAction("get_captured_packet_by_id", { id: packetId });
+    }
+  }
+
+  openInspectPacket(p) {
+    this.currentInspectedPacket = p;
+    if (!this.modalPacketInspect) return;
+
+    document.getElementById("insp-time").textContent = this.formatFullDateTime(p.created_at);
+    document.getElementById("insp-id").textContent = p.packet_id || p.id || "--";
+    document.getElementById("insp-from").textContent = p.from_name ? `${p.from_name} (${p.from_id})` : (p.from_id || "--");
+    document.getElementById("insp-to").textContent = p.to_name ? `${p.to_name} (${p.to_id})` : (p.to_id || "--");
+    document.getElementById("insp-channel").textContent = p.channel_name || `Canal ${p.channel}`;
+    document.getElementById("insp-encrypted").textContent = p.is_encrypted ? "🔒 Cifrado" : "🔓 Plano / Descifrado";
+    document.getElementById("insp-next-hop").textContent = p.next_hop != null ? p.next_hop : "--";
+    document.getElementById("insp-relay").textContent = p.relay_node != null ? p.relay_node : "--";
+    document.getElementById("insp-ack").textContent = p.want_ack ? "Sí (Activo)" : "No";
+    document.getElementById("insp-hops").textContent = p.hops != null ? `${p.hops} saltos (HopStart: ${p.hop_start ?? '--'}, HopLimit: ${p.hop_limit ?? '--'})` : "--";
+    document.getElementById("insp-signal").textContent = `${p.rx_snr != null ? Number(p.rx_snr).toFixed(1) + ' dB' : '--'} / ${p.rx_rssi != null ? p.rx_rssi + ' dBm' : '--'}`;
+    document.getElementById("insp-size").textContent = `${p.payload_size || 0} bytes`;
+
+    // Texto plano
+    const txtContainer = document.getElementById("insp-text-container");
+    const txtContent = document.getElementById("insp-text-content");
+    if (p.payload_text && String(p.payload_text).trim()) {
+      if (txtContainer) txtContainer.style.display = "block";
+      if (txtContent) txtContent.textContent = p.payload_text;
+    } else {
+      if (txtContainer) txtContainer.style.display = "none";
+    }
+
+    // Hex Dump
+    const hexContent = document.getElementById("insp-hex-content");
+    if (hexContent) {
+      if (p.payload_hex) {
+        hexContent.textContent = this.formatHexDump(p.payload_hex);
+      } else {
+        hexContent.textContent = "(Payload vacío o no disponible)";
+      }
+    }
+
+    this.modalPacketInspect.style.display = "flex";
+  }
+
+  formatHexDump(hexStr) {
+    if (!hexStr) return "";
+    let dump = "";
+    const clean = hexStr.replace(/\s+/g, "");
+    for (let i = 0; i < clean.length; i += 32) {
+      const chunk = clean.substring(i, i + 32);
+      const offset = (i / 2).toString(16).padStart(4, "0");
+      let hexPart = "";
+      let asciiPart = "";
+      for (let j = 0; j < chunk.length; j += 2) {
+        const byteHex = chunk.substring(j, j + 2);
+        hexPart += byteHex + " ";
+        const byteVal = parseInt(byteHex, 16);
+        asciiPart += (byteVal >= 32 && byteVal <= 126) ? String.fromCharCode(byteVal) : ".";
+      }
+      hexPart = hexPart.padEnd(48, " ");
+      dump += `${offset}  ${hexPart} |${asciiPart}|\n`;
+    }
+    return dump;
+  }
+
+  startCaptureForNode(nodeId, nodeName) {
+    this.switchTab("capture");
+    if (this.cardCaptureForm) this.cardCaptureForm.style.display = "block";
+    if (this.captureInputTo) this.captureInputTo.value = nodeId;
+    if (this.captureInputName) this.captureInputName.value = `Monitor ${nodeName || nodeId}`;
+    if (this.captureInputTo) this.captureInputTo.focus();
+    this.showToast(`Criterio preparado para nodo ${nodeName || nodeId}. Ajusta las opciones y guarda.`);
   }
 
   // ==========================================================================

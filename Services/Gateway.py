@@ -752,6 +752,116 @@ class GatewayService:
                     pass
                 response["data"] = {"reset": True, "message": "Estadísticas y alertas de seguridad reiniciadas con éxito."}
 
+            elif action == "get_capture_rules":
+                active_only = bool(params.get("active_only", False))
+                rules = self.db.get_capture_rules(active_only=active_only)
+                response["data"] = {"rules": rules}
+
+            elif action == "save_capture_rule":
+                rule_id = self.db.save_capture_rule(
+                    name=params.get("name"),
+                    to_node_id=params.get("to_node_id"),
+                    from_node_id=params.get("from_node_id"),
+                    channel_filter=params.get("channel_filter", "all"),
+                    only_encrypted=bool(params.get("only_encrypted", False)),
+                    save_payload_mode=params.get("save_payload_mode", "full_encrypted"),
+                    is_active=bool(params.get("is_active", True)),
+                    rule_id=params.get("rule_id"),
+                )
+                try:
+                    from Models.PacketSniffer import PacketSniffer
+                    PacketSniffer.reload_rules()
+                except Exception:
+                    pass
+                response["data"] = {"rule_id": rule_id, "saved": True}
+
+            elif action == "toggle_capture_rule":
+                r_id = params.get("rule_id")
+                if not r_id:
+                    raise ValueError("Parámetro 'rule_id' obligatorio")
+                is_active = bool(params.get("is_active", True))
+                ok = self.db.toggle_capture_rule(int(r_id), is_active)
+                try:
+                    from Models.PacketSniffer import PacketSniffer
+                    PacketSniffer.reload_rules()
+                except Exception:
+                    pass
+                response["data"] = {"success": ok}
+
+            elif action == "delete_capture_rule":
+                r_id = params.get("rule_id")
+                if not r_id:
+                    raise ValueError("Parámetro 'rule_id' obligatorio")
+                ok = self.db.delete_capture_rule(int(r_id))
+                try:
+                    from Models.PacketSniffer import PacketSniffer
+                    PacketSniffer.reload_rules()
+                except Exception:
+                    pass
+                response["data"] = {"deleted": ok}
+
+            elif action == "set_node_captured":
+                node_id = params.get("node_id")
+                if not node_id:
+                    raise ValueError("Parámetro 'node_id' obligatorio")
+                is_captured = bool(params.get("is_captured", True))
+                crit = params.get("criteria")
+                ok = self.db.set_node_captured(str(node_id), is_captured=is_captured, criteria=crit)
+                try:
+                    from Models.PacketSniffer import PacketSniffer
+                    PacketSniffer.reload_rules()
+                except Exception:
+                    pass
+                response["data"] = {"success": ok}
+
+            elif action == "get_captured_packets":
+                limit = int(params.get("limit", 100))
+                offset = int(params.get("offset", 0))
+                to_node = params.get("to_node")
+                from_node = params.get("from_node")
+                is_enc = params.get("is_encrypted")
+                if is_enc is not None:
+                    is_enc = bool(is_enc)
+                is_adm = params.get("is_admin")
+                if is_adm is not None:
+                    is_adm = bool(is_adm)
+                ch = params.get("channel")
+                ch_int = int(ch) if ch is not None and str(ch).isdigit() else None
+
+                packets = self.db.get_captured_packets(
+                    limit=limit,
+                    offset=offset,
+                    to_node=to_node,
+                    from_node=from_node,
+                    is_encrypted=is_enc,
+                    is_admin=is_adm,
+                    channel=ch_int,
+                )
+                total = self.db.count_captured_packets(
+                    to_node=to_node,
+                    from_node=from_node,
+                    is_encrypted=is_enc,
+                    is_admin=is_adm,
+                    channel=ch_int,
+                )
+                response["data"] = {
+                    "packets": packets,
+                    "total": total,
+                    "limit": limit,
+                    "offset": offset,
+                }
+
+            elif action == "get_captured_packet_by_id":
+                p_id = params.get("id")
+                if not p_id:
+                    raise ValueError("Parámetro 'id' obligatorio")
+                packet_obj = self.db.get_captured_packet_by_id(int(p_id))
+                response["data"] = {"packet": packet_obj}
+
+            elif action == "clear_captured_packets":
+                deleted_count = self.db.clear_captured_packets()
+                response["data"] = {"cleared": True, "deleted_count": deleted_count}
+
             elif action == "restart_serial":
                 response["data"] = {"requested": True, "message": "Solicitud de reinicio de enlace serie registrada"}
 

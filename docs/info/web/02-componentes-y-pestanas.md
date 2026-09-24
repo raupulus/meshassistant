@@ -180,7 +180,34 @@ Sección dedicada a la agrupación, seguimiento estrecho y diagnóstico rápido 
 
 ---
 
-## 13. Navegación y Diseño Adaptativo
+## 13. Pestaña 12 · Captura Selectiva de Tráfico LoRa (Sniffer)
+
+Sección dedicada a la monitorización e inspección profunda de paquetes específicos en la malla (bajo el botón **`📷 Cap.`**):
+- **Formulario de Criterios de Captura:**
+  - **Filtro de Destino (`to`) y Origen (`from`):** Selectores con autocompletado de nodos conocidos (`datalist`). Al menos uno de los dos debe especificarse para evitar capturar tráfico indiscriminado/ruido general.
+  - **Filtro de Canal:** Selección entre *Todos / Cualquiera*, canales locales de la base o **`🔐 Admin Remota (PKI / Ch 0)`**.
+  - **Filtro de Cifrado:** Checkbox para capturar únicamente tramas cifradas.
+  - **Modo de Almacenamiento:** Selector entre *Payload completo cifrado (Hex/Binario)* y *Texto plano*.
+    - **Regla Condicional Estricta:** Si el canal seleccionado es *Admin Remota*, el modo se fija automáticamente a *Payload completo cifrado* sin permitir cambio.
+- **Gestión de Reglas Activas:**
+  - Chips visuales de cada regla configurada con badges descriptivos.
+  - Acciones en línea para **pausar/reanudar** (`⏸️` / `▶️`) o **eliminar** (`🗑️`) reglas.
+- **Acceso Directo desde Nodos y Routers:**
+  - Botón **`📷`** en las acciones de cada fila de la tabla de Nodos y **`📷 Cap.`** en las tarjetas de Routers, que abre el formulario de captura preconfigurando el nodo objetivo al instante.
+- **Tabla de Registro de Tráfico Capturado en Tiempo Real:**
+  - Actualización reactiva instantánea mediante evento WebSocket `packet_captured`.
+  - Columnas completas: Hora (convertida a `Europe/Madrid`), Origen, Destino (con badge Unicast si aplica), Canal (con badge `Admin PKI`), Cifrado, Enrutamiento (`Next Hop`, `Relay`), Flags (`ACK`, `Saltos`), Señal (`SNR / RSSI`) y Tamaño en bytes.
+  - **Buscador y Filtro Rápido:** Búsqueda por nodo y selector por tipo (*Todos*, *Solo Admin PKI*, *Solo Cifrados*, *Solo Texto/Plano*).
+- **Modal de Inspección Detallada:**
+  - Metadatos completos de cabecera de radio.
+  - Visualización del texto plano descifrado (si aplica).
+  - **Visor Hex Dump Estilo Wireshark:** Offset hexadecimal, bytes en columnas de a 16 y caracteres ASCII imprimibles (`0000: 01 02 ... |..|`).
+  - Botón para copiar el payload hexadecimal al portapapeles con un clic.
+- **Control de Vaciado:** Botón `🗑️ Limpiar Histórico` para purgar los paquetes capturados de la base de datos tras confirmación modal.
+
+---
+
+## 14. Navegación y Diseño Adaptativo
 
 - **Barra Lateral Izquierda:**
   - **Pantallas > 900px:** Barra fija de `120px` de ancho con icono y texto en salto de línea natural (`overflow-wrap: break-word`).

@@ -134,6 +134,20 @@ db = Database(db_path="...")    # ruta explícita (tests)
 | `block_node(...)` / `unblock_node(...)` | Bloquea o reactiva un nodo en la lista negra. |
 | `log_abuse(...)` / `get_abuse_logs(...)` | Registra y consulta la auditoría de saturación de comandos. |
 
+### Captura Selectiva de Tráfico LoRa (Sniffer de Paquetes)
+| Método | Descripción |
+|---|---|
+| `get_capture_rules(active_only=False)` | Obtiene las reglas de captura configuradas (activas o todas). |
+| `save_capture_rule(name=None, to_node_id=None, from_node_id=None, channel_filter='all', only_encrypted=False, save_payload_mode='full_encrypted', is_active=True, rule_id=None)` | Crea o actualiza una regla de captura selectiva; valida que `to` o `from` no sean ambos nulos y fuerza `full_encrypted` en tráfico `admin_pki`. |
+| `toggle_capture_rule(rule_id, is_active=True)` | Activa o desactiva una regla de captura existente. |
+| `delete_capture_rule(rule_id)` | Elimina permanentemente una regla de captura por su ID. |
+| `set_node_captured(node_id, is_captured=True, criteria=None)` | Marca o desmarca un nodo como bajo captura y actualiza sus criterios asociados. |
+| `insert_captured_packet(data)` | Inserta un paquete de radio LoRa capturado con sus metadatos de RF, flags y payload crudo (BLOB) y hexadecimal. |
+| `get_captured_packets(limit=100, offset=0, to_node=None, from_node=None, is_encrypted=None, is_admin=None, channel=None)` | Consulta paquetes capturados con paginación y filtros por nodo origen/destino, cifrado, admin PKI y canal. |
+| `count_captured_packets(to_node=None, from_node=None, is_encrypted=None, is_admin=None, channel=None)` | Devuelve el total numérico de paquetes capturados según los filtros. |
+| `get_captured_packet_by_id(packet_id)` | Recupera los detalles completos de un paquete capturado por su identificador. |
+| `clear_captured_packets()` | Vacía y reinicia por completo la tabla de paquetes capturados. |
+
 ### Cola (pendiente)
 | Método | Descripción |
 |---|---|

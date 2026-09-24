@@ -26,6 +26,7 @@ el [`README.md`](../../README.md) y para las normas de desarrollo el
 | 15 | [Seguridad y Vigilancia](15-seguridad-y-vigilancia.md) | Sistema de vigilancia en RAM, detección de mala praxis y anti-abuso. |
 | 16 | [Pasarela Gateway](gateway/00-indice.md) | Pasarela WiFi en tiempo real (WebSockets / IPC / Contrato API). |
 | 17 | [Dashboard Web](web/00-indice.md) | Mini dashboard web 100% offline integrado en el puerto 8680. |
+| 18 | [Captura Selectiva](18-captura-selectiva.md) | Sniffer de paquetes LoRa, criterios de monitorización y visor Hex Dump. |
 
 ## Convenciones de la documentación
 

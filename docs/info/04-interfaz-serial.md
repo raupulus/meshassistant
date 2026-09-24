@@ -98,7 +98,11 @@ Permite solicitar telemetría bajo demanda a cualquier nodo o router de la red p
 
 Maneja los paquetes de datos que circulan por la malla Meshtastic (`meshtastic.receive.data`):
 
-1. **Vigilancia e Inspección (`MeshWatcher`):**
+1. **Captura Selectiva de Paquetes (`PacketSniffer`):**
+   - Evalúa cada trama de radio entrante contra las reglas de captura activas en microsegundos (origen, destino, canal, cifrado, Admin PKI).
+   - Si coincide, almacena el registro en `captured_packets` con payload completo (BLOB crudo y hex) y emite el evento IPC `packet_captured` a la pasarela WebSocket.
+   - Se ejecuta antes de cualquier filtro de descarte de nodos, garantizando que el tráfico de nodos vigilados o problemáticos pueda ser inspeccionado.
+2. **Vigilancia e Inspección (`MeshWatcher`):**
    - Comprueba si el nodo emisor está en la lista de ignorados para descartar el paquete.
    - Detecta si el paquete es de traceroute (`TRACEROUTE_APP` o `ROUTING_APP`) e incrementa la tasa de actividad y detección de trazas del nodo.
 2. **Extracción y Decodificación de Telemetría:**
