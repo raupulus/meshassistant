@@ -145,10 +145,18 @@ class TestDashboard(unittest.TestCase):
         res4 = interface.request_node_info("^all")
         self.assertTrue(res4)
 
+        # 5. request_telemetry con ^all
+        res5 = interface.request_telemetry("^all", channel_index=0, telemetry_type="device_metrics")
+        self.assertTrue(res5)
+        # Verifica que se llamó a sendData con wantAck=False y wantResponse=True
+        call_kwargs = interface.interface.sendData.call_args[1]
+        self.assertEqual(call_kwargs.get("destinationId"), "^all")
+        self.assertFalse(call_kwargs.get("wantAck"))
+        self.assertTrue(call_kwargs.get("wantResponse"))
+
     def test_gateway_broadcast_action_cooldown(self):
         """Valida la pasarela Gateway: encolado de broadcast y rate limiting/cooldown estricto."""
-        gateway = GatewayService(port=8689)
-        gateway.db = self.db
+        gateway = GatewayService(port=8689, db=self.db)
         dummy_ws = MagicMock()
 
         # Petición 1: announce_nodeinfo (permitida)
@@ -179,10 +187,50 @@ class TestDashboard(unittest.TestCase):
         self.assertFalse(resp4.get("success"))
         self.assertIn("Cooldown activo", resp4.get("error", ""))
 
-        # Petición 5: tipo desconocido
+        # Petición 5: request_telemetry (permitida primera vez)
+        resp_telem = asyncio.run(gateway._handle_action(dummy_ws, {"action": "broadcast_action", "params": {"action_type": "request_telemetry", "channel": 0}}))
+        self.assertTrue(resp_telem.get("success"))
+        self.assertEqual(resp_telem.get("data", {}).get("action_type"), "request_telemetry")
+        self.assertEqual(resp_telem.get("data", {}).get("cooldown_seconds"), 120)
+
+        # Petición 6 inmediata: request_telemetry (rechazada por cooldown 120s)
+        resp_telem_cooldown = asyncio.run(gateway._handle_action(dummy_ws, {"action": "broadcast_action", "params": {"action_type": "request_telemetry", "channel": 0}}))
+        self.assertFalse(resp_telem_cooldown.get("success"))
+        self.assertIn("Cooldown activo", resp_telem_cooldown.get("error", ""))
+
+        # Petición 7: tipo desconocido
         resp5 = asyncio.run(gateway._handle_action(dummy_ws, {"action": "broadcast_action", "params": {"action_type": "invalid_action"}}))
         self.assertFalse(resp5.get("success"))
         self.assertIn("no válida", resp5.get("error", ""))
+
+    def test_get_latest_channel_metrics_and_enrich(self):
+        """Valida que get_latest_channel_metrics lea la BD y Gateway enriquezca el dashboard correctamente."""
+        # 1. Vacío
+        latest = self.db.get_latest_channel_metrics()
+        self.assertEqual(latest, {})
+
+        # 2. Con nodo con métricas
+        now = int(time.time())
+        self.db.create_node_if_not_exists("!44444444", {
+            "num": 1145324612,
+            "name": "Nodo LoRa Metrics",
+            "short_name": "NLM",
+            "channel_util": 4.25,
+            "air_util_tx": 0.15,
+            "last_heard": now,
+        })
+        latest = self.db.get_latest_channel_metrics()
+        self.assertEqual(latest["channel_util"], 4.25)
+        self.assertEqual(latest["air_util_tx"], 0.15)
+
+        # 3. Gateway _enrich_dashboard_metrics
+        gateway = GatewayService(port=8688, db=self.db)
+        enriched = gateway._enrich_dashboard_metrics({"nodes": {"total": 1}})
+        self.assertIn("channel_metrics", enriched)
+        self.assertEqual(enriched["channel_metrics"]["channel_util"], 4.25)
+        self.assertIn("system_telemetry", enriched)
+        self.assertIn("cpu_temp", enriched["system_telemetry"])
+        self.assertIn("ram_pct", enriched["system_telemetry"])
 
 
 if __name__ == "__main__":

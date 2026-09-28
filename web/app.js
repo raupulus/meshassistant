@@ -236,6 +236,7 @@ class MeshDashboard {
     this.btnBcAnnouncePos = document.getElementById("btn-broadcast-announce-pos");
     this.btnBcReqNode = document.getElementById("btn-broadcast-req-node");
     this.btnBcReqPos = document.getElementById("btn-broadcast-req-pos");
+    this.btnBcReqTelem = document.getElementById("btn-broadcast-req-telem");
 
     this.modalBroadcastConfirm = document.getElementById("modal-broadcast-confirm");
     this.modalBcTitle = document.getElementById("modal-bc-title");
@@ -251,8 +252,11 @@ class MeshDashboard {
       announce_position: 0,
       request_nodeinfo: 0,
       request_position: 0,
+      request_telemetry: 0,
     };
     this.lastDashboardData = null;
+    this.systemTelemetry = null;
+    this.channelMetrics = null;
 
     this.captureRules = [];
     this.capturedPackets = [];
@@ -876,6 +880,7 @@ class MeshDashboard {
 
   updateTelemetryFooter(telem) {
     if (!telem) return;
+    this.systemTelemetry = telem;
     if (this.ftCpuTemp) {
       this.ftCpuTemp.textContent = telem.cpu_temp ? `${Number(telem.cpu_temp).toFixed(1)}°C` : "--°C";
       if (telem.cpu_temp > 70) this.ftCpuTemp.style.color = "var(--danger)";
@@ -939,7 +944,9 @@ class MeshDashboard {
         this.addMessage(data, ts);
         break;
       case "system_telemetry":
+        this.systemTelemetry = data;
         this.updateTelemetryFooter(data);
+        this.updateDashboardRpiKpi(data);
         break;
       case "node_blocked":
         this.showToast(`🚨 Bloqueo aplicado a ${data.node_name || data.node_id}: ${data.reason}`, "warning");
@@ -994,12 +1001,14 @@ class MeshDashboard {
         this.setUartStatus(data.uart_connected, data.serial_port);
         break;
       case "channel_metrics":
+        this.channelMetrics = data;
         if (this.lblChUtil && data.channel_util !== undefined && data.channel_util !== null) {
           this.lblChUtil.textContent = `${Number(data.channel_util).toFixed(1)}%`;
         }
         if (this.lblAirTx && data.air_util_tx !== undefined && data.air_util_tx !== null) {
           this.lblAirTx.textContent = `${Number(data.air_util_tx).toFixed(1)}%`;
         }
+        this.updateDashboardChannelKpi(data);
         break;
       case "local_node_info":
         if (data) {
@@ -1073,7 +1082,9 @@ class MeshDashboard {
     if (resp.action === "get_snapshot") {
       // Telemetría de sistema hardware
       if (data.system_telemetry) {
+        this.systemTelemetry = data.system_telemetry;
         this.updateTelemetryFooter(data.system_telemetry);
+        this.updateDashboardRpiKpi(data.system_telemetry);
       }
 
       // Dashboard General
@@ -1157,12 +1168,14 @@ class MeshDashboard {
         if (this.lblLocalNode) this.lblLocalNode.textContent = this.localNode.short_name || this.localNode.my_node_id;
       }
       if (data.channel_metrics) {
+        this.channelMetrics = data.channel_metrics;
         if (this.lblChUtil && data.channel_metrics.channel_util !== undefined && data.channel_metrics.channel_util !== null) {
           this.lblChUtil.textContent = `${Number(data.channel_metrics.channel_util).toFixed(1)}%`;
         }
         if (this.lblAirTx && data.channel_metrics.air_util_tx !== undefined && data.channel_metrics.air_util_tx !== null) {
           this.lblAirTx.textContent = `${Number(data.channel_metrics.air_util_tx).toFixed(1)}%`;
         }
+        this.updateDashboardChannelKpi(data.channel_metrics);
       }
     } else if (resp.action === "get_polls") {
       this.renderPolls(data.polls || []);
@@ -4390,6 +4403,11 @@ class MeshDashboard {
         this.openBroadcastConfirmModal("request_position");
       });
     }
+    if (this.btnBcReqTelem) {
+      this.btnBcReqTelem.addEventListener("click", () => {
+        this.openBroadcastConfirmModal("request_telemetry");
+      });
+    }
 
     // Botones del Modal de Confirmación
     if (this.btnCloseBcModal) {
@@ -4452,6 +4470,11 @@ class MeshDashboard {
       if (this.modalBcTitle) this.modalBcTitle.textContent = "Confirmar Solicitud de Posiciones GPS";
       if (this.modalBcDesc) {
         this.modalBcDesc.textContent = "¿Estás seguro de que deseas solicitar a todos los nodos de la malla LoRa que respondan con sus coordenadas GPS?";
+      }
+    } else if (actionType === "request_telemetry") {
+      if (this.modalBcTitle) this.modalBcTitle.textContent = "Confirmar Solicitud de Baterías y Telemetría";
+      if (this.modalBcDesc) {
+        this.modalBcDesc.textContent = "¿Estás seguro de que deseas solicitar a todos los nodos de la malla LoRa que respondan con su nivel de batería y telemetría?";
       }
     }
 
@@ -4541,7 +4564,8 @@ class MeshDashboard {
       { key: "announce_nodeinfo", btn: this.btnBcAnnounceNode, baseText: "Anunciar Bot (NodeInfo)" },
       { key: "announce_position", btn: this.btnBcAnnouncePos, baseText: "Anunciar Posición (GPS)" },
       { key: "request_nodeinfo", btn: this.btnBcReqNode, baseText: "Sondear NodeInfos (Request)" },
-      { key: "request_position", btn: this.btnBcReqPos, baseText: "Sondear Posiciones (Request)" }
+      { key: "request_position", btn: this.btnBcReqPos, baseText: "Sondear Posiciones (Request)" },
+      { key: "request_telemetry", btn: this.btnBcReqTelem, baseText: "Sondear Baterías (Request)" }
     ];
 
     const now = Date.now();
@@ -4567,6 +4591,66 @@ class MeshDashboard {
 
   loadDashboardData() {
     this.sendAction("get_dashboard_metrics");
+  }
+
+  updateDashboardChannelKpi(chanMetrics) {
+    if (!chanMetrics) return;
+    this.channelMetrics = chanMetrics;
+
+    const chData = (chanMetrics.channel_util !== undefined || chanMetrics.chan_util !== undefined || chanMetrics.air_util_tx !== undefined || chanMetrics.tx_air_util !== undefined)
+      ? chanMetrics
+      : (chanMetrics[0] || chanMetrics["0"] || {});
+
+    const chanUtil = chData.channel_util !== undefined ? chData.channel_util : (chData.chan_util !== undefined ? chData.chan_util : null);
+    const airTx = chData.air_util_tx !== undefined ? chData.air_util_tx : (chData.tx_air_util !== undefined ? chData.tx_air_util : null);
+
+    const elChanUtil = document.getElementById("dash-kpi-chan-util");
+    const elChanTx = document.getElementById("dash-kpi-chan-tx");
+
+    if (elChanUtil && chanUtil != null) {
+      elChanUtil.textContent = `${Number(chanUtil).toFixed(1)} %`;
+    }
+    if (elChanTx && airTx != null) {
+      elChanTx.textContent = `Emisión propia: ${Number(airTx).toFixed(1)} %`;
+    }
+  }
+
+  updateDashboardRpiKpi(telem) {
+    if (!telem) return;
+    this.systemTelemetry = telem;
+
+    const elRpiTemp = document.getElementById("dash-kpi-rpi-temp");
+    const elRpiCpu = document.getElementById("dash-kpi-rpi-cpu");
+    const elRpiUptime = document.getElementById("dash-kpi-rpi-uptime");
+    const elRpiBadge = document.getElementById("dash-kpi-rpi-badge");
+
+    const temp = telem.cpu_temp != null ? telem.cpu_temp : (telem.temp_c != null ? telem.temp_c : null);
+    if (elRpiTemp && temp != null) {
+      elRpiTemp.textContent = `${Number(temp).toFixed(1)} °C`;
+      if (temp > 65) {
+        elRpiTemp.style.color = "var(--danger)";
+      } else {
+        elRpiTemp.style.color = "var(--text-main)";
+      }
+    }
+
+    if (elRpiCpu) {
+      const ramPct = telem.ram_pct != null ? telem.ram_pct : (telem.ram_percent != null ? telem.ram_percent : telem.memory_usage_pct);
+      const ramStr = ramPct != null ? `${Math.round(ramPct)}%` : "--";
+      const cpuVal = telem.load_1m != null ? telem.load_1m : (telem.cpu_usage_pct != null ? `${Math.round(telem.cpu_usage_pct)}%` : "--");
+      elRpiCpu.textContent = `CPU: ${cpuVal} · RAM: ${ramStr}`;
+    }
+
+    if (elRpiUptime) {
+      const uptimeStr = telem.sys_uptime || telem.system_uptime_human || telem.bot_uptime_human || telem.uptime_human;
+      if (uptimeStr) {
+        elRpiUptime.textContent = `Uptime: ${uptimeStr}`;
+      }
+    }
+
+    if (elRpiBadge) {
+      elRpiBadge.textContent = "Online";
+    }
   }
 
   renderDashboard(data) {
@@ -4614,43 +4698,11 @@ class MeshDashboard {
 
     // 3. KPI Ocupación de Canal LoRa
     const chanMetrics = data.channel_metrics || this.channelMetrics || {};
-    const ch0 = chanMetrics[0] || chanMetrics["0"] || {};
-    const elChanUtil = document.getElementById("dash-kpi-chan-util");
-    const elChanTx = document.getElementById("dash-kpi-chan-tx");
-
-    if (elChanUtil) {
-      elChanUtil.textContent = ch0.chan_util != null ? `${ch0.chan_util.toFixed(1)} %` : "-- %";
-    }
-    if (elChanTx) {
-      elChanTx.textContent = ch0.tx_air_util != null ? `Emisión propia: ${ch0.tx_air_util.toFixed(1)} %` : "Emisión propia: -- %";
-    }
+    this.updateDashboardChannelKpi(chanMetrics);
 
     // 4. KPI Servidor RPi Zero 2W
     const telem = data.system_telemetry || this.systemTelemetry || {};
-    const elRpiTemp = document.getElementById("dash-kpi-rpi-temp");
-    const elRpiCpu = document.getElementById("dash-kpi-rpi-cpu");
-    const elRpiUptime = document.getElementById("dash-kpi-rpi-uptime");
-    const elRpiBadge = document.getElementById("dash-kpi-rpi-badge");
-
-    if (elRpiTemp) {
-      elRpiTemp.textContent = telem.temp_c != null ? `${telem.temp_c.toFixed(1)} °C` : "-- °C";
-      if (telem.temp_c != null && telem.temp_c > 65) {
-        elRpiTemp.style.color = "var(--danger)";
-      } else {
-        elRpiTemp.style.color = "var(--text-main)";
-      }
-    }
-    if (elRpiCpu) {
-      const cpu = telem.cpu_usage_pct != null ? `${Math.round(telem.cpu_usage_pct)}%` : "--";
-      const ram = telem.memory_usage_pct != null ? `${Math.round(telem.memory_usage_pct)}%` : "--";
-      elRpiCpu.textContent = `CPU: ${cpu} · RAM: ${ram}`;
-    }
-    if (elRpiUptime) {
-      elRpiUptime.textContent = `Uptime: ${telem.uptime_human || "--"}`;
-    }
-    if (elRpiBadge) {
-      elRpiBadge.textContent = "Online";
-    }
+    this.updateDashboardRpiKpi(telem);
 
     // Renderizar Gráficas Offline
     this.renderDashboardTrafficChart(data.activity_24h || []);

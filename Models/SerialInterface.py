@@ -1311,7 +1311,10 @@ class SerialInterface:
             return False
         try:
             target_id = str(destination_id).strip()
-            if not target_id.startswith('!') and not target_id.isdigit():
+            is_broadcast = target_id.lower() in ("^all", "broadcast", "all")
+            if is_broadcast:
+                target_id = "^all"
+            elif not target_id.startswith('!') and not target_id.isdigit():
                 # 1. Buscar en memoria node_dict
                 for nid, n_obj in self.node_dict.items():
                     if (getattr(n_obj, 'short_name', '') or '').upper() == target_id.upper() or (getattr(n_obj, 'name', '') or '').upper() == target_id.upper():
@@ -1324,12 +1327,12 @@ class SerialInterface:
                     if found and found.get('node_id'):
                         target_id = found['node_id']
 
-            # Si sigue sin ser un ID hexadecimal o numérico válido, no enviar para evitar sys.exit de meshtastic CLI
-            if not target_id.startswith('!') and not target_id.isdigit():
+            # Si sigue sin ser un ID hexadecimal o numérico válido (y no es broadcast), no enviar
+            if not is_broadcast and not target_id.startswith('!') and not target_id.isdigit():
                 log_p(f"request_telemetry: No se pudo resolver '{destination_id}' a un ID hexadecimal de nodo", level="WARN")
                 return False
 
-            if is_node_discarded(node_id=target_id, interface=self.interface):
+            if not is_broadcast and is_node_discarded(node_id=target_id, interface=self.interface):
                 log_p(f"request_telemetry: Omitida solicitud hacia nodo descartado {target_id}", level="DEBUG")
                 return False
 
@@ -1352,6 +1355,7 @@ class SerialInterface:
                     destinationId=target_id,
                     portNum=port_num,
                     channelIndex=channel_index,
+                    wantAck=not is_broadcast,
                     wantResponse=True,
                 )
                 log_p(f"Solicitud de telemetría de {log_label} enviada a {target_id} vía sendData (wantResponse=True)", level="INFO")

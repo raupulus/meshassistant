@@ -178,6 +178,9 @@ def loop():
                         elif out_text == "__REQ_BROADCAST_POSITION__":
                             log_p(f"[outbox] Procesando sondeo broadcast de Posición a '{out_dest}' ch={out_ch}")
                             ok = interface.request_position("^all", channel_index=out_ch, want_response=True)
+                        elif out_text == "__REQ_BROADCAST_TELEMETRY__":
+                            log_p(f"[outbox] Procesando sondeo broadcast de Telemetría/Batería a '{out_dest}' ch={out_ch}")
+                            ok = interface.request_telemetry("^all", channel_index=out_ch, telemetry_type="device_metrics")
                         elif out_text == "__REQ_TELEMETRY__":
                             log_p(f"[outbox] Procesando solicitud de Telemetría/Batería para '{out_dest}'")
                             ok = interface.request_telemetry(out_dest, channel_index=out_ch, telemetry_type="device_metrics")

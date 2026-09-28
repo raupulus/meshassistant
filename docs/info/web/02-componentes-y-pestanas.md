@@ -22,10 +22,11 @@ Pantalla de inicio y aterrizaje de la interfaz web (`pane-dashboard`), orientada
   - **Ocupación LoRa (Canal Primario Ch 0):** Ocupación instantánea del canal (`chan_util %`) y emisión propia (`tx_air_util %`).
   - **Servidor RPi Zero 2W:** Temperatura de CPU en tiempo real (alerta visual si supera 65 °C), uso de CPU %, uso de RAM % y tiempo activo (uptime).
 - **Control de Emisiones LoRa (Acciones Broadcast con Protección de Red):**
-  - Botón **`📢 Anunciar Bot (NodeInfo)`**: Emite un paquete `NODEINFO_APP` broadcast para anunciar la identidad del bot en la malla (cooldown de 30s).
-  - Botón **`📍 Anunciar Posición (GPS)`**: Emite las coordenadas geográficas del bot a la red (cooldown de 30s).
+  - Botón **`📢 Anunciar Bot (NodeInfo)`**: Emite un paquete `NODEINFO_APP` broadcast para anunciar la identidad del bot en la malla (cooldown de 60s).
+  - Botón **`📍 Anunciar Posición (GPS)`**: Emite las coordenadas geográficas del bot a la red (cooldown de 60s).
   - Botón **`🔍 Sondear NodeInfos (Request)`**: Solicita a todos los nodos remotos que respondan con su información (requiere confirmación modal con advertencia de airtime y cooldown estricto de 120s).
   - Botón **`🧭 Sondear Posiciones (Request)`**: Solicita a todos los nodos que respondan con su posición GPS (requiere confirmación modal y cooldown estricto de 120s).
+  - Botón **`🔋 Sondear Baterías (Request)`**: Solicita a todos los nodos que transmitan sus métricas de telemetría y batería (requiere confirmación modal y cooldown estricto de 120s).
   - **Cooldowns Visuales:** Los botones se desactivan automáticamente y muestran una cuenta atrás en segundos mientras el cooldown esté activo.
 - **Gráficas 100% Offline (Generación Nativa SVG):**
   - **Actividad de Tráfico (Últimas 24h):** Gráfico de barras SVG con gradiente que agrupa por hora eventos de traces, comandos y capturas.

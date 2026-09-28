@@ -55,6 +55,7 @@ class GatewayService:
         host: Optional[str] = None,
         port: Optional[int] = None,
         socket_path: Optional[str] = None,
+        db: Optional[Database] = None,
     ) -> None:
         self.host = host or getattr(env, "GATEWAY_WS_HOST", DEFAULT_HOST)
         self.port = int(port or getattr(env, "GATEWAY_WS_PORT", DEFAULT_PORT))
@@ -75,12 +76,22 @@ class GatewayService:
             "uart_connected": os.path.exists(serial_path) if isinstance(serial_path, str) else True,
             "serial_port": serial_path,
         }
-        self.last_system_telemetry: Dict[str, Any] = {}
+        try:
+            from functions import get_system_telemetry
+            self.last_system_telemetry: Dict[str, Any] = get_system_telemetry()
+        except Exception:
+            self.last_system_telemetry = {}
+
         self.last_local_node: Dict[str, Any] = {}
         self.last_channel_metrics: Dict[str, Any] = {}
         self._last_broadcast_times: Dict[str, float] = {}
 
-        self.db = Database()
+        self.db = db or Database()
+        try:
+            self.last_channel_metrics = self.db.get_latest_channel_metrics()
+        except Exception:
+            self.last_channel_metrics = {}
+
         self._running = False
 
     def on_ipc_event(self, event_obj: Dict[str, Any]) -> None:
@@ -127,6 +138,28 @@ class GatewayService:
         if disconnected:
             self.connected_clients.difference_update(disconnected)
 
+    def _enrich_dashboard_metrics(self, dash: Dict[str, Any]) -> Dict[str, Any]:
+        """Enriquece el diccionario de dashboard con métricas de hardware y canal en vivo o BD."""
+        from functions import get_system_telemetry
+        telem = self.last_system_telemetry
+        if not telem:
+            try:
+                telem = get_system_telemetry()
+            except Exception:
+                telem = {}
+        dash["system_telemetry"] = telem
+
+        chan = self.last_channel_metrics
+        if not chan or chan.get("channel_util") is None:
+            try:
+                chan = self.db.get_latest_channel_metrics()
+            except Exception:
+                chan = {}
+        dash["channel_metrics"] = chan
+        dash["system_status"] = self.last_system_status
+        dash["local_node"] = self.last_local_node
+        return dash
+
     async def _handle_action(
         self,
         ws: websockets.WebSocketServerProtocol,
@@ -171,12 +204,7 @@ class GatewayService:
                 if "stats" in include:
                     snapshot_data["stats"] = self.db.stats_summary()
                 if "dashboard" in include:
-                    dash = self.db.get_dashboard_metrics()
-                    dash["channel_metrics"] = self.last_channel_metrics
-                    dash["system_telemetry"] = self.last_system_telemetry
-                    dash["system_status"] = self.last_system_status
-                    dash["local_node"] = self.last_local_node
-                    snapshot_data["dashboard"] = dash
+                    snapshot_data["dashboard"] = self._enrich_dashboard_metrics(self.db.get_dashboard_metrics())
                 snapshot_data["auto_reported_count"] = self.db.count_auto_reported_nodes()
                 if "auto_reported" in include or "security" in include:
                     snapshot_data["auto_reported_nodes"] = self.db.get_auto_reported_nodes(limit=50)
@@ -897,12 +925,7 @@ class GatewayService:
                 response["data"] = {"id": int(p_id), "note": note_text, "success": ok}
 
             elif action == "get_dashboard_metrics":
-                dash = self.db.get_dashboard_metrics()
-                dash["channel_metrics"] = self.last_channel_metrics
-                dash["system_telemetry"] = self.last_system_telemetry
-                dash["system_status"] = self.last_system_status
-                dash["local_node"] = self.last_local_node
-                response["data"] = dash
+                response["data"] = self._enrich_dashboard_metrics(self.db.get_dashboard_metrics())
 
             elif action == "broadcast_action":
                 action_type = params.get("action_type")
@@ -913,6 +936,7 @@ class GatewayService:
                     "announce_position": ("__ANNOUNCE_POSITION__", 60),
                     "request_nodeinfo": ("__REQ_BROADCAST_NODEINFO__", 120),
                     "request_position": ("__REQ_BROADCAST_POSITION__", 120),
+                    "request_telemetry": ("__REQ_BROADCAST_TELEMETRY__", 120),
                 }
 
                 if action_type not in valid_types:

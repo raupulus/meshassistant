@@ -354,13 +354,16 @@ def get_system_telemetry() -> dict:
 
     return {
         "cpu_temp": cpu_temp,
+        "temp_c": cpu_temp,
         "load_1m": load_1m,
         "load_5m": load_5m,
+        "cpu_usage_pct": round(load_1m * 25.0, 1) if load_1m is not None else None,
         "ram_total_mb": ram_total_mb,
         "ram_used_mb": ram_used_mb,
         "ram_free_mb": ram_free_mb,
         "ram_pct": ram_pct,
         "ram_percent": ram_pct,
+        "memory_usage_pct": ram_pct,
         "disk_total_gb": disk_total_gb,
         "disk_free_gb": disk_free_gb,
         "disk_pct": disk_pct,
@@ -370,6 +373,7 @@ def get_system_telemetry() -> dict:
         "sys_uptime": sys_uptime_str or bot_uptime,
         "system_uptime_human": sys_uptime_str or bot_uptime,
         "system_uptime_seconds": sys_uptime_sec,
+        "uptime_human": sys_uptime_str or bot_uptime,
     }
 
 

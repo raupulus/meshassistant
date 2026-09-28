@@ -2273,6 +2273,23 @@ class Database:
 
         return metrics
 
+    def get_latest_channel_metrics(self) -> Dict[str, Any]:
+        """Obtiene las métricas de canal LoRa más recientes registradas en la base de datos."""
+        with closing(self._connect()) as conn:
+            row = conn.execute("""
+                SELECT channel_util, air_util_tx
+                FROM nodes
+                WHERE channel_util IS NOT NULL OR air_util_tx IS NOT NULL
+                ORDER BY last_heard DESC
+                LIMIT 1
+            """).fetchone()
+            if row:
+                return {
+                    "channel_util": row["channel_util"],
+                    "air_util_tx": row["air_util_tx"],
+                }
+        return {}
+
     def get_node_by_short_name(self, short_name: str) -> Optional[Dict[str, Any]]:
         """Busca un nodo por nombre corto (case-insensitive). Devuelve dict o None."""
         with closing(self._connect()) as conn:

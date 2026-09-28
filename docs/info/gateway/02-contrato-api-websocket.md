@@ -1240,10 +1240,11 @@ Devuelve las métricas consolidadas del panel principal combinando la base de da
 
 ### 3.25. `broadcast_action` (Emisiones Globales y Sondeo LoRa con Cooldown)
 Encola en `outbox` una acción global hacia la malla hacia destino `^all`. Incluye protección estricta contra saturación de radio mediante cooldowns en backend:
-- `announce_nodeinfo`: Cooldown de 30 segundos.
-- `announce_position`: Cooldown de 30 segundos.
+- `announce_nodeinfo`: Cooldown de 60 segundos (anuncio propio de identidad).
+- `announce_position`: Cooldown de 60 segundos (anuncio propio de GPS).
 - `request_nodeinfo`: Cooldown de 120 segundos (sondeo general de identidades).
 - `request_position`: Cooldown de 120 segundos (sondeo general de GPS).
+- `request_telemetry`: Cooldown de 120 segundos (sondeo general de batería y telemetría).
 
 - **Petición:**
 ```json

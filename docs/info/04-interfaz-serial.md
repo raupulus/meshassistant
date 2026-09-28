@@ -71,10 +71,11 @@ reply_to_message(msg, metadata)                # responde citando el mensaje ori
 request_telemetry(destination_id, channel_index=0, telemetry_type="device_metrics")
 ```
 
-Permite solicitar telemetría bajo demanda a cualquier nodo o router de la red por radio LoRa:
+Permite solicitar telemetría bajo demanda a cualquier nodo, router o en broadcast a toda la red por radio LoRa:
+- `destination_id`: ID de nodo (`!xxxxxxxx`), nombre corto/largo, o `"^all"` / `"broadcast"` para sondeo general a toda la malla.
 - `telemetry_type="device_metrics"`: Solicita métricas estándar de dispositivo (nivel de batería, voltaje interno, uptime).
 - `telemetry_type="power_metrics"`: Solicita métricas de potencia y corriente a nodos equipados con sensores INA (INA219 / INA3221).
-- **Asíncrono y no bloqueante**: Construye el protobuf `telemetry_pb2.Telemetry` y utiliza `self.interface.sendData(..., portNum=TELEMETRY_APP, wantResponse=True)` evitando deliberadamente el método síncrono `waitForTelemetry()` de Meshtastic. El proceso principal `main.py` no se congela y la respuesta entrante se procesa de forma natural en `on_receive_data`.
+- **Asíncrono y no bloqueante**: Construye el protobuf `telemetry_pb2.Telemetry` y utiliza `self.interface.sendData(..., portNum=TELEMETRY_APP, wantAck=not is_broadcast, wantResponse=True)` evitando deliberadamente el método síncrono `waitForTelemetry()` de Meshtastic. El proceso principal `main.py` no se congela y la respuesta entrante se procesa de forma natural en `on_receive_data`. En peticiones broadcast a `^all`, `wantAck` se establece a `False` para no esperar ACKs individuales.
 
 ## Recepción de texto — `on_receive_text`
 
