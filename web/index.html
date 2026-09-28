@@ -59,7 +59,11 @@
          Barra Lateral de Navegación
          ========================================================================== -->
     <nav class="tabs" aria-label="Navegación principal">
-      <button class="tab-btn active" data-tab="chat" title="💬 Mensajes">
+      <button class="tab-btn active" data-tab="dashboard" title="📊 Dashboard">
+        <span class="tab-icon">📊</span>
+        <span class="tab-label">Dashboard</span>
+      </button>
+      <button class="tab-btn" data-tab="chat" title="💬 Mensajes">
         <span class="tab-icon">💬</span>
         <span class="tab-label">Mensajes</span>
         <span class="badge-count" id="count-msgs">0</span>
@@ -122,8 +126,230 @@
        ========================================================================== -->
   <main>
 
+    <!-- Pestaña 0: Dashboard General -->
+    <section id="pane-dashboard" class="tab-pane active">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 12px;">
+        <div>
+          <h2 style="font-size: 1.3rem; font-weight: 700; display: flex; align-items: center; gap: 8px;">
+            <span>📊</span> Panel de Control General
+          </h2>
+          <div style="font-size: 0.82rem; color: var(--text-muted); margin-top: 2px;">
+            Monitorización en tiempo real de la red Meshtastic LoRa, tráfico y servidor
+          </div>
+        </div>
+        <div style="display: flex; gap: 10px; align-items: center;">
+          <button class="btn-secondary" id="btn-refresh-dashboard" style="display: flex; align-items: center; gap: 6px; font-size: 0.82rem; padding: 6px 12px; cursor: pointer;">
+            <span>🔄</span> Actualizar Métricas
+          </button>
+        </div>
+      </div>
+
+      <!-- Fila 1: KPIs Principales -->
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; margin-bottom: 20px;">
+        <!-- KPI 1: Nodos -->
+        <div class="card" style="padding: 14px 16px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; color: var(--text-muted); font-size: 0.8rem; font-weight: 600;">
+            <span>👥 Nodos en la Red</span>
+            <span class="badge" style="background: rgba(56, 189, 248, 0.15); color: #38bdf8;">Red LoRa</span>
+          </div>
+          <div style="font-size: 1.8rem; font-weight: 700; color: var(--text-main); margin: 6px 0 2px 0;" id="dash-kpi-nodes-total">--</div>
+          <div style="font-size: 0.8rem; color: var(--success); font-weight: 500;" id="dash-kpi-nodes-active">
+            -- activos en 24h
+          </div>
+          <div style="font-size: 0.74rem; color: var(--text-muted); margin-top: 4px; border-top: 1px solid var(--border-color); padding-top: 4px;" id="dash-kpi-nodes-sub">
+            RF: -- · MQTT: --
+          </div>
+        </div>
+
+        <!-- KPI 2: Calidad de Señal SNR -->
+        <div class="card" style="padding: 14px 16px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; color: var(--text-muted); font-size: 0.8rem; font-weight: 600;">
+            <span>📶 Calidad de Radio</span>
+            <span class="badge" style="background: rgba(52, 211, 153, 0.15); color: #34d399;">SNR RF</span>
+          </div>
+          <div style="font-size: 1.8rem; font-weight: 700; color: var(--text-main); margin: 6px 0 2px 0;" id="dash-kpi-snr-avg">-- dB</div>
+          <div style="font-size: 0.8rem; color: var(--text-muted);" id="dash-kpi-snr-quality">
+            Calidad promedio
+          </div>
+          <div style="font-size: 0.74rem; color: var(--text-muted); margin-top: 4px; border-top: 1px solid var(--border-color); padding-top: 4px;" id="dash-kpi-snr-count">
+            Basado en -- nodos RF
+          </div>
+        </div>
+
+        <!-- KPI 3: Ocupación del Canal LoRa -->
+        <div class="card" style="padding: 14px 16px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; color: var(--text-muted); font-size: 0.8rem; font-weight: 600;">
+            <span>📻 Ocupación LoRa</span>
+            <span class="badge" style="background: rgba(251, 191, 36, 0.15); color: #fbbf24;">Airtime</span>
+          </div>
+          <div style="font-size: 1.8rem; font-weight: 700; color: var(--text-main); margin: 6px 0 2px 0;" id="dash-kpi-chan-util">-- %</div>
+          <div style="font-size: 0.8rem; color: var(--text-muted);" id="dash-kpi-chan-tx">
+            Emisión propia: -- %
+          </div>
+          <div style="font-size: 0.74rem; color: var(--text-muted); margin-top: 4px; border-top: 1px solid var(--border-color); padding-top: 4px;">
+            Canal Primario (Ch 0)
+          </div>
+        </div>
+
+        <!-- KPI 4: Servidor RPi Zero 2W -->
+        <div class="card" style="padding: 14px 16px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; color: var(--text-muted); font-size: 0.8rem; font-weight: 600;">
+            <span>🖥️ Raspberry Pi</span>
+            <span class="badge" style="background: rgba(167, 139, 250, 0.15); color: #a78bfa;" id="dash-kpi-rpi-badge">Online</span>
+          </div>
+          <div style="font-size: 1.8rem; font-weight: 700; color: var(--text-main); margin: 6px 0 2px 0;" id="dash-kpi-rpi-temp">-- °C</div>
+          <div style="font-size: 0.8rem; color: var(--text-muted);" id="dash-kpi-rpi-cpu">
+            CPU: -- % · RAM: -- %
+          </div>
+          <div style="font-size: 0.74rem; color: var(--text-muted); margin-top: 4px; border-top: 1px solid var(--border-color); padding-top: 4px;" id="dash-kpi-rpi-uptime">
+            Uptime: --
+          </div>
+        </div>
+      </div>
+
+      <!-- Fila 2: Control de Emisiones LoRa (Acciones Broadcast) -->
+      <div class="card" style="margin-bottom: 20px;">
+        <div class="card-header" style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-color); padding-bottom: 10px; margin-bottom: 14px;">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span style="font-size: 1.1rem;">📡</span>
+            <strong style="font-size: 0.95rem;">Emisiones y Sondeo de Red en Broadcast</strong>
+          </div>
+          <span style="font-size: 0.78rem; color: var(--text-muted);">Acciones globales vía radio LoRa hacia destino ^all</span>
+        </div>
+
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px;">
+          <!-- Anunciar NodeInfo (Seguro) -->
+          <button class="btn-secondary dash-action-btn" id="btn-broadcast-announce-node" style="display: flex; flex-direction: column; align-items: flex-start; padding: 12px; gap: 4px; text-align: left; cursor: pointer;" title="Emite un paquete broadcast con la identidad y configuración del bot">
+            <div style="display: flex; align-items: center; gap: 6px; font-weight: 600; color: var(--primary);">
+              <span>📢</span> <span class="bc-btn-label">Anunciar Bot (NodeInfo)</span>
+            </div>
+            <span style="font-size: 0.75rem; color: var(--text-muted);">Actualiza nombre y modelo del bot en toda la malla</span>
+          </button>
+
+          <!-- Anunciar Posición (Seguro) -->
+          <button class="btn-secondary dash-action-btn" id="btn-broadcast-announce-pos" style="display: flex; flex-direction: column; align-items: flex-start; padding: 12px; gap: 4px; text-align: left; cursor: pointer;" title="Emite un paquete broadcast con las coordenadas GPS del bot">
+            <div style="display: flex; align-items: center; gap: 6px; font-weight: 600; color: var(--success);">
+              <span>📍</span> <span class="bc-btn-label">Anunciar Posición (GPS)</span>
+            </div>
+            <span style="font-size: 0.75rem; color: var(--text-muted);">Difunde coordenadas geográficas a la red</span>
+          </button>
+
+          <!-- Solicitar NodeInfos (Sondeo con aviso) -->
+          <button class="btn-secondary dash-action-btn" id="btn-broadcast-req-node" style="display: flex; flex-direction: column; align-items: flex-start; padding: 12px; gap: 4px; text-align: left; border-color: rgba(251, 191, 36, 0.4); cursor: pointer;" title="Solicita a todos los nodos que devuelvan su NodeInfo (Usa con cautela)">
+            <div style="display: flex; align-items: center; gap: 6px; font-weight: 600; color: var(--warning);">
+              <span>🔍</span> <span class="bc-btn-label">Sondear NodeInfos (Request)</span>
+            </div>
+            <span style="font-size: 0.75rem; color: var(--text-muted);">Pide a los nodos que respondan con su info</span>
+          </button>
+
+          <!-- Solicitar Posiciones (Sondeo con aviso) -->
+          <button class="btn-secondary dash-action-btn" id="btn-broadcast-req-pos" style="display: flex; flex-direction: column; align-items: flex-start; padding: 12px; gap: 4px; text-align: left; border-color: rgba(251, 191, 36, 0.4); cursor: pointer;" title="Solicita a todos los nodos que devuelvan sus coordenadas GPS (Usa con cautela)">
+            <div style="display: flex; align-items: center; gap: 6px; font-weight: 600; color: var(--warning);">
+              <span>🧭</span> <span class="bc-btn-label">Sondear Posiciones (Request)</span>
+            </div>
+            <span style="font-size: 0.75rem; color: var(--text-muted);">Pide a los nodos que respondan con su GPS</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Fila 3: Grid de Gráficas 100% Offline (SVG) -->
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 16px; margin-bottom: 20px;">
+        <!-- Gráfica 1: Actividad de Tráfico 24h -->
+        <div class="card" style="padding: 16px;">
+          <div class="card-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+            <strong style="font-size: 0.92rem; display: flex; align-items: center; gap: 6px;">
+              <span>📈</span> Actividad de Tráfico (Últimas 24h)
+            </strong>
+            <span id="dash-traffic-total" style="font-size: 0.8rem; color: var(--primary); font-weight: 600;">-- eventos</span>
+          </div>
+          <div id="dash-chart-traffic-container" style="width: 100%; height: 170px; position: relative;">
+            <!-- SVG generado en app.js -->
+          </div>
+          <div style="display: flex; justify-content: space-between; font-size: 0.72rem; color: var(--text-muted); margin-top: 6px;">
+            <span>-24h</span>
+            <span>Distribución de paquetes por hora</span>
+            <span>Ahora</span>
+          </div>
+        </div>
+
+        <!-- Gráfica 2: Estado y Frescura de Nodos (Donut SVG) -->
+        <div class="card" style="padding: 16px;">
+          <div class="card-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+            <strong style="font-size: 0.92rem; display: flex; align-items: center; gap: 6px;">
+              <span>👥</span> Frescura y Actividad de Nodos
+            </strong>
+            <span id="dash-nodes-active-pct" style="font-size: 0.8rem; color: var(--success); font-weight: 600;">--% activos</span>
+          </div>
+          <div style="display: flex; align-items: center; justify-content: space-around; gap: 12px; height: 170px;">
+            <div id="dash-chart-donut-container" style="width: 140px; height: 140px; flex-shrink: 0;">
+              <!-- SVG Donut generado en app.js -->
+            </div>
+            <div id="dash-donut-legend" style="display: flex; flex-direction: column; gap: 6px; font-size: 0.78rem; flex-grow: 1;">
+              <!-- Leyenda con cantidades y colores -->
+            </div>
+          </div>
+        </div>
+
+        <!-- Gráfica 3: Calidad de Señal SNR (Histograma SVG) -->
+        <div class="card" style="padding: 16px;">
+          <div class="card-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+            <strong style="font-size: 0.92rem; display: flex; align-items: center; gap: 6px;">
+              <span>📶</span> Espectro de Señal SNR (dB)
+            </strong>
+            <span id="dash-snr-badge" class="badge" style="background: rgba(56, 189, 248, 0.15); color: #38bdf8;">Promedio: --</span>
+          </div>
+          <div id="dash-chart-snr-container" style="width: 100%; height: 170px; position: relative;">
+            <!-- Histograma SVG generado en app.js -->
+          </div>
+        </div>
+
+        <!-- Gráfica 4: Roles y Tipos en la Red -->
+        <div class="card" style="padding: 16px;">
+          <div class="card-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+            <strong style="font-size: 0.92rem; display: flex; align-items: center; gap: 6px;">
+              <span>🏷️</span> Roles y Tipos de Nodos
+            </strong>
+            <span style="font-size: 0.78rem; color: var(--text-muted);">Topología de red</span>
+          </div>
+          <div id="dash-chart-roles-container" style="width: 100%; height: 170px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; justify-content: center;">
+            <!-- Barras de Roles en app.js -->
+          </div>
+        </div>
+      </div>
+
+      <!-- Fila 4: Nodos Recientes -->
+      <div class="card" style="padding: 16px; margin-bottom: 20px;">
+        <div class="card-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+          <strong style="font-size: 0.95rem; display: flex; align-items: center; gap: 6px;">
+            <span>⏱️</span> Nodos Escuchados Recientemente
+          </strong>
+          <button class="btn-secondary" style="font-size: 0.78rem; padding: 3px 8px; cursor: pointer;" onclick="dashboard.switchTab('nodes')">
+            Ver Todos los Nodos ➔
+          </button>
+        </div>
+        <div class="table-container" style="max-height: 250px;">
+          <table class="table-custom">
+            <thead>
+              <tr>
+                <th>Nodo</th>
+                <th>ID</th>
+                <th>Modelo</th>
+                <th>Rol</th>
+                <th>SNR</th>
+                <th>Batería</th>
+                <th>Última Señal</th>
+              </tr>
+            </thead>
+            <tbody id="dash-tbody-recent-nodes">
+              <tr><td colspan="7" style="text-align: center; color: var(--text-muted); padding: 16px;">Cargando nodos recientes...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
     <!-- Pestaña 1: Live Chat -->
-    <section id="pane-chat" class="tab-pane active">
+    <section id="pane-chat" class="tab-pane">
       <div class="chat-container">
         <!-- Filtro rápido de canales -->
         <div class="chat-filter-bar" id="chat-filters-wrap">
@@ -1214,6 +1440,42 @@
           <button type="button" class="btn-secondary" id="btn-cancel-delete-packet">Cancelar</button>
           <button type="button" class="btn-primary" id="btn-confirm-delete-packet" style="background: #ef4444; border-color: #ef4444; color: #fff;">
             🗑️ Eliminar Definitivamente
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Confirmar Emisión Broadcast -->
+  <div id="modal-broadcast-confirm" class="modal" style="display: none;">
+    <div class="modal-content card" style="max-width: 480px;">
+      <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
+        <span style="font-weight: 700; font-size: 1.05rem; display: flex; align-items: center; gap: 6px; color: var(--warning);">
+          <span>⚠️</span> <span id="modal-bc-title">Confirmar Solicitud en Broadcast</span>
+        </span>
+        <button class="btn-secondary" id="btn-close-bc-modal" style="padding: 2px 8px;">✕</button>
+      </div>
+
+      <div style="margin-top: 14px; display: flex; flex-direction: column; gap: 12px;">
+        <input type="hidden" id="bc-action-type" value="">
+        <p style="font-size: 0.88rem; margin: 0; line-height: 1.45; color: var(--text-main);" id="modal-bc-desc">
+          ¿Estás seguro de que deseas emitir esta solicitud a toda la malla LoRa?
+        </p>
+        <div style="font-size: 0.82rem; background: rgba(251, 191, 36, 0.08); border-left: 3px solid var(--warning); padding: 10px; border-radius: var(--radius-sm); color: var(--text-main); line-height: 1.45;">
+          <strong>Aviso de Red LoRa (Airtime &amp; Duty Cycle):</strong><br>
+          Esta acción enviará un paquete hacia destino <code>^all</code> solicitando respuesta (<code>wantResponse=True</code>). Todos los nodos dentro de cobertura intentarán responder, lo cual incrementará el tráfico en el canal común.
+        </div>
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <label style="font-size: 0.82rem; font-weight: 600; color: var(--text-muted);">Canal de emisión:</label>
+          <select id="bc-select-channel" class="select-custom" style="padding: 4px 8px; font-size: 0.85rem;">
+            <option value="0">Canal 0 (Público / Primario)</option>
+          </select>
+        </div>
+
+        <div style="display: flex; justify-content: flex-end; gap: 8px; margin-top: 8px;">
+          <button type="button" class="btn-secondary" id="btn-cancel-bc-modal">Cancelar</button>
+          <button type="button" class="btn-primary" id="btn-confirm-bc-action" style="background: var(--warning); border-color: var(--warning); color: #000; font-weight: 600;">
+            📡 Confirmar y Emitir
           </button>
         </div>
       </div>

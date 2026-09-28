@@ -150,6 +150,11 @@ db = Database(db_path="...")    # ruta explícita (tests)
 | `delete_captured_packet(packet_id)` | Elimina individualmente un paquete capturado concreto de la base de datos por su ID. |
 | `clear_captured_packets()` | Vacía y reinicia por completo la tabla de paquetes capturados. |
 
+### Métricas y Dashboard
+| Método | Descripción |
+|---|---|
+| `get_dashboard_metrics()` | Agrega y calcula todas las métricas operativas del sistema y de la red LoRa: desglose de nodos (totales, RF, MQTT, activos en 1h, 24h, 7d, inactivos), distribución de calidad SNR (promedio, excelente, buena, regular, débil), distribución de roles de nodo, serie temporal horaria de actividad en las últimas 24h (`activity_24h` / `hourly_activity`), nodos escuchados más recientemente y resumen de estadísticas. |
+
 ### Cola (pendiente)
 | Método | Descripción |
 |---|---|

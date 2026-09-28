@@ -161,42 +161,57 @@ def loop():
                     out_dest = pending_msg['dest']
                     out_ch = pending_msg['channel']
 
-                    if out_text == "__REQ_NODEINFO__":
-                        log_p(f"[outbox] Procesando solicitud NodeInfo para '{out_dest}'")
-                        ok = interface.request_node_info(out_dest)
+                    ok = False
+                    try:
+                        if out_text == "__REQ_NODEINFO__":
+                            log_p(f"[outbox] Procesando solicitud NodeInfo para '{out_dest}'")
+                            ok = interface.request_node_info(out_dest)
+                        elif out_text == "__ANNOUNCE_NODEINFO__":
+                            log_p(f"[outbox] Emitiendo anuncio NodeInfo del bot a '{out_dest}'")
+                            ok = interface.announce_node_info(out_dest)
+                        elif out_text == "__ANNOUNCE_POSITION__":
+                            log_p(f"[outbox] Emitiendo anuncio de Posición del bot a '{out_dest}' ch={out_ch}")
+                            ok = interface.announce_position(out_dest, channel_index=out_ch)
+                        elif out_text == "__REQ_BROADCAST_NODEINFO__":
+                            log_p(f"[outbox] Procesando sondeo broadcast de NodeInfo a '{out_dest}'")
+                            ok = interface.request_node_info("^all")
+                        elif out_text == "__REQ_BROADCAST_POSITION__":
+                            log_p(f"[outbox] Procesando sondeo broadcast de Posición a '{out_dest}' ch={out_ch}")
+                            ok = interface.request_position("^all", channel_index=out_ch, want_response=True)
+                        elif out_text == "__REQ_TELEMETRY__":
+                            log_p(f"[outbox] Procesando solicitud de Telemetría/Batería para '{out_dest}'")
+                            ok = interface.request_telemetry(out_dest, channel_index=out_ch, telemetry_type="device_metrics")
+                        elif out_text == "__REQ_POWER_TELEMETRY__":
+                            log_p(f"[outbox] Procesando solicitud de Telemetría de Potencia (INA) para '{out_dest}'")
+                            ok = interface.request_telemetry(out_dest, channel_index=out_ch, telemetry_type="power_metrics")
+                        else:
+                            log_p(f"[outbox] Transmitiendo mensaje #{out_id} a '{out_dest}' ch={out_ch}: {out_text[:40]}")
+                            ok = interface.send(out_text, dest=out_dest, channel=out_ch)
+                            
+                            try:
+                                from Models.EventBroadcaster import broadcast_event
+                                from functions import now_utc_iso
+                                my_info = getattr(interface.interface, 'myInfo', None)
+                                my_id = f"!{my_info.my_node_num:08x}" if getattr(my_info, 'my_node_num', None) else "local"
+                                broadcast_event("message_rx", {
+                                    "outbox_id": out_id,
+                                    "from": my_id,
+                                    "from_name": "Bot (Local)",
+                                    "from_short_name": "BOT",
+                                    "to": out_dest,
+                                    "channel": out_ch,
+                                    "text": out_text,
+                                    "is_direct": (out_dest != '^all'),
+                                    "is_outgoing": True,
+                                    "via_mqtt": False,
+                                }, ts=now_utc_iso())
+                            except Exception:
+                                pass
+                    except Exception as e:
+                        log_p(f"[outbox] Error ejecutando comando #{out_id} ('{out_text}'): {e}", level="WARN")
+                        ok = False
+                    finally:
                         db.mark_outbox_sent(out_id, ok=ok)
-                    elif out_text == "__REQ_TELEMETRY__":
-                        log_p(f"[outbox] Procesando solicitud de Telemetría/Batería para '{out_dest}'")
-                        ok = interface.request_telemetry(out_dest, channel_index=out_ch, telemetry_type="device_metrics")
-                        db.mark_outbox_sent(out_id, ok=ok)
-                    elif out_text == "__REQ_POWER_TELEMETRY__":
-                        log_p(f"[outbox] Procesando solicitud de Telemetría de Potencia (INA) para '{out_dest}'")
-                        ok = interface.request_telemetry(out_dest, channel_index=out_ch, telemetry_type="power_metrics")
-                        db.mark_outbox_sent(out_id, ok=ok)
-                    else:
-                        log_p(f"[outbox] Transmitiendo mensaje #{out_id} a '{out_dest}' ch={out_ch}: {out_text[:40]}")
-                        ok = interface.send(out_text, dest=out_dest, channel=out_ch)
-                        db.mark_outbox_sent(out_id, ok=ok)
-                        
-                        try:
-                            from Models.EventBroadcaster import broadcast_event
-                            from functions import now_utc_iso
-                            my_info = getattr(interface.interface, 'myInfo', None)
-                            my_id = f"!{my_info.my_node_num:08x}" if getattr(my_info, 'my_node_num', None) else "local"
-                            broadcast_event("message_rx", {
-                                "outbox_id": out_id,
-                                "from": my_id,
-                                "from_name": "Bot (Local)",
-                                "from_short_name": "BOT",
-                                "to": out_dest,
-                                "channel": out_ch,
-                                "text": out_text,
-                                "is_direct": (out_dest != '^all'),
-                                "is_outgoing": True,
-                                "via_mqtt": False,
-                            }, ts=now_utc_iso())
-                        except Exception:
-                            pass
             except (Exception, SystemExit) as e:
                 log_p(f"[outbox] Error procesando mensaje saliente: {e}", level="WARN")
 

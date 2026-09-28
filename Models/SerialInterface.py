@@ -754,15 +754,85 @@ class SerialInterface:
             log_p(f"↩️ Respondiendo en el canal {channel}")
             return self.send(msg, dest="^all", channel=channel, reply_id=reply_id)
 
+    def announce_node_info(self, destination_id: str = "^all") -> bool:
+        """Emite en la malla el NodeInfo del propio bot para anunciarse o actualizar agendas."""
+        if not self.interface:
+            log_p("No se puede anunciar NodeInfo: interfaz serie no inicializada", level="WARN")
+            return False
+        try:
+            dest_val = "^all" if destination_id in ("^all", "broadcast", "all") else destination_id
+            log_p(f"Anunciando NodeInfo local hacia '{dest_val}'...")
+            if hasattr(self.interface, 'sendNodeInfo'):
+                self.interface.sendNodeInfo(destinationId=dest_val)
+                return True
+            elif hasattr(self.interface, 'sendData'):
+                from meshtastic import portnums_pb2
+                port = getattr(portnums_pb2.PortNum, 'NODEINFO_APP', 4) if hasattr(portnums_pb2, 'PortNum') else 4
+                self.interface.sendData(b"", destinationId=dest_val, portNum=port, wantAck=False)
+                return True
+            return False
+        except (Exception, SystemExit, BaseException) as e:
+            log_p(f"Error al anunciar NodeInfo local: {e}", level="WARN")
+            return False
+
+    def announce_position(self, destination_id: str = "^all", channel_index: int = 0) -> bool:
+        """Emite en la malla la posición geográfica configurada o conocida del bot."""
+        if not self.interface:
+            log_p("No se puede anunciar Posición: interfaz serie no inicializada", level="WARN")
+            return False
+        try:
+            dest_val = "^all" if destination_id in ("^all", "broadcast", "all") else destination_id
+            log_p(f"Anunciando posición local hacia '{dest_val}' en canal {channel_index}...")
+            if hasattr(self.interface, 'sendPosition'):
+                self.interface.sendPosition(destinationId=dest_val, wantAck=False, wantResponse=False, channelIndex=channel_index)
+                return True
+            return False
+        except (Exception, SystemExit, BaseException) as e:
+            log_p(f"Error al anunciar posición local: {e}", level="WARN")
+            return False
+
+    def request_position(self, destination_id: str = "^all", channel_index: int = 0, want_response: bool = True) -> bool:
+        """Solicita posición a un nodo o en broadcast a la malla (wantResponse=True)."""
+        if not self.interface:
+            log_p("No se puede solicitar Posición: interfaz serie no inicializada", level="WARN")
+            return False
+        try:
+            dest_val = "^all" if destination_id in ("^all", "broadcast", "all") else destination_id
+            is_bc = (dest_val == "^all")
+            log_p(f"Solicitando posición hacia '{dest_val}' (broadcast={is_bc}, wantResponse={want_response})...")
+            if hasattr(self.interface, 'sendData'):
+                from meshtastic import portnums_pb2, mesh_pb2
+                port = getattr(portnums_pb2.PortNum, 'POSITION_APP', 3) if hasattr(portnums_pb2, 'PortNum') else 3
+                p = mesh_pb2.Position()
+                self.interface.sendData(
+                    p,
+                    destinationId=dest_val,
+                    portNum=port,
+                    wantAck=not is_bc,
+                    wantResponse=want_response,
+                    channelIndex=channel_index
+                )
+                return True
+            elif hasattr(self.interface, 'sendPosition'):
+                self.interface.sendPosition(destinationId=dest_val, wantAck=not is_bc, wantResponse=False, channelIndex=channel_index)
+                return True
+            return False
+        except (Exception, SystemExit, BaseException) as e:
+            log_p(f"Error al solicitar posición a {destination_id}: {e}", level="WARN")
+            return False
+
     def request_node_info(self, destination_id: str) -> bool:
-        """Solicita NodeInfo a un nodo remoto a través de la radio Meshtastic."""
+        """Solicita NodeInfo a un nodo remoto o en broadcast a la malla."""
         if not self.interface:
             log_p("No se puede solicitar NodeInfo: interfaz serie no inicializada", level="WARN")
             return False
 
         try:
             dest_val = str(destination_id).strip()
-            if not dest_val.startswith('!') and not dest_val.isdigit():
+            is_broadcast = dest_val.lower() in ("^all", "broadcast", "all")
+            if is_broadcast:
+                dest_val = "^all"
+            elif not dest_val.startswith('!') and not dest_val.isdigit():
                 # 1. Buscar en memoria node_dict
                 for nid, n_obj in self.node_dict.items():
                     if (getattr(n_obj, 'short_name', '') or '').upper() == dest_val.upper() or (getattr(n_obj, 'name', '') or '').upper() == dest_val.upper():
@@ -775,11 +845,11 @@ class SerialInterface:
                     if found and found.get('node_id'):
                         dest_val = found['node_id']
 
-            if not dest_val.startswith('!') and not dest_val.isdigit():
+            if not is_broadcast and not dest_val.startswith('!') and not dest_val.isdigit():
                 log_p(f"request_node_info: No se pudo resolver '{destination_id}' a un ID hexadecimal de nodo", level="WARN")
                 return False
 
-            log_p(f"Solicitando NodeInfo al nodo {dest_val}...")
+            log_p(f"Solicitando NodeInfo al nodo {dest_val} (broadcast={is_broadcast})...")
             if hasattr(self.interface, 'sendNodeInfo'):
                 self.interface.sendNodeInfo(destinationId=dest_val)
                 return True
@@ -787,10 +857,9 @@ class SerialInterface:
                 self.interface.requestNodeInfo(destinationId=dest_val)
                 return True
             elif hasattr(self.interface, 'sendData'):
-                # Enviar petición a puerto NODEINFO_APP si los helpers directos no existen
                 from meshtastic import portnums_pb2
-                port = portnums_pb2.PortNum.NODEINFO_APP if hasattr(portnums_pb2, 'PortNum') else 4
-                self.interface.sendData(b"", destinationId=dest_val, portNum=port, wantAck=True)
+                port = getattr(portnums_pb2.PortNum, 'NODEINFO_APP', 4) if hasattr(portnums_pb2, 'PortNum') else 4
+                self.interface.sendData(b"", destinationId=dest_val, portNum=port, wantAck=not is_broadcast, wantResponse=True)
                 return True
             else:
                 log_p(f"Métodos de requestNodeInfo no disponibles en la versión actual de meshtastic", level="DEBUG")

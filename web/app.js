@@ -230,6 +230,30 @@ class MeshDashboard {
     this.btnCancelDeletePacket = document.getElementById("btn-cancel-delete-packet");
     this.btnConfirmDeletePacket = document.getElementById("btn-confirm-delete-packet");
 
+    // Dashboard General y Broadcast
+    this.btnRefreshDashboard = document.getElementById("btn-refresh-dashboard");
+    this.btnBcAnnounceNode = document.getElementById("btn-broadcast-announce-node");
+    this.btnBcAnnouncePos = document.getElementById("btn-broadcast-announce-pos");
+    this.btnBcReqNode = document.getElementById("btn-broadcast-req-node");
+    this.btnBcReqPos = document.getElementById("btn-broadcast-req-pos");
+
+    this.modalBroadcastConfirm = document.getElementById("modal-broadcast-confirm");
+    this.modalBcTitle = document.getElementById("modal-bc-title");
+    this.modalBcDesc = document.getElementById("modal-bc-desc");
+    this.bcActionTypeInput = document.getElementById("bc-action-type");
+    this.bcSelectChannel = document.getElementById("bc-select-channel");
+    this.btnCloseBcModal = document.getElementById("btn-close-bc-modal");
+    this.btnCancelBcModal = document.getElementById("btn-cancel-bc-modal");
+    this.btnConfirmBcAction = document.getElementById("btn-confirm-bc-action");
+
+    this.broadcastCooldowns = {
+      announce_nodeinfo: 0,
+      announce_position: 0,
+      request_nodeinfo: 0,
+      request_position: 0,
+    };
+    this.lastDashboardData = null;
+
     this.captureRules = [];
     this.capturedPackets = [];
     this.currentInspectedPacket = null;
@@ -702,6 +726,9 @@ class MeshDashboard {
 
     // Eventos de Captura de Paquetes (Pestaña 10)
     this.initCaptureListeners();
+
+    // Eventos de Dashboard Principal
+    this.initDashboardListeners();
   }
 
   updateSortHeaders() {
@@ -727,7 +754,9 @@ class MeshDashboard {
     if (activeBtn) activeBtn.classList.add("active");
     if (activePane) activePane.classList.add("active");
 
-    if (tabName === "audit") {
+    if (tabName === "dashboard") {
+      this.loadDashboardData();
+    } else if (tabName === "audit") {
       this.loadAuditData();
     } else if (tabName === "schedules") {
       this.loadSchedules();
@@ -1021,7 +1050,7 @@ class MeshDashboard {
 
   requestFullSnapshot() {
     this.sendAction("get_snapshot", {
-      include: ["nodes", "routers", "recent_messages", "stats", "system_status", "local_node", "channel_metrics", "traces", "system_telemetry"]
+      include: ["dashboard", "nodes", "routers", "recent_messages", "stats", "system_status", "local_node", "channel_metrics", "traces", "system_telemetry"]
     });
     this.sendAction("get_polls");
     this.sendAction("get_weather");
@@ -1045,6 +1074,11 @@ class MeshDashboard {
       // Telemetría de sistema hardware
       if (data.system_telemetry) {
         this.updateTelemetryFooter(data.system_telemetry);
+      }
+
+      // Dashboard General
+      if (data.dashboard) {
+        this.renderDashboard(data.dashboard);
       }
 
       // 1. Mensajes: Reconciliación no destructiva
@@ -1249,6 +1283,10 @@ class MeshDashboard {
       this.showToast(`Historial de capturas vaciado (${data.deleted_count || 0} paquetes eliminados)`, "info");
       this.capturedPackets = [];
       this.renderCapturedPackets([], 0);
+    } else if (resp.action === "get_dashboard_metrics") {
+      this.renderDashboard(data);
+    } else if (resp.action === "broadcast_action") {
+      this.handleBroadcastActionResponse(data);
     }
   }
 
@@ -4316,6 +4354,589 @@ class MeshDashboard {
     if (this.captureInputName) this.captureInputName.value = `Monitor ${nodeName || nodeId}`;
     if (this.captureInputTo) this.captureInputTo.focus();
     this.showToast(`Criterio preparado para nodo ${nodeName || nodeId}. Ajusta las opciones y guarda.`);
+  }
+
+  // ==========================================================================
+  // Métodos de la Pestaña 0: Dashboard General y Broadcast LoRa
+  // ==========================================================================
+  initDashboardListeners() {
+    if (this.btnRefreshDashboard) {
+      this.btnRefreshDashboard.addEventListener("click", () => {
+        this.loadDashboardData();
+        this.showToast("Actualizando datos del Dashboard...", "info");
+      });
+    }
+
+    // Botones de emisión directa (NodeInfo y Posición GPS propios)
+    if (this.btnBcAnnounceNode) {
+      this.btnBcAnnounceNode.addEventListener("click", () => {
+        this.executeBroadcastActionDirect("announce_nodeinfo");
+      });
+    }
+    if (this.btnBcAnnouncePos) {
+      this.btnBcAnnouncePos.addEventListener("click", () => {
+        this.executeBroadcastActionDirect("announce_position");
+      });
+    }
+
+    // Botones de solicitud (Sondeo broadcast que requiere confirmación modal)
+    if (this.btnBcReqNode) {
+      this.btnBcReqNode.addEventListener("click", () => {
+        this.openBroadcastConfirmModal("request_nodeinfo");
+      });
+    }
+    if (this.btnBcReqPos) {
+      this.btnBcReqPos.addEventListener("click", () => {
+        this.openBroadcastConfirmModal("request_position");
+      });
+    }
+
+    // Botones del Modal de Confirmación
+    if (this.btnCloseBcModal) {
+      this.btnCloseBcModal.addEventListener("click", () => this.closeBroadcastConfirmModal());
+    }
+    if (this.btnCancelBcModal) {
+      this.btnCancelBcModal.addEventListener("click", () => this.closeBroadcastConfirmModal());
+    }
+    if (this.btnConfirmBcAction) {
+      this.btnConfirmBcAction.addEventListener("click", () => this.executeBroadcastAction());
+    }
+
+    // Cerrar modal al hacer clic fuera del contenido
+    if (this.modalBroadcastConfirm) {
+      this.modalBroadcastConfirm.addEventListener("click", (e) => {
+        if (e.target === this.modalBroadcastConfirm) {
+          this.closeBroadcastConfirmModal();
+        }
+      });
+    }
+
+    // Temporizador de refresco visual de cooldowns cada segundo
+    setInterval(() => this.updateBroadcastCooldownsUi(), 1000);
+  }
+
+  updateBroadcastChannels() {
+    if (!this.bcSelectChannel) return;
+    const current = this.bcSelectChannel.value;
+    let html = "";
+    if (this.channels && Object.keys(this.channels).length > 0) {
+      Object.entries(this.channels).forEach(([idx, ch]) => {
+        const name = ch.name || (idx === "0" ? "Primario / Público" : `Canal ${idx}`);
+        html += `<option value="${idx}">Canal ${idx} (${this.escapeHtml(name)})</option>`;
+      });
+    } else {
+      html = `<option value="0">Canal 0 (Público / Primario)</option>`;
+    }
+    this.bcSelectChannel.innerHTML = html;
+    if (current) this.bcSelectChannel.value = current;
+  }
+
+  openBroadcastConfirmModal(actionType) {
+    if (!this.modalBroadcastConfirm) return;
+
+    if (this.isBroadcastCooldownActive(actionType)) {
+      const remaining = this.getBroadcastCooldownRemaining(actionType);
+      this.showToast(`Cooldown activo: espera ${remaining}s antes de realizar otra solicitud global`, "warning");
+      return;
+    }
+
+    this.updateBroadcastChannels();
+    if (this.bcActionTypeInput) this.bcActionTypeInput.value = actionType;
+
+    if (actionType === "request_nodeinfo") {
+      if (this.modalBcTitle) this.modalBcTitle.textContent = "Confirmar Solicitud de NodeInfos";
+      if (this.modalBcDesc) {
+        this.modalBcDesc.textContent = "¿Estás seguro de que deseas solicitar a todos los nodos de la malla LoRa que transmitan su NodeInfo?";
+      }
+    } else if (actionType === "request_position") {
+      if (this.modalBcTitle) this.modalBcTitle.textContent = "Confirmar Solicitud de Posiciones GPS";
+      if (this.modalBcDesc) {
+        this.modalBcDesc.textContent = "¿Estás seguro de que deseas solicitar a todos los nodos de la malla LoRa que respondan con sus coordenadas GPS?";
+      }
+    }
+
+    this.modalBroadcastConfirm.style.display = "flex";
+  }
+
+  closeBroadcastConfirmModal() {
+    if (this.modalBroadcastConfirm) {
+      this.modalBroadcastConfirm.style.display = "none";
+    }
+  }
+
+  isBroadcastCooldownActive(actionType) {
+    const expiresAt = this.broadcastCooldowns[actionType] || 0;
+    return Date.now() < expiresAt;
+  }
+
+  getBroadcastCooldownRemaining(actionType) {
+    const expiresAt = this.broadcastCooldowns[actionType] || 0;
+    return Math.max(0, Math.ceil((expiresAt - Date.now()) / 1000));
+  }
+
+  executeBroadcastActionDirect(actionType) {
+    if (this.isBroadcastCooldownActive(actionType)) {
+      const remaining = this.getBroadcastCooldownRemaining(actionType);
+      this.showToast(`Cooldown activo: espera ${remaining}s antes de reemitir`, "warning");
+      return;
+    }
+
+    // Deshabilitar inmediatamente el botón para evitar doble clic accidental
+    this.broadcastCooldowns[actionType] = Date.now() + 60000;
+    this.updateBroadcastCooldownsUi();
+
+    // Acciones de anuncio propio: enviar por canal 0
+    this.sendAction("broadcast_action", {
+      action_type: actionType,
+      channel_index: 0
+    });
+  }
+
+  executeBroadcastAction() {
+    const actionType = this.bcActionTypeInput ? this.bcActionTypeInput.value : "";
+    if (!actionType) return;
+
+    if (this.isBroadcastCooldownActive(actionType)) {
+      const remaining = this.getBroadcastCooldownRemaining(actionType);
+      this.showToast(`Cooldown activo: espera ${remaining}s antes de emitir`, "warning");
+      this.closeBroadcastConfirmModal();
+      return;
+    }
+
+    const channelIndex = parseInt(this.bcSelectChannel?.value || "0", 10);
+
+    // Cooldown preventivo inmediato de 120s para requests broadcast (mínimo 60s+)
+    this.broadcastCooldowns[actionType] = Date.now() + 120000;
+    this.updateBroadcastCooldownsUi();
+    this.closeBroadcastConfirmModal();
+
+    this.sendAction("broadcast_action", {
+      action_type: actionType,
+      channel_index: channelIndex
+    });
+  }
+
+  handleBroadcastActionResponse(data) {
+    if (!data) return;
+
+    const actionType = data.action_type;
+    const cooldownSecs = data.cooldown_seconds || data.cooldown_remaining || 60;
+
+    if (data.queued || data.status === "ok") {
+      this.showToast(data.message || "Acción encolada para emisión LoRa", "info");
+      if (actionType && cooldownSecs > 0) {
+        this.broadcastCooldowns[actionType] = Date.now() + (cooldownSecs * 1000);
+      }
+    } else {
+      this.showToast(data.message || data.error || "No se pudo encolar la acción broadcast", "warning");
+      if (actionType && cooldownSecs > 0) {
+        this.broadcastCooldowns[actionType] = Date.now() + (cooldownSecs * 1000);
+      }
+    }
+    this.updateBroadcastCooldownsUi();
+  }
+
+  updateBroadcastCooldownsUi() {
+    const config = [
+      { key: "announce_nodeinfo", btn: this.btnBcAnnounceNode, baseText: "Anunciar Bot (NodeInfo)" },
+      { key: "announce_position", btn: this.btnBcAnnouncePos, baseText: "Anunciar Posición (GPS)" },
+      { key: "request_nodeinfo", btn: this.btnBcReqNode, baseText: "Sondear NodeInfos (Request)" },
+      { key: "request_position", btn: this.btnBcReqPos, baseText: "Sondear Posiciones (Request)" }
+    ];
+
+    const now = Date.now();
+    for (const item of config) {
+      if (!item.btn) continue;
+      const labelSpan = item.btn.querySelector(".bc-btn-label");
+      const expiresAt = this.broadcastCooldowns[item.key] || 0;
+      const remaining = Math.max(0, Math.ceil((expiresAt - now) / 1000));
+
+      if (remaining > 0) {
+        item.btn.disabled = true;
+        item.btn.style.opacity = "0.55";
+        item.btn.style.cursor = "not-allowed";
+        if (labelSpan) labelSpan.textContent = `${item.baseText} (${remaining}s)`;
+      } else {
+        item.btn.disabled = false;
+        item.btn.style.opacity = "1";
+        item.btn.style.cursor = "pointer";
+        if (labelSpan) labelSpan.textContent = item.baseText;
+      }
+    }
+  }
+
+  loadDashboardData() {
+    this.sendAction("get_dashboard_metrics");
+  }
+
+  renderDashboard(data) {
+    if (!data) return;
+    this.lastDashboardData = data;
+
+    // 1. KPI Nodos
+    const nodes = data.nodes || {};
+    const elNodesTotal = document.getElementById("dash-kpi-nodes-total");
+    const elNodesActive = document.getElementById("dash-kpi-nodes-active");
+    const elNodesSub = document.getElementById("dash-kpi-nodes-sub");
+
+    if (elNodesTotal) elNodesTotal.textContent = nodes.total != null ? nodes.total : "--";
+    if (elNodesActive) elNodesActive.textContent = `${nodes.active_24h != null ? nodes.active_24h : "--"} activos en 24h`;
+    if (elNodesSub) {
+      elNodesSub.textContent = `RF: ${nodes.rf ?? "--"} · MQTT: ${nodes.mqtt ?? "--"} · 1h: ${nodes.active_1h ?? "--"}`;
+    }
+
+    // 2. KPI SNR de Radio
+    const snr = data.snr || {};
+    const elSnrAvg = document.getElementById("dash-kpi-snr-avg");
+    const elSnrQuality = document.getElementById("dash-kpi-snr-quality");
+    const elSnrCount = document.getElementById("dash-kpi-snr-count");
+    const elSnrBadge = document.getElementById("dash-snr-badge");
+
+    if (elSnrAvg) {
+      elSnrAvg.textContent = snr.avg != null ? `${snr.avg.toFixed(1)} dB` : "-- dB";
+    }
+    if (elSnrQuality) {
+      if (snr.avg != null) {
+        if (snr.avg >= 5) elSnrQuality.textContent = "🟢 Excelente calidad de enlace";
+        else if (snr.avg >= 0) elSnrQuality.textContent = "🔵 Buena calidad de enlace";
+        else if (snr.avg >= -5) elSnrQuality.textContent = "🟡 Calidad regular de enlace";
+        else elSnrQuality.textContent = "🔴 Señal débil / límite de enlace";
+      } else {
+        elSnrQuality.textContent = "Sin datos SNR de radio";
+      }
+    }
+    if (elSnrCount) {
+      elSnrCount.textContent = `Basado en ${snr.count || 0} nodos RF directos`;
+    }
+    if (elSnrBadge) {
+      elSnrBadge.textContent = `Promedio: ${snr.avg != null ? snr.avg.toFixed(1) : "--"} dB`;
+    }
+
+    // 3. KPI Ocupación de Canal LoRa
+    const chanMetrics = data.channel_metrics || this.channelMetrics || {};
+    const ch0 = chanMetrics[0] || chanMetrics["0"] || {};
+    const elChanUtil = document.getElementById("dash-kpi-chan-util");
+    const elChanTx = document.getElementById("dash-kpi-chan-tx");
+
+    if (elChanUtil) {
+      elChanUtil.textContent = ch0.chan_util != null ? `${ch0.chan_util.toFixed(1)} %` : "-- %";
+    }
+    if (elChanTx) {
+      elChanTx.textContent = ch0.tx_air_util != null ? `Emisión propia: ${ch0.tx_air_util.toFixed(1)} %` : "Emisión propia: -- %";
+    }
+
+    // 4. KPI Servidor RPi Zero 2W
+    const telem = data.system_telemetry || this.systemTelemetry || {};
+    const elRpiTemp = document.getElementById("dash-kpi-rpi-temp");
+    const elRpiCpu = document.getElementById("dash-kpi-rpi-cpu");
+    const elRpiUptime = document.getElementById("dash-kpi-rpi-uptime");
+    const elRpiBadge = document.getElementById("dash-kpi-rpi-badge");
+
+    if (elRpiTemp) {
+      elRpiTemp.textContent = telem.temp_c != null ? `${telem.temp_c.toFixed(1)} °C` : "-- °C";
+      if (telem.temp_c != null && telem.temp_c > 65) {
+        elRpiTemp.style.color = "var(--danger)";
+      } else {
+        elRpiTemp.style.color = "var(--text-main)";
+      }
+    }
+    if (elRpiCpu) {
+      const cpu = telem.cpu_usage_pct != null ? `${Math.round(telem.cpu_usage_pct)}%` : "--";
+      const ram = telem.memory_usage_pct != null ? `${Math.round(telem.memory_usage_pct)}%` : "--";
+      elRpiCpu.textContent = `CPU: ${cpu} · RAM: ${ram}`;
+    }
+    if (elRpiUptime) {
+      elRpiUptime.textContent = `Uptime: ${telem.uptime_human || "--"}`;
+    }
+    if (elRpiBadge) {
+      elRpiBadge.textContent = "Online";
+    }
+
+    // Renderizar Gráficas Offline
+    this.renderDashboardTrafficChart(data.activity_24h || []);
+    this.renderDashboardDonut(data.nodes || {});
+    this.renderDashboardSnrHistogram(data.snr || {});
+    this.renderDashboardRoles(data.roles || {}, data.nodes?.total || 0);
+    this.renderDashboardRecentNodes(data.recent_nodes || []);
+  }
+
+  renderDashboardTrafficChart(activity24h) {
+    const container = document.getElementById("dash-chart-traffic-container");
+    const elTotal = document.getElementById("dash-traffic-total");
+    if (!container) return;
+
+    if (!Array.isArray(activity24h) || activity24h.length === 0) {
+      container.innerHTML = `<div style="display: flex; align-items: center; justify-content: center; height: 100%; color: var(--text-muted); font-size: 0.85rem;">Sin actividad registrada en 24h</div>`;
+      if (elTotal) elTotal.textContent = "0 eventos";
+      return;
+    }
+
+    const totalEvents = activity24h.reduce((acc, curr) => acc + (curr.total || 0), 0);
+    if (elTotal) elTotal.textContent = `${totalEvents} eventos`;
+
+    const maxVal = Math.max(5, ...activity24h.map(a => a.total || 0));
+    const width = 500;
+    const height = 150;
+    const paddingLeft = 30;
+    const paddingRight = 10;
+    const paddingTop = 15;
+    const paddingBottom = 25;
+    const plotWidth = width - paddingLeft - paddingRight;
+    const plotHeight = height - paddingTop - paddingBottom;
+    const barSlot = plotWidth / activity24h.length;
+    const barWidth = Math.max(4, barSlot - 6);
+
+    let barsHtml = "";
+    activity24h.forEach((item, idx) => {
+      const x = paddingLeft + (idx * barSlot) + 3;
+      const h = Math.max(item.total > 0 ? 3 : 0, Math.round(((item.total || 0) / maxVal) * plotHeight));
+      const y = paddingTop + plotHeight - h;
+
+      const hourLabel = item.hour != null ? `${item.hour}h` : "";
+      const showLabel = (idx % 4 === 0) || (idx === activity24h.length - 1);
+
+      barsHtml += `
+        <g class="dash-bar-group">
+          <rect x="${x}" y="${y}" width="${barWidth}" height="${h}" rx="3" fill="url(#trafficGrad)" class="dash-svg-bar">
+            <title>Hora ${item.hour || idx}:00: ${item.total || 0} eventos\n(Pings: ${item.pings || 0}, Comandos: ${item.commands || 0}, Capturas: ${item.packets || 0})</title>
+          </rect>
+          ${showLabel ? `<text x="${x + (barWidth / 2)}" y="${height - 8}" font-size="9" fill="var(--text-muted)" text-anchor="middle">${hourLabel}</text>` : ""}
+        </g>
+      `;
+    });
+
+    const svgHtml = `
+      <svg viewBox="0 0 ${width} ${height}" style="width: 100%; height: 100%; overflow: visible;" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <linearGradient id="trafficGrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="#38bdf8" />
+            <stop offset="100%" stop-color="#818cf8" />
+          </linearGradient>
+        </defs>
+        <!-- Líneas guía horizontales -->
+        <line x1="${paddingLeft}" y1="${paddingTop}" x2="${width - paddingRight}" y2="${paddingTop}" stroke="rgba(255,255,255,0.06)" stroke-dasharray="3,3" />
+        <line x1="${paddingLeft}" y1="${paddingTop + (plotHeight / 2)}" x2="${width - paddingRight}" y2="${paddingTop + (plotHeight / 2)}" stroke="rgba(255,255,255,0.06)" stroke-dasharray="3,3" />
+        <line x1="${paddingLeft}" y1="${paddingTop + plotHeight}" x2="${width - paddingRight}" y2="${paddingTop + plotHeight}" stroke="rgba(255,255,255,0.12)" />
+        <text x="${paddingLeft - 4}" y="${paddingTop + 8}" font-size="9" fill="var(--text-muted)" text-anchor="end">${maxVal}</text>
+        <text x="${paddingLeft - 4}" y="${paddingTop + plotHeight}" font-size="9" fill="var(--text-muted)" text-anchor="end">0</text>
+        ${barsHtml}
+      </svg>
+    `;
+
+    container.innerHTML = svgHtml;
+  }
+
+  renderDashboardDonut(nodes) {
+    const container = document.getElementById("dash-chart-donut-container");
+    const legend = document.getElementById("dash-donut-legend");
+    const elPct = document.getElementById("dash-nodes-active-pct");
+    if (!container || !legend) return;
+
+    const total = nodes.total || 0;
+    const a1h = nodes.active_1h || 0;
+    const a24h = Math.max(0, (nodes.active_24h || 0) - a1h);
+    const a7d = Math.max(0, (nodes.active_7d || 0) - (nodes.active_24h || 0));
+    const inact = Math.max(0, total - (nodes.active_7d || 0));
+
+    const activePct = total > 0 ? Math.round(((nodes.active_24h || 0) / total) * 100) : 0;
+    if (elPct) elPct.textContent = `${activePct}% activos`;
+
+    const segments = [
+      { label: "< 1 hora", count: a1h, color: "#10b981" },
+      { label: "1h - 24 horas", count: a24h, color: "#3b82f6" },
+      { label: "1d - 7 días", count: a7d, color: "#f59e0b" },
+      { label: "> 7 días / Inactivos", count: inact, color: "#6b7280" }
+    ];
+
+    if (total === 0) {
+      container.innerHTML = `<div style="display: flex; align-items: center; justify-content: center; height: 100%; color: var(--text-muted); font-size: 0.8rem;">Sin nodos</div>`;
+      legend.innerHTML = "";
+      return;
+    }
+
+    const r = 40;
+    const circumference = 2 * Math.PI * r;
+    let accumulatedAngle = 0;
+    let circlesHtml = "";
+
+    segments.forEach(seg => {
+      if (seg.count <= 0) return;
+      const pct = seg.count / total;
+      const dashLength = pct * circumference;
+      const dashSpace = circumference - dashLength;
+      const offset = -accumulatedAngle;
+      accumulatedAngle += dashLength;
+
+      circlesHtml += `
+        <circle cx="60" cy="60" r="${r}" fill="none" stroke="${seg.color}" stroke-width="15"
+          stroke-dasharray="${dashLength.toFixed(2)} ${dashSpace.toFixed(2)}"
+          stroke-dashoffset="${offset.toFixed(2)}"
+          class="dash-donut-segment">
+          <title>${seg.label}: ${seg.count} nodos (${Math.round(pct * 100)}%)</title>
+        </circle>
+      `;
+    });
+
+    container.innerHTML = `
+      <svg viewBox="0 0 120 120" style="width: 100%; height: 100%; transform: rotate(-90deg);" xmlns="http://www.w3.org/2000/svg">
+        <circle cx="60" cy="60" r="${r}" fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="15" />
+        ${circlesHtml}
+      </svg>
+      <div style="position: absolute; text-align: center; pointer-events: none;">
+        <span style="font-size: 1.3rem; font-weight: 700; color: var(--text-main); display: block; line-height: 1;">${total}</span>
+        <span style="font-size: 0.68rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px;">Nodos</span>
+      </div>
+    `;
+    container.style.position = "relative";
+    container.style.display = "flex";
+    container.style.alignItems = "center";
+    container.style.justifyContent = "center";
+
+    // Leyenda
+    let legendHtml = "";
+    segments.forEach(seg => {
+      const pct = total > 0 ? Math.round((seg.count / total) * 100) : 0;
+      legendHtml += `
+        <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px;">
+          <div style="display: flex; align-items: center; gap: 6px;">
+            <span style="width: 9px; height: 9px; border-radius: 50%; background: ${seg.color}; display: inline-block;"></span>
+            <span style="color: var(--text-main); font-size: 0.76rem;">${seg.label}</span>
+          </div>
+          <span style="font-weight: 600; color: var(--text-muted); font-size: 0.76rem;">${seg.count} <span style="font-weight: 400; font-size: 0.7rem;">(${pct}%)</span></span>
+        </div>
+      `;
+    });
+    legend.innerHTML = legendHtml;
+  }
+
+  renderDashboardSnrHistogram(snr) {
+    const container = document.getElementById("dash-chart-snr-container");
+    if (!container) return;
+
+    const categories = [
+      { label: "Excelente (> 5 dB)", count: snr.excellent || 0, color: "#10b981" },
+      { label: "Buena (0 a 5 dB)", count: snr.good || 0, color: "#3b82f6" },
+      { label: "Regular (-5 a 0 dB)", count: snr.fair || 0, color: "#f59e0b" },
+      { label: "Débil (< -5 dB)", count: snr.poor || 0, color: "#ef4444" }
+    ];
+
+    const totalCount = snr.count || 0;
+    if (totalCount === 0) {
+      container.innerHTML = `<div style="display: flex; align-items: center; justify-content: center; height: 100%; color: var(--text-muted); font-size: 0.85rem;">Sin mediciones de SNR RF disponibles</div>`;
+      return;
+    }
+
+    const maxVal = Math.max(1, ...categories.map(c => c.count));
+    let rowsHtml = "";
+
+    categories.forEach((cat) => {
+      const pct = totalCount > 0 ? Math.round((cat.count / totalCount) * 100) : 0;
+      const barPct = Math.round((cat.count / maxVal) * 100);
+
+      rowsHtml += `
+        <div style="display: flex; flex-direction: column; gap: 4px;">
+          <div style="display: flex; justify-content: space-between; font-size: 0.78rem;">
+            <span style="color: var(--text-main); font-weight: 500;">${cat.label}</span>
+            <span style="color: var(--text-muted); font-weight: 600;">${cat.count} nodos (${pct}%)</span>
+          </div>
+          <div style="width: 100%; height: 10px; background: rgba(255,255,255,0.06); border-radius: 4px; overflow: hidden;">
+            <div style="width: ${barPct}%; height: 100%; background: ${cat.color}; border-radius: 4px; transition: width 0.4s ease;"></div>
+          </div>
+        </div>
+      `;
+    });
+
+    container.innerHTML = `
+      <div style="display: flex; flex-direction: column; justify-content: space-around; height: 100%; padding: 4px 0;">
+        ${rowsHtml}
+      </div>
+    `;
+  }
+
+  renderDashboardRoles(roles, totalNodes) {
+    const container = document.getElementById("dash-chart-roles-container");
+    if (!container) return;
+
+    const entries = Object.entries(roles || {}).sort((a, b) => b[1] - a[1]);
+    if (entries.length === 0) {
+      container.innerHTML = `<div style="display: flex; align-items: center; justify-content: center; height: 100%; color: var(--text-muted); font-size: 0.85rem;">Sin roles identificados</div>`;
+      return;
+    }
+
+    let html = "";
+    entries.forEach(([roleName, count]) => {
+      const pct = totalNodes > 0 ? Math.round((count / totalNodes) * 100) : 0;
+      let badgeColor = "rgba(56, 189, 248, 0.15)";
+      let textColor = "#38bdf8";
+
+      if (roleName.includes("ROUTER")) {
+        badgeColor = "rgba(168, 85, 247, 0.15)";
+        textColor = "#a855f7";
+      } else if (roleName.includes("REPEATER")) {
+        badgeColor = "rgba(245, 158, 11, 0.15)";
+        textColor = "#f59e0b";
+      }
+
+      html += `
+        <div style="background: rgba(255,255,255,0.03); border: 1px solid var(--border-color); border-radius: 6px; padding: 6px 10px; display: flex; align-items: center; justify-content: space-between; gap: 8px;">
+          <div style="display: flex; align-items: center; gap: 8px; min-width: 0;">
+            <span class="badge" style="background: ${badgeColor}; color: ${textColor}; font-weight: 600; font-size: 0.72rem;">${this.escapeHtml(roleName)}</span>
+          </div>
+          <div style="display: flex; align-items: center; gap: 8px; flex-shrink: 0;">
+            <div style="width: 60px; height: 6px; background: rgba(255,255,255,0.08); border-radius: 3px; overflow: hidden;">
+              <div style="width: ${pct}%; height: 100%; background: ${textColor};"></div>
+            </div>
+            <span style="font-size: 0.76rem; font-weight: 600; color: var(--text-main);">${count} <span style="color: var(--text-muted); font-weight: 400; font-size: 0.7rem;">(${pct}%)</span></span>
+          </div>
+        </div>
+      `;
+    });
+
+    container.innerHTML = html;
+  }
+
+  renderDashboardRecentNodes(recentNodes) {
+    const tbody = document.getElementById("dash-tbody-recent-nodes");
+    if (!tbody) return;
+
+    if (!Array.isArray(recentNodes) || recentNodes.length === 0) {
+      tbody.innerHTML = `<tr><td colspan="7" style="text-align: center; color: var(--text-muted); padding: 16px;">No hay nodos escuchados recientemente</td></tr>`;
+      return;
+    }
+
+    let rowsHtml = "";
+    recentNodes.forEach(node => {
+      const nodeName = this.escapeHtml(node.user_long_name || node.name || node.user_short_name || node.short_name || "Desconocido");
+      const nodeId = this.escapeHtml(node.node_id || "--");
+      const hexId = node.node_num != null ? `!${Number(node.node_num).toString(16).toLowerCase()}` : (nodeId.startsWith("!") ? nodeId : `!${nodeId}`);
+      const hw = this.escapeHtml(node.hw_model || "--");
+      const role = this.escapeHtml(node.role || "CLIENT");
+      const snrVal = node.snr != null ? `${node.snr.toFixed(1)} dB` : "--";
+      const batVal = node.battery != null ? `${node.battery}%` : (node.battery_level != null ? `${node.battery_level}%` : "--");
+      const lastHeard = node.last_heard ? this.formatRelativeOrDate(node.last_heard) : "--";
+
+      let snrColor = "var(--text-muted)";
+      if (node.snr != null) {
+        if (node.snr >= 5) snrColor = "var(--success)";
+        else if (node.snr >= 0) snrColor = "#38bdf8";
+        else if (node.snr >= -5) snrColor = "var(--warning)";
+        else snrColor = "var(--danger)";
+      }
+
+      rowsHtml += `
+        <tr>
+          <td style="font-weight: 600; color: var(--text-main);">${nodeName}</td>
+          <td><code style="font-size: 0.78rem; background: var(--bg-input); padding: 2px 6px; border-radius: 4px;">${hexId}</code></td>
+          <td style="font-size: 0.8rem; color: var(--text-muted);">${hw}</td>
+          <td><span class="badge" style="font-size: 0.72rem;">${role}</span></td>
+          <td style="font-weight: 600; color: ${snrColor};">${snrVal}</td>
+          <td style="font-size: 0.8rem;">${batVal}</td>
+          <td style="font-size: 0.8rem; color: var(--text-muted);">${lastHeard}</td>
+        </tr>
+      `;
+    });
+
+    tbody.innerHTML = rowsHtml;
   }
 
   // ==========================================================================

@@ -83,6 +83,7 @@ Las funcionalidades previstas (algunas ya implementadas, otras en curso) son:
 | `/ia` | 🟡 Placeholder | Responde "en desarrollo"; pendiente integrar micro-IA |
 | Agenda de avisos programados (tabla `agenda`) | 🟡 Parcial | Modelo de datos listo; falta envío programado |
 | Cola de publicaciones (tabla `queue`) | 🟡 Parcial | Tabla creada; `get_next_in_queue()` es un TODO |
+| Dashboard Web y Pasarela WebSocket (puerto 8680) | ✅ Funcional | Panel SPA 100% offline con KPIs, gráficas SVG y control broadcast |
 
 ---
 
@@ -511,8 +512,9 @@ meshassistant/
 │   ├── Node.py             # Nodo de la malla con persistencia
 │   ├── Aemet.py            # Cliente AEMET + reglas de publicación
 │   └── Api.py              # Cliente HTTP genérico (chistes)
-├── Crons/                  # (reservado) tareas futuras
-├── Services/               # (reservado) servicios futuros
+├── Services/               # Servicios en tiempo real
+│   └── Gateway.py          # Pasarela WebSocket, servidor HTTP e IPC (puerto 8680)
+├── web/                    # Mini dashboard web 100% offline (HTML, CSS, JS)
 └── docs/info/              # Documentación técnica por módulo
 ```
 
@@ -530,9 +532,9 @@ La documentación detallada por módulo está en
 - `01-arquitectura.md` — procesos, flujo y decisiones de diseño.
 - `02-configuracion.md` — variables de `env.py`.
 - `03-base-de-datos.md` — esquema completo de SQLite.
-- `04-interfaz-serial.md` — `SerialInterface` (serie, eventos, envío, reconexión).
+- `04-interfaz-serial.md` — `SerialInterface` (serie, eventos, envío, reconexión, broadcast).
 - `05-nodos.md` — modelo `Node` y persistencia.
-- `06-modelo-database.md` — API del modelo `Database`.
+- `06-modelo-database.md` — API del modelo `Database` (incluye `get_dashboard_metrics`).
 - `07-comandos.md` — sistema de comandos y cómo añadir uno.
 - `08-traceroute.md` — encolado y ejecución de traces.
 - `09-aemet.md` — descarga, parseo CAP y publicación de alertas.
@@ -541,6 +543,10 @@ La documentación detallada por módulo está en
 - `12-api-http.md` — cliente HTTP genérico.
 - `13-instalacion-despliegue.md` — instalación, hardware y despliegue.
 - `14-roadmap.md` — funcionalidades pendientes.
+- `15-seguridad-y-vigilancia.md` — vigilancia en RAM, detección de mala praxis y anti-abuso.
+- `gateway/00-indice.md` — pasarela WiFi en tiempo real y contrato WebSocket/IPC.
+- `web/00-indice.md` — dashboard web 100% offline (Pestaña 0 Dashboard, Chat, Routers, Vigilancia, etc.).
+- `18-captura-selectiva.md` — sniffer de paquetes LoRa y visor de tráfico.
 
 ---
 

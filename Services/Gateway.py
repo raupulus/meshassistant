@@ -7,6 +7,7 @@ import socket
 from collections import deque
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional, Set
+import time
 import websockets
 
 import sys
@@ -77,6 +78,7 @@ class GatewayService:
         self.last_system_telemetry: Dict[str, Any] = {}
         self.last_local_node: Dict[str, Any] = {}
         self.last_channel_metrics: Dict[str, Any] = {}
+        self._last_broadcast_times: Dict[str, float] = {}
 
         self.db = Database()
         self._running = False
@@ -168,6 +170,13 @@ class GatewayService:
                     snapshot_data["traces"] = self.db.get_recent_traces(limit=10)
                 if "stats" in include:
                     snapshot_data["stats"] = self.db.stats_summary()
+                if "dashboard" in include:
+                    dash = self.db.get_dashboard_metrics()
+                    dash["channel_metrics"] = self.last_channel_metrics
+                    dash["system_telemetry"] = self.last_system_telemetry
+                    dash["system_status"] = self.last_system_status
+                    dash["local_node"] = self.last_local_node
+                    snapshot_data["dashboard"] = dash
                 snapshot_data["auto_reported_count"] = self.db.count_auto_reported_nodes()
                 if "auto_reported" in include or "security" in include:
                     snapshot_data["auto_reported_nodes"] = self.db.get_auto_reported_nodes(limit=50)
@@ -886,6 +895,50 @@ class GatewayService:
                 except Exception:
                     pass
                 response["data"] = {"id": int(p_id), "note": note_text, "success": ok}
+
+            elif action == "get_dashboard_metrics":
+                dash = self.db.get_dashboard_metrics()
+                dash["channel_metrics"] = self.last_channel_metrics
+                dash["system_telemetry"] = self.last_system_telemetry
+                dash["system_status"] = self.last_system_status
+                dash["local_node"] = self.last_local_node
+                response["data"] = dash
+
+            elif action == "broadcast_action":
+                action_type = params.get("action_type")
+                channel = int(params.get("channel", 0))
+
+                valid_types = {
+                    "announce_nodeinfo": ("__ANNOUNCE_NODEINFO__", 60),
+                    "announce_position": ("__ANNOUNCE_POSITION__", 60),
+                    "request_nodeinfo": ("__REQ_BROADCAST_NODEINFO__", 120),
+                    "request_position": ("__REQ_BROADCAST_POSITION__", 120),
+                }
+
+                if action_type not in valid_types:
+                    raise ValueError(f"Tipo de acción broadcast no válida: '{action_type}'. Válidas: {list(valid_types.keys())}")
+
+                cmd_text, cooldown = valid_types[action_type]
+
+                # Comprobación de cooldown por tipo de acción
+                now_epoch = time.time()
+                last_time = self._last_broadcast_times.get(action_type, 0.0)
+                elapsed = now_epoch - last_time
+                if elapsed < cooldown:
+                    remaining = int(cooldown - elapsed)
+                    raise ValueError(f"⚠️ Cooldown activo: espera {remaining}s antes de volver a emitir '{action_type}' para proteger la red LoRa.")
+
+                # Encolar en outbox para que main.py lo transmita por serie/radio
+                outbox_id = self.db.enqueue_outbox(cmd_text, dest="^all", channel=channel)
+                self._last_broadcast_times[action_type] = now_epoch
+
+                response["data"] = {
+                    "queued": True,
+                    "action_type": action_type,
+                    "outbox_id": outbox_id,
+                    "channel": channel,
+                    "cooldown_seconds": cooldown,
+                }
 
             elif action == "restart_serial":
                 response["data"] = {"requested": True, "message": "Solicitud de reinicio de enlace serie registrada"}

@@ -2120,6 +2120,159 @@ class Database:
                 out['active'] = None
         return out
 
+    def get_dashboard_metrics(self) -> Dict[str, Any]:
+        """Calcula métricas agregadas y estadísticas clave para el Dashboard principal."""
+        now_ts = int(now_utc().timestamp())
+        ts_1h = now_ts - 3600
+        ts_24h = now_ts - 86400
+        ts_7d = now_ts - 604800
+
+        metrics: Dict[str, Any] = {
+            "nodes": {
+                "total": 0,
+                "rf": 0,
+                "mqtt": 0,
+                "active_1h": 0,
+                "active_24h": 0,
+                "active_7d": 0,
+                "inactive": 0,
+            },
+            "snr": {
+                "avg": None,
+                "count": 0,
+                "excellent": 0,
+                "good": 0,
+                "fair": 0,
+                "poor": 0,
+            },
+            "roles": {},
+            "hourly_activity": [],
+            "recent_nodes": [],
+            "stats_summary": {},
+        }
+
+        with closing(self._connect()) as conn:
+            # 1. Conteo de nodos y frescura temporal
+            row = conn.execute("SELECT COUNT(*) AS total FROM nodes").fetchone()
+            metrics["nodes"]["total"] = int(row["total"]) if row else 0
+
+            row = conn.execute("SELECT COUNT(*) AS mqtt FROM nodes WHERE COALESCE(via_mqtt,0) = 1").fetchone()
+            metrics["nodes"]["mqtt"] = int(row["mqtt"]) if row else 0
+            metrics["nodes"]["rf"] = metrics["nodes"]["total"] - metrics["nodes"]["mqtt"]
+
+            row = conn.execute("SELECT COUNT(*) AS c FROM nodes WHERE last_heard >= ?", (ts_1h,)).fetchone()
+            metrics["nodes"]["active_1h"] = int(row["c"]) if row else 0
+
+            row = conn.execute("SELECT COUNT(*) AS c FROM nodes WHERE last_heard >= ?", (ts_24h,)).fetchone()
+            metrics["nodes"]["active_24h"] = int(row["c"]) if row else 0
+
+            row = conn.execute("SELECT COUNT(*) AS c FROM nodes WHERE last_heard >= ?", (ts_7d,)).fetchone()
+            metrics["nodes"]["active_7d"] = int(row["c"]) if row else 0
+
+            row = conn.execute("SELECT COUNT(*) AS c FROM nodes WHERE last_heard IS NULL OR last_heard < ?", (ts_7d,)).fetchone()
+            metrics["nodes"]["inactive"] = int(row["c"]) if row else 0
+
+            # 2. Distribución y promedio de SNR (solo RF)
+            row_avg = conn.execute("SELECT AVG(snr) AS avg_snr, COUNT(*) AS count_snr FROM nodes WHERE snr IS NOT NULL AND COALESCE(via_mqtt,0) = 0").fetchone()
+            if row_avg and row_avg["avg_snr"] is not None:
+                metrics["snr"]["avg"] = round(float(row_avg["avg_snr"]), 1)
+                metrics["snr"]["count"] = int(row_avg["count_snr"])
+
+            cur = conn.execute("""
+                SELECT 
+                    SUM(CASE WHEN snr > 5 THEN 1 ELSE 0 END) AS exc,
+                    SUM(CASE WHEN snr >= 0 AND snr <= 5 THEN 1 ELSE 0 END) AS good,
+                    SUM(CASE WHEN snr >= -5 AND snr < 0 THEN 1 ELSE 0 END) AS fair,
+                    SUM(CASE WHEN snr < -5 THEN 1 ELSE 0 END) AS poor
+                FROM nodes 
+                WHERE snr IS NOT NULL AND COALESCE(via_mqtt,0) = 0
+            """)
+            snr_row = cur.fetchone()
+            if snr_row:
+                metrics["snr"]["excellent"] = int(snr_row["exc"] or 0)
+                metrics["snr"]["good"] = int(snr_row["good"] or 0)
+                metrics["snr"]["fair"] = int(snr_row["fair"] or 0)
+                metrics["snr"]["poor"] = int(snr_row["poor"] or 0)
+
+            # 3. Distribución de Roles
+            cur = conn.execute("SELECT COALESCE(role, 'CLIENT') AS role_name, COUNT(*) AS c FROM nodes GROUP BY role_name ORDER BY c DESC")
+            metrics["roles"] = {r["role_name"]: int(r["c"]) for r in cur.fetchall()}
+
+            # 4. Actividad en las últimas 24 horas (horas en UTC formateadas)
+            hourly_map: Dict[str, int] = {}
+            for h in range(24):
+                slot_time = now_utc() - timedelta(hours=(23 - h))
+                hour_key = slot_time.strftime("%H:00")
+                hourly_map[hour_key] = 0
+
+            # Traces en las últimas 24h
+            try:
+                cur_traces = conn.execute("""
+                    SELECT strftime('%H:00', created_at) AS hr, COUNT(*) AS c
+                    FROM traces
+                    WHERE created_at >= datetime('now', '-24 hours')
+                    GROUP BY hr
+                """)
+                for r in cur_traces.fetchall():
+                    if r["hr"] in hourly_map:
+                        hourly_map[r["hr"]] += int(r["c"])
+            except Exception:
+                pass
+
+            # Comandos enviados en las últimas 24h
+            try:
+                cur_cmds = conn.execute("""
+                    SELECT strftime('%H:00', created_at) AS hr, COUNT(*) AS c
+                    FROM commands_sent
+                    WHERE created_at >= datetime('now', '-24 hours')
+                    GROUP BY hr
+                """)
+                for r in cur_cmds.fetchall():
+                    if r["hr"] in hourly_map:
+                        hourly_map[r["hr"]] += int(r["c"])
+            except Exception:
+                pass
+
+            # Paquetes capturados en las últimas 24h
+            try:
+                cur_cap = conn.execute("""
+                    SELECT strftime('%H:00', created_at) AS hr, COUNT(*) AS c
+                    FROM captured_packets
+                    WHERE created_at >= datetime('now', '-24 hours')
+                    GROUP BY hr
+                """)
+                for r in cur_cap.fetchall():
+                    if r["hr"] in hourly_map:
+                        hourly_map[r["hr"]] += int(r["c"])
+            except Exception:
+                pass
+
+            metrics["hourly_activity"] = [{"hour": k, "count": v, "total": v} for k, v in hourly_map.items()]
+            metrics["activity_24h"] = metrics["hourly_activity"]
+
+            # 5. Nodos recientes (últimos 5)
+            cur = conn.execute("""
+                SELECT node_id, name, short_name, hw_model, role, snr, battery, last_heard, via_mqtt
+                FROM nodes
+                WHERE last_heard IS NOT NULL
+                ORDER BY last_heard DESC
+                LIMIT 5
+            """)
+            metrics["recent_nodes"] = [dict(r) for r in cur.fetchall()]
+
+            # 6. Resumen adicional
+            r_pings = conn.execute("SELECT COUNT(*) AS c FROM pings").fetchone()
+            r_rules = conn.execute("SELECT COUNT(*) AS c FROM capture_rules WHERE is_active = 1").fetchone()
+            r_cap = conn.execute("SELECT COUNT(*) AS c FROM captured_packets").fetchone()
+            metrics["stats_summary"] = {
+                "total_pings": int(r_pings["c"]) if r_pings else 0,
+                "active_capture_rules": int(r_rules["c"]) if r_rules else 0,
+                "total_captured_packets": int(r_cap["c"]) if r_cap else 0,
+            }
+            metrics["stats"] = metrics["stats_summary"]
+
+        return metrics
+
     def get_node_by_short_name(self, short_name: str) -> Optional[Dict[str, Any]]:
         """Busca un nodo por nombre corto (case-insensitive). Devuelve dict o None."""
         with closing(self._connect()) as conn:

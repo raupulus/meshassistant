@@ -138,6 +138,15 @@ Devuelve:
 `main.py` enriquece esos saltos con nombres desde BD y los guarda con
 `Database.mark_trace_done_with_route`. Ver [08-traceroute.md](08-traceroute.md).
 
+## Emisiones y Sondeos en Broadcast (Control de Radio y Airtime)
+
+`SerialInterface` expone métodos dedicados para emitir paquetes globales hacia destino `^all` gestionados desde la cola `outbox` en `main.py`:
+
+- **`announce_node_info(destination_id="^all") -> bool`:** Emite el paquete `NODEINFO_APP` con la identidad y configuración del bot a toda la malla (`wantAck=False`).
+- **`announce_position(destination_id="^all", channel_index=0) -> bool`:** Difunde las coordenadas geográficas conocidas del nodo hacia `^all` (`wantAck=False`, `wantResponse=False`).
+- **`request_position(destination_id="^all", channel_index=0, want_response=True) -> bool`:** Solicita posición a todos los nodos en cobertura (`wantAck=False`, `wantResponse=True`). Debido a la multiplicación de respuestas, su uso está restringido mediante confirmación modal y cooldown de 120s en backend.
+- **`request_node_info(destination_id) -> bool`:** Soporta identificadores individuales en hex (`!12345678`) y destinos broadcast (`^all`, `broadcast`). Al dirigirse a `^all`, no intenta resolver ID numérico y fija `wantAck=False` para evitar saturación de ACKs.
+
 ## Notas / gotchas
 
 - **Hardware y Potencia TX del Nodo:** El nodo de radio es una **Raspberry Pi Pico W** acoplada a un módulo **HT-RA62** (SX1262). La potencia máxima física real que puede entregar el hardware en emisión es de **21–22 dBm** (~160 mW). Aunque por software se configure un valor superior como `lora.tx_power = 27`, el módulo recortará la emisión física a su límite real de 21–22 dBm.

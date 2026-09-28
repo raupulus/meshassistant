@@ -13,7 +13,31 @@ La aplicación web está estructurada como una SPA (Single Page Application) rea
 
 ---
 
-## 2. Pestaña 1 · Live Chat (Mensajería en Tiempo Real)
+## 2. Pestaña 0 · Dashboard (Panel de Control General)
+
+Pantalla de inicio y aterrizaje de la interfaz web (`pane-dashboard`), orientada al diagnóstico global de la estación y la red:
+- **KPIs Principales (Fila 1):**
+  - **Nodos en la Red:** Total registrados, desglose RF vs MQTT, y activos en 24h / 1h.
+  - **Calidad de Radio (SNR):** Promedio de SNR de nodos RF directos, estado de salud de enlace (Excelente, Buena, Regular, Débil) y recuento de nodos base.
+  - **Ocupación LoRa (Canal Primario Ch 0):** Ocupación instantánea del canal (`chan_util %`) y emisión propia (`tx_air_util %`).
+  - **Servidor RPi Zero 2W:** Temperatura de CPU en tiempo real (alerta visual si supera 65 °C), uso de CPU %, uso de RAM % y tiempo activo (uptime).
+- **Control de Emisiones LoRa (Acciones Broadcast con Protección de Red):**
+  - Botón **`📢 Anunciar Bot (NodeInfo)`**: Emite un paquete `NODEINFO_APP` broadcast para anunciar la identidad del bot en la malla (cooldown de 30s).
+  - Botón **`📍 Anunciar Posición (GPS)`**: Emite las coordenadas geográficas del bot a la red (cooldown de 30s).
+  - Botón **`🔍 Sondear NodeInfos (Request)`**: Solicita a todos los nodos remotos que respondan con su información (requiere confirmación modal con advertencia de airtime y cooldown estricto de 120s).
+  - Botón **`🧭 Sondear Posiciones (Request)`**: Solicita a todos los nodos que respondan con su posición GPS (requiere confirmación modal y cooldown estricto de 120s).
+  - **Cooldowns Visuales:** Los botones se desactivan automáticamente y muestran una cuenta atrás en segundos mientras el cooldown esté activo.
+- **Gráficas 100% Offline (Generación Nativa SVG):**
+  - **Actividad de Tráfico (Últimas 24h):** Gráfico de barras SVG con gradiente que agrupa por hora eventos de traces, comandos y capturas.
+  - **Frescura y Actividad de Nodos:** Gráfico donut SVG interactivo clasificado por última señal (<1h, 1h-24h, 1d-7d, >7d/Inactivos) con leyenda y porcentajes.
+  - **Espectro de Señal SNR (dB):** Histograma de barras SVG horizontal clasificado en Excelente (>5 dB), Buena (0-5 dB), Regular (-5-0 dB) y Débil (<-5 dB).
+  - **Roles y Tipos de Nodos:** Barras de progreso de topología de red (`CLIENT`, `ROUTER`, `REPEATER`, etc.) con porcentaje y cantidades.
+- **Tabla de Nodos Recientes:**
+  - Muestra los últimos 5 nodos escuchados con nombre, ID hexadecimal, modelo hardware, rol, SNR coloreado, batería y tiempo transcurrido, con enlace directo a la pestaña de Nodos.
+
+---
+
+## 3. Pestaña 1 · Live Chat (Mensajería en Tiempo Real)
 
 - **Feed con Scroll Dinámico y Cero Duplicados:** Muestra mensajes en tiempo real con metadatos completos:
   - Badge de canal configurado (Canal 0, Canal 1…), Privado directo o MQTT.

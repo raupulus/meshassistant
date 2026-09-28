@@ -1206,6 +1206,81 @@ Encola una solicitud `TELEMETRY_APP` por radio LoRa dirigida al nodo especificad
 }
 ```
 
+### 3.24. `get_dashboard_metrics` (Métricas Globales del Dashboard)
+Devuelve las métricas consolidadas del panel principal combinando la base de datos y la memoria RAM del Gateway (`channel_metrics`, `system_telemetry`, `system_status`, `local_node`).
 
+- **Petición:**
+```json
+{
+  "action": "get_dashboard_metrics",
+  "req_id": "dash_01"
+}
+```
+- **Respuesta:**
+```json
+{
+  "type": "response",
+  "action": "get_dashboard_metrics",
+  "req_id": "dash_01",
+  "success": true,
+  "data": {
+    "nodes": { "total": 42, "rf": 38, "mqtt": 4, "active_1h": 12, "active_24h": 28, "active_7d": 35, "inactive": 7 },
+    "snr": { "avg": 4.2, "count": 38, "excellent": 15, "good": 14, "fair": 7, "poor": 2 },
+    "roles": { "CLIENT": 30, "ROUTER": 8, "REPEATER": 4 },
+    "activity_24h": [ { "hour": "10:00", "count": 5, "total": 5 } ],
+    "recent_nodes": [ ],
+    "stats": { "total_pings": 120, "active_capture_rules": 2, "total_captured_packets": 85 },
+    "channel_metrics": { },
+    "system_telemetry": { },
+    "system_status": { }
+  },
+  "error": null
+}
+```
 
+### 3.25. `broadcast_action` (Emisiones Globales y Sondeo LoRa con Cooldown)
+Encola en `outbox` una acción global hacia la malla hacia destino `^all`. Incluye protección estricta contra saturación de radio mediante cooldowns en backend:
+- `announce_nodeinfo`: Cooldown de 30 segundos.
+- `announce_position`: Cooldown de 30 segundos.
+- `request_nodeinfo`: Cooldown de 120 segundos (sondeo general de identidades).
+- `request_position`: Cooldown de 120 segundos (sondeo general de GPS).
 
+- **Petición:**
+```json
+{
+  "action": "broadcast_action",
+  "req_id": "bc_01",
+  "params": {
+    "action_type": "request_nodeinfo",
+    "channel": 0
+  }
+}
+```
+- **Respuesta (Éxito):**
+```json
+{
+  "type": "response",
+  "action": "broadcast_action",
+  "req_id": "bc_01",
+  "success": true,
+  "data": {
+    "queued": true,
+    "action_type": "request_nodeinfo",
+    "outbox_id": 15,
+    "channel": 0,
+    "cooldown_seconds": 120
+  },
+  "error": null
+}
+```
+- **Respuesta (Rechazo por Cooldown Activo):**
+```json
+{
+  "type": "response",
+  "action": "broadcast_action",
+  "req_id": "bc_02",
+  "success": false,
+  "data": null,
+  "error": "⚠️ Cooldown activo: espera 115s antes de volver a emitir 'request_nodeinfo' para proteger la red LoRa."
+}
+```
