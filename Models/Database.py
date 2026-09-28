@@ -3,7 +3,7 @@ from __future__ import annotations
 import sqlite3
 from contextlib import closing
 from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional, Iterable, Tuple
+from typing import Any, Dict, List, Optional, Iterable, Tuple, Union
 import hashlib
 import json
 
@@ -2120,7 +2120,7 @@ class Database:
                 out['active'] = None
         return out
 
-    def get_dashboard_metrics(self) -> Dict[str, Any]:
+    def get_dashboard_metrics(self, exclude_node_ids: Optional[Union[str, Iterable[str]]] = None) -> Dict[str, Any]:
         """Calcula métricas agregadas y estadísticas clave para el Dashboard principal."""
         now_ts = int(now_utc().timestamp())
         ts_1h = now_ts - 3600
@@ -2250,15 +2250,47 @@ class Database:
             metrics["hourly_activity"] = [{"hour": k, "count": v, "total": v} for k, v in hourly_map.items()]
             metrics["activity_24h"] = metrics["hourly_activity"]
 
-            # 5. Nodos recientes (últimos 5)
+            # 5. Nodos recientes (últimos 5 excluyendo el propio bot local)
             cur = conn.execute("""
                 SELECT node_id, name, short_name, hw_model, role, snr, battery, last_heard, via_mqtt
                 FROM nodes
                 WHERE last_heard IS NOT NULL
                 ORDER BY last_heard DESC
-                LIMIT 5
+                LIMIT 15
             """)
-            metrics["recent_nodes"] = [dict(r) for r in cur.fetchall()]
+            raw_recent = [dict(r) for r in cur.fetchall()]
+
+            try:
+                from Models.MeshWatcher import MeshWatcher
+                is_local = MeshWatcher.is_local_node
+            except Exception:
+                is_local = lambda nid, n, sn: False
+
+            exclude_set = set()
+            if exclude_node_ids:
+                if isinstance(exclude_node_ids, str):
+                    exclude_set.add(exclude_node_ids.strip().lower())
+                else:
+                    for x in exclude_node_ids:
+                        if x:
+                            exclude_set.add(str(x).strip().lower())
+
+            filtered_recent = []
+            for r in raw_recent:
+                nid = (r.get("node_id") or "").strip().lower()
+                nname = (r.get("name") or "").strip()
+                sname = (r.get("short_name") or "").strip()
+                if nid and (nid in exclude_set or nid.replace("!", "") in exclude_set):
+                    continue
+                if is_local(r.get("node_id"), nname, sname):
+                    continue
+                if "picobot" in nname.lower():
+                    continue
+                filtered_recent.append(r)
+                if len(filtered_recent) >= 5:
+                    break
+
+            metrics["recent_nodes"] = filtered_recent
 
             # 6. Resumen adicional
             r_pings = conn.execute("SELECT COUNT(*) AS c FROM pings").fetchone()

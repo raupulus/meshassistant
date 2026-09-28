@@ -87,18 +87,30 @@ class TestDashboard(unittest.TestCase):
             "last_heard": now - 300,
         })
 
+        # Insertar nodo del bot local con actividad muy reciente
+        self.db.create_node_if_not_exists("!63ca1feb", {
+            "num": 1674190827,
+            "name": "Raupulus PicoBot 2",
+            "short_name": "RauF",
+            "hw_model": "RPI_PICO2",
+            "role": "CLIENT_MUTE",
+            "snr": None,
+            "via_mqtt": 0,
+            "last_heard": now,
+        })
+
         # Insertar actividad reciente (traces, commands_sent)
         self.db.enqueue_trace("!11111111")
         self.db.log_command(node_id="!11111111", command="/ping", message="pong")
 
-        metrics = self.db.get_dashboard_metrics()
+        metrics = self.db.get_dashboard_metrics(exclude_node_ids="!63ca1feb")
 
         # Nodos
-        self.assertEqual(metrics["nodes"]["total"], 3)
-        self.assertEqual(metrics["nodes"]["rf"], 2)
+        self.assertEqual(metrics["nodes"]["total"], 4)
+        self.assertEqual(metrics["nodes"]["rf"], 3)
         self.assertEqual(metrics["nodes"]["mqtt"], 1)
-        self.assertEqual(metrics["nodes"]["active_1h"], 2)
-        self.assertEqual(metrics["nodes"]["active_24h"], 3)
+        self.assertEqual(metrics["nodes"]["active_1h"], 3)
+        self.assertEqual(metrics["nodes"]["active_24h"], 4)
 
         # SNR (solo nodos RF: 8.5 y -2.0 -> avg = 3.2)
         self.assertEqual(metrics["snr"]["count"], 2)
@@ -111,13 +123,16 @@ class TestDashboard(unittest.TestCase):
         # Roles
         self.assertEqual(metrics["roles"].get("CLIENT"), 2)
         self.assertEqual(metrics["roles"].get("ROUTER"), 1)
+        self.assertEqual(metrics["roles"].get("CLIENT_MUTE"), 1)
 
         # Actividad
         total_24h = sum(h["total"] for h in metrics["activity_24h"])
         self.assertGreaterEqual(total_24h, 2)
 
-        # Nodos recientes
+        # Nodos recientes (el bot !63ca1feb debe quedar estrictamente excluido)
         self.assertGreaterEqual(len(metrics["recent_nodes"]), 1)
+        recent_ids = [n["node_id"] for n in metrics["recent_nodes"]]
+        self.assertNotIn("!63ca1feb", recent_ids)
         self.assertEqual(metrics["recent_nodes"][0]["node_id"], "!11111111")
 
     def test_serial_broadcast_methods_mocked(self):

@@ -108,6 +108,15 @@ class GatewayService:
             self.last_system_telemetry = data
         elif event_name == "local_node_info":
             self.last_local_node = data
+            try:
+                from Models.MeshWatcher import MeshWatcher
+                MeshWatcher.set_local_node(
+                    node_id=data.get("my_node_id"),
+                    node_name=data.get("name"),
+                    short_name=data.get("short_name"),
+                )
+            except Exception:
+                pass
         elif event_name == "channel_metrics":
             self.last_channel_metrics = data
 
@@ -158,6 +167,19 @@ class GatewayService:
         dash["channel_metrics"] = chan
         dash["system_status"] = self.last_system_status
         dash["local_node"] = self.last_local_node
+
+        # Filtrar recent_nodes para excluir el propio bot local
+        local_id = (self.last_local_node.get("my_node_id") or "").strip().lower()
+        local_name = (self.last_local_node.get("name") or "").strip().lower()
+        if dash.get("recent_nodes"):
+            dash["recent_nodes"] = [
+                n for n in dash["recent_nodes"]
+                if (n.get("node_id") or "").strip().lower() != local_id
+                and (n.get("node_id") or "").strip().lower().replace("!", "") != local_id.replace("!", "")
+                and (n.get("name") or "").strip().lower() != local_name
+                and "picobot" not in (n.get("name") or "").strip().lower()
+            ][:5]
+
         return dash
 
     async def _handle_action(
@@ -204,7 +226,8 @@ class GatewayService:
                 if "stats" in include:
                     snapshot_data["stats"] = self.db.stats_summary()
                 if "dashboard" in include:
-                    snapshot_data["dashboard"] = self._enrich_dashboard_metrics(self.db.get_dashboard_metrics())
+                    local_id = self.last_local_node.get("my_node_id")
+                    snapshot_data["dashboard"] = self._enrich_dashboard_metrics(self.db.get_dashboard_metrics(exclude_node_ids=local_id))
                 snapshot_data["auto_reported_count"] = self.db.count_auto_reported_nodes()
                 if "auto_reported" in include or "security" in include:
                     snapshot_data["auto_reported_nodes"] = self.db.get_auto_reported_nodes(limit=50)
@@ -925,7 +948,8 @@ class GatewayService:
                 response["data"] = {"id": int(p_id), "note": note_text, "success": ok}
 
             elif action == "get_dashboard_metrics":
-                response["data"] = self._enrich_dashboard_metrics(self.db.get_dashboard_metrics())
+                local_id = self.last_local_node.get("my_node_id")
+                response["data"] = self._enrich_dashboard_metrics(self.db.get_dashboard_metrics(exclude_node_ids=local_id))
 
             elif action == "broadcast_action":
                 action_type = params.get("action_type")

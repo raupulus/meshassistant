@@ -4951,13 +4951,29 @@ class MeshDashboard {
     const tbody = document.getElementById("dash-tbody-recent-nodes");
     if (!tbody) return;
 
-    if (!Array.isArray(recentNodes) || recentNodes.length === 0) {
+    const localId = (this.localNode?.my_node_id || "").toLowerCase();
+    const localName = (this.localNode?.name || "").toLowerCase();
+    const localShort = (this.localNode?.short_name || "").toLowerCase();
+
+    const filteredNodes = (recentNodes || []).filter(node => {
+      const nid = (node.node_id || "").toLowerCase();
+      const nname = (node.user_long_name || node.name || "").toLowerCase();
+      const nshort = (node.user_short_name || node.short_name || "").toLowerCase();
+
+      if (localId && (nid === localId || nid.replace("!", "") === localId.replace("!", ""))) return false;
+      if (localName && nname === localName) return false;
+      if (localShort && nshort === localShort) return false;
+      if (nname.includes("picobot")) return false;
+      return true;
+    }).slice(0, 5);
+
+    if (filteredNodes.length === 0) {
       tbody.innerHTML = `<tr><td colspan="7" style="text-align: center; color: var(--text-muted); padding: 16px;">No hay nodos escuchados recientemente</td></tr>`;
       return;
     }
 
     let rowsHtml = "";
-    recentNodes.forEach(node => {
+    filteredNodes.forEach(node => {
       const nodeName = this.escapeHtml(node.user_long_name || node.name || node.user_short_name || node.short_name || "Desconocido");
       const nodeId = this.escapeHtml(node.node_id || "--");
       const hexId = node.node_num != null ? `!${Number(node.node_num).toString(16).toLowerCase()}` : (nodeId.startsWith("!") ? nodeId : `!${nodeId}`);
