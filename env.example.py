@@ -61,15 +61,15 @@ BASE_NODE_ID = ''  # Opcional: '!xxxxxxxx'
 
 ## Lista de routers/repetidores a vigilar con el comando /routers (nombres cortos o IDs)
 ROUTER_NODES = ['RAU0', 'CA12', 'CA13', 'CA01', 'CA02', 'CA03', 'CA04', 'CA05', 'CA16', 'CA23']
-ROUTER_MAX_HOPS = 2  # Hops máximos exteriores respecto al nodo base para considerar un router cercano prioritario
+ROUTER_MAX_HOPS = 2  # Hops máximos de referencia desde el bot para considerar un router cercano prioritario (0 directos, 1 o 2)
 ROUTER_TRACE_START_HOUR = 6           # Hora de inicio preferente para trazas diarias a routers (06:00 AM)
 ROUTER_TRACE_INTERVAL_HOURS = 24      # Cadencia diaria tras éxito (24 horas)
 ROUTER_TRACE_INTERVAL_SECONDS = 40    # Intervalo entre trazas a routers en la rutina matinal (40 segundos)
 ROUTER_TELEMETRY_START_HOUR = 7       # Hora para solicitar telemetría de batería a routers cercanos (07:00 AM)
 TRACES_MAX_INACTIVE_DAYS = 7          # Días sin señales cercanas para descartar un nodo de la cola automática
-ROUTER_RETRY_SHORT_HOURS = 1          # Reintento rápido ante fallo puntual (horas)
-ROUTER_MAX_RETRIES = 5                # Máximo de reintentos rápidos (1h) antes de penalizar
-ROUTER_RETRY_LONG_HOURS = 24          # Enfriamiento tras 5 fallos consecutivos (horas)
+ROUTER_RETRY_SHORT_HOURS = 2          # Reintento rápido ante fallo puntual (horas)
+ROUTER_MAX_RETRIES = 3                # Máximo de reintentos rápidos (2h) antes de penalizar
+ROUTER_RETRY_LONG_HOURS = 24          # Enfriamiento tras 3 fallos consecutivos (horas)
 ROUTERS_MAX_PARTS = 5                 # Límite máximo de mensajes para la respuesta de /routers (def. 5)
 
 ## Nodos descartados completamente (nombres cortos, nombres largos o IDs).

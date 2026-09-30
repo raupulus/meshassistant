@@ -1285,3 +1285,85 @@ Encola en `outbox` una acción global hacia la malla hacia destino `^all`. Inclu
   "error": "⚠️ Cooldown activo: espera 115s antes de volver a emitir 'request_nodeinfo' para proteger la red LoRa."
 }
 ```
+
+---
+
+### 3.23. `get_project_info`
+
+Obtiene el resumen dinámico de la configuración del entorno (`env_config`), reglas operativas y límites físicos del sistema (`system_rules`) y el estado histórico de ejecución de todas las rutinas periódicas de `tasks_control`.
+
+- **Petición:**
+```json
+{
+  "action": "get_project_info",
+  "req_id": "req_info_01",
+  "params": {}
+}
+```
+
+- **Respuesta:**
+```json
+{
+  "type": "response",
+  "action": "get_project_info",
+  "req_id": "req_info_01",
+  "success": true,
+  "data": {
+    "env_config": {
+      "enable_traces": true,
+      "traces_hops": 2,
+      "traces_reload_interval_hours": 120,
+      "traces_retry_interval_hours": 24,
+      "traces_max_inactive_days": 7,
+      "traces_peak_start_hour": 8,
+      "traces_peak_end_hour": 23,
+      "traces_interval_peak_min": 60,
+      "traces_interval_offpeak_min": 5,
+      "router_nodes": ["RAU0", "!505dc2d7"],
+      "router_trace_start_hour": 6,
+      "router_trace_interval_seconds": 40,
+      "router_trace_interval_hours": 24,
+      "router_max_hops": 2,
+      "router_retry_short_hours": 1,
+      "router_max_retries": 5,
+      "router_retry_long_hours": 24,
+      "router_telemetry_start_hour": 7,
+      "base_node_short_name": "RAU0",
+      "base_node_id": "!63ca1feb",
+      "aemet_province": "Cádiz",
+      "aemet_city": "Chipiona",
+      "aemet_period": "1h",
+      "aemet_maritime_coast_code": "42",
+      "aemet_observation_station": "5972X",
+      "aemet_expiry_warning_days": 10,
+      "tides_period_min": 360,
+      "debug": false
+    },
+    "system_rules": {
+      "mesh_max_bytes": 200,
+      "mesh_max_parts": 3,
+      "mesh_part_delay_sec": 2.5,
+      "alert_telemetry_interval_min": 27,
+      "alert_hops_threshold": 3,
+      "alert_traces_count_in_10m": 2,
+      "ping_sfnarrow_channel_0": "Desactivado en canal 0 (SFNarrow) para evitar spam público",
+      "broadcast_cooldowns": {
+        "announce_nodeinfo": 60,
+        "announce_position": 60,
+        "request_nodeinfo": 120,
+        "request_position": 120,
+        "request_telemetry": 120
+      }
+    },
+    "tasks_control": [
+      {
+        "name": "send_trace",
+        "last_run_at": "2026-09-30T05:30:00Z",
+        "extra": null
+      }
+    ]
+  },
+  "error": null
+}
+```
+

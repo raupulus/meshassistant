@@ -39,10 +39,10 @@ que las variables ausentes no rompen la ejecución.
 | `TRACES_RETRY_INTERVAL` | int (h) | `24` | Espera para reintentar un trace tras `error`. |
 | `TRACES_RELOAD_INTERVAL` | int (h) | `72` | Espera para volver a trazar un nodo cliente general tras `done`. |
 | `ROUTER_TRACE_INTERVAL_HOURS` | int (h) | `6` | Cadencia prioritaria para trazar repetidores/routers (cada 6 horas tras éxito). |
-| `ROUTER_RETRY_SHORT_HOURS` | int (h) | `1` | Reintento rápido ante fallo puntual de un router (cada 1 hora). |
-| `ROUTER_MAX_RETRIES` | int | `5` | Máximo de reintentos rápidos seguidos antes de penalizar al router. |
-| `ROUTER_RETRY_LONG_HOURS` | int (h) | `24` | Enfriamiento largo tras alcanzar el máximo de reintentos fallidos (24 horas). |
-| `ROUTER_MAX_HOPS` | int | `2` | Máximo de saltos (respecto al bot) para considerar un router cercano prioritario. |
+| `ROUTER_RETRY_SHORT_HOURS` | int (h) | `2` | Reintento rápido ante fallo puntual de un router (cada 2 horas). |
+| `ROUTER_MAX_RETRIES` | int | `3` | Máximo de 3 reintentos rápidos seguidos antes de penalizar al router. |
+| `ROUTER_RETRY_LONG_HOURS` | int (h) | `24` | Enfriamiento largo tras alcanzar el máximo de 3 reintentos fallidos (24 horas). |
+| `ROUTER_MAX_HOPS` | int | `2` | Máximo de saltos brutos desde el bot (0 directos, 1 o 2 saltos) para considerar un router cercano prioritario. |
 | `MESH_GATEWAY_SHORT_NAME` | str | `'RAU0'` | Nombre corto del nodo pasarela propio en azotea. |
 | `BASE_NODE_SHORT_NAME` | str | `'RAU0'` | Nodo base propio para descontar salto en `/ping` y `/routers`. |
 | `BASE_NODE_ID` | str | `''` | ID Meshtastic (`!xxxxxxxx`) del nodo base propio (opcional). |

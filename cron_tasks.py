@@ -159,8 +159,8 @@ def send_trace() -> None:
     reload_hours = int(getattr(env, 'TRACES_RELOAD_INTERVAL', 120) or 120)
     router_reload_hours = int(getattr(env, 'ROUTER_TRACE_INTERVAL_HOURS', 24) or 24)
     router_max_hops = int(getattr(env, 'ROUTER_MAX_HOPS', 2) or 2)
-    router_retry_short_hours = int(getattr(env, 'ROUTER_RETRY_SHORT_HOURS', 1) or 1)
-    router_max_retries = int(getattr(env, 'ROUTER_MAX_RETRIES', 5) or 5)
+    router_retry_short_hours = int(getattr(env, 'ROUTER_RETRY_SHORT_HOURS', 2) or 2)
+    router_max_retries = int(getattr(env, 'ROUTER_MAX_RETRIES', 3) or 3)
     router_retry_long_hours = int(getattr(env, 'ROUTER_RETRY_LONG_HOURS', 24) or 24)
     router_start_hour = int(getattr(env, 'ROUTER_TRACE_START_HOUR', 6) or 6)
     max_inactive_days = int(getattr(env, 'TRACES_MAX_INACTIVE_DAYS', 7) or 7)
@@ -723,8 +723,9 @@ def check_aemet_key_expiry() -> None:
 
         warn_days = int(getattr(env, 'AEMET_EXPIRY_WARNING_DAYS', 10) or 10)
         if days_left <= warn_days or is_expired:
-            today_tag = f"aemet_key_warn_{now_madrid().strftime('%Y%m%d')}"
-            if not db.get_task_last_run(today_tag):
+            today_str = now_madrid().strftime('%Y-%m-%d')
+            warn_info = db.get_task_info('aemet_key_expiry_warn')
+            if not warn_info or warn_info.get('extra') != today_str:
                 channels = getattr(env, 'AEMET_EXPIRY_WARNING_CHANNELS', None)
                 if channels is None:
                     channels = [6]  # Canal raupulus por defecto
@@ -739,7 +740,7 @@ def check_aemet_key_expiry() -> None:
                     db.outbox_enqueue(msg_text, dest="^all", channel=ch_idx)
                     log_p(f"[cron] check_aemet_key_expiry: aviso encolado en canal {ch_idx}: {msg_text}")
 
-                db.set_task_run(today_tag)
+                db.set_task_run('aemet_key_expiry_warn', extra=today_str)
     except Exception as e:
         log_p(f"[cron] check_aemet_key_expiry: error: {e}", level="WARN")
     finally:
@@ -766,21 +767,23 @@ def maritime_aemet() -> None:
     if not slot_id:
         return
 
-    success_tag = f"maritime_success_{slot_id}"
-    if db.get_task_last_run(success_tag):
+    # Usar nombres canónicos fijos con el slot_id en el campo extra para no acumular filas dinámicas
+    success_info = db.get_task_info('maritime_aemet_success')
+    if success_info and success_info.get('extra') == slot_id:
         return
 
-    last_attempt_tag = f"maritime_attempt_{slot_id}"
-    last_attempt = db.get_task_last_run(last_attempt_tag)
-    if last_attempt:
-        try:
-            last_dt = parse_iso_to_utc(last_attempt)
-            if last_dt and now_utc() - last_dt < timedelta(minutes=10):
-                return
-        except Exception:
-            pass
+    attempt_info = db.get_task_info('maritime_aemet_attempt')
+    if attempt_info and attempt_info.get('extra') == slot_id:
+        last_attempt = attempt_info.get('last_run_at')
+        if last_attempt:
+            try:
+                last_dt = parse_iso_to_utc(last_attempt)
+                if last_dt and now_utc() - last_dt < timedelta(minutes=10):
+                    return
+            except Exception:
+                pass
 
-    db.set_task_run(last_attempt_tag)
+    db.set_task_run('maritime_aemet_attempt', extra=slot_id)
     log_p(f"[cron] maritime_aemet: intentando descarga slot {slot_id} (minuto {minute})")
 
     try:
@@ -797,7 +800,7 @@ def maritime_aemet() -> None:
                     summary=summary,
                 )
                 log_p(f"[cron] maritime_aemet: guardado exitoso id={new_id} len={len(summary)}")
-                db.set_task_run(success_tag)
+                db.set_task_run('maritime_aemet_success', extra=slot_id)
     except Exception as e:
         log_p(f"[cron] maritime_aemet: error en intento: {e}", level="WARN")
 

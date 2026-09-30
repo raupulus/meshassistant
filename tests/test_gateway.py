@@ -196,7 +196,17 @@ class TestGatewayService(unittest.IsolatedAsyncioTestCase):
         resp_t = await self.gateway._handle_action(mock_ws, {"action": "get_tides"})
         self.assertTrue(resp_t["success"])
 
-        # 8. Acción desconocida
+        # 8. get_project_info
+        resp_pi = await self.gateway._handle_action(mock_ws, {"action": "get_project_info"})
+        self.assertTrue(resp_pi["success"])
+        self.assertIn("env_config", resp_pi["data"])
+        self.assertIn("system_rules", resp_pi["data"])
+        self.assertIn("tasks_control", resp_pi["data"])
+        self.assertIn("router_trace_start_hour", resp_pi["data"]["env_config"])
+        self.assertIn("router_telemetry_start_hour", resp_pi["data"]["env_config"])
+        self.assertEqual(resp_pi["data"]["system_rules"]["mesh_max_bytes"], 200)
+
+        # 9. Acción desconocida
         resp_unk = await self.gateway._handle_action(mock_ws, {"action": "invalid_action"})
         self.assertFalse(resp_unk["success"])
         self.assertIn("desconocida", resp_unk["error"].lower())

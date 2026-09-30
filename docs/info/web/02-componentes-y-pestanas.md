@@ -241,7 +241,47 @@ Sección dedicada a la monitorización e inspección profunda de paquetes espec�
 
 ---
 
-## 14. Navegación y Diseño Adaptativo
+## 14. Pestaña 13 · Info (Condiciones e Información del Proyecto)
+
+Sección de referencia interactiva y recordatorio de reglas de diseño, cadencias automáticas del cron, políticas de enrutamiento y arquitectura del bot (`pane-info`):
+- **Buscador en Vivo y Filtro por Palabras Clave:**
+  - Campo de texto superior con filtrado dinámico en tiempo real que oculta o resalta bloques y filas de tabla según el término buscado (`router`, `cooldown`, `6:00`, `batería`, `hops`, etc.).
+  - Chips de salto rápido con scroll suave y animación de destello hacia cada sección temática.
+- **Sección 1 · Tiempos y Cadencias de Traceroutes (Trazas LoRa):**
+  - **Routers matinales:** Inicio a las 06:00 AM (`ROUTER_TRACE_START_HOUR`), cooldown de 40s entre routers (`ROUTER_TRACE_INTERVAL_SECONDS`), cadencia de renovación de 24h tras éxito (`ROUTER_TRACE_INTERVAL_HOURS`) y límite de 2 saltos (`ROUTER_MAX_HOPS`).
+  - **Reintentos en fallos de router:** 1 hora (hasta 5 intentos) y posterior paso a cadencia larga de 24 horas.
+  - **Clientes diurnos (08:00 - 23:00):** Desactivados/restringidos en horario comercial para no ocupar el canal ni interferir con conversaciones.
+  - **Clientes nocturnos (23:00 - 08:00):** 1 traza cada 5 minutos (`TRACES_INTERVAL_OFFPEAK`), renovación cada 5 días / 120 horas (`TRACES_RELOAD_INTERVAL`), máximo 2 saltos, escuchados en los últimos 7 días y exclusión estricta de nodos que solo hayan llegado por MQTT.
+  - **Trazas manuales:** Prioridad instantánea desde la interfaz web saltándose las colas del cron.
+  - **Salvaguardas:** Máximo 1 traza concurrente en la red y expiración automática de trazas colgadas tras 15 minutos en `pending`.
+- **Sección 2 · Monitorización de Routers y Repetidores:**
+  - **Inclusión:** Routers configurados en `ROUTER_NODES` / `ROUTERS_LIST` de `env.py` (siempre vigilados) y auto-detectados por rol `ROUTER`/`REPEATER` solo si cuentan con al menos un traceroute exitoso histórico.
+  - **Telemetría matinal de batería:** Petición diaria automática a las 07:00 AM (`ROUTER_TELEMETRY_START_HOUR`, cooldown 1440 min) hacia routers a ≤ 2 saltos solicitando `deviceMetrics`.
+  - **Sensores de potencia INA:** Monitorización y almacenamiento de `power_ina1`, `power_ina2`, `power_ina3` para paneles solares y fuentes externas.
+  - **Nodo Base de referencia:** Descuento automático de 1 salto si el paquete vino repetido respecto al nodo base configurado (`BASE_NODE_SHORT_NAME` / `BASE_NODE_ID`).
+- **Sección 3 · Sondeos de Red, Peticiones NodeInfo y Emisiones Broadcast:**
+  - **Petición individual NodeInfo:** Encola `__REQ_NODEINFO__` en `outbox` con puerto 4 (`NODEINFO_APP`).
+  - **Sondeos Broadcast (`^all`):** Cooldown estricto de 120 segundos y confirmación modal obligatoria con aviso de airtime para `request_nodeinfo`, `request_position` y `request_telemetry`.
+  - **Anuncios propios del bot:** Cooldown de 60 segundos para `announce_nodeinfo` y `announce_position`.
+  - **Restricción de `/ping` en Canal 0 (SFNarrow):** El bot omite intencionadamente responder a `/ping` en el canal público primario para evitar spam y saturación comunitaria; responde con normalidad en canales secundarios y mensajes privados.
+- **Sección 4 · Clima, Alertas AEMET, Marítimo y Mareas:**
+  - Alertas AEMET según periodo (`AEMET_PERIOD`), difusión diurna (08:00 a 22:00) y aviso diario de caducidad de API Key a 10 días de expirar.
+  - Predicción meteorológica municipal y horaria cada 3 horas (180 min) y observación física cada 60 min.
+  - Boletín marítimo costero a las 12:05 y 20:05 (con 3 reintentos).
+  - Mareas cada 6 horas (360 min) con respaldo armónico local offline.
+- **Sección 5 · Seguridad, Anti-Abuso y Límites Físicos LoRa:**
+  - Límites de trama: 200 bytes máx, 3 partes máx y 2.5s de pausa inter-partes.
+  - MeshWatcher: Detección de telemetría repetida &lt; 27 min, saltos &gt; 3, &gt; 2 traces en 10 min y limitador de comandos.
+- **Sección 6 · Arquitectura, Procesos y Persistencia:**
+  - Proceso único serie (`main.py`), cron sin radio (`cron_tasks.py`), pasarela WebSocket e IPC (`Gateway.py`).
+  - Fechas: 100% UTC en base de datos / backend, 100% `Europe/Madrid` en frontend.
+  - Política de retención: Se conserva todo el histórico válido (~8 MB/año).
+- **Sección 7 · Monitor de Tareas Cron en Vivo:**
+  - Tabla conectada en tiempo real a `tasks_control` que lista cada tarea del sistema, su descripción, cadencia teórica, fecha completa y tiempo relativo en hora española.
+
+---
+
+## 15. Navegación y Diseño Adaptativo
 
 - **Barra Lateral Izquierda:**
   - **Pantallas > 900px:** Barra fija de `120px` de ancho con icono y texto en salto de línea natural (`overflow-wrap: break-word`).

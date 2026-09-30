@@ -261,6 +261,13 @@ class MeshDashboard {
     this.captureRules = [];
     this.capturedPackets = [];
     this.currentInspectedPacket = null;
+
+    // Elementos de la Pestaña Info (Condiciones y Parámetros del Proyecto)
+    this.btnRefreshInfo = document.getElementById("btn-refresh-info");
+    this.infoSearchInput = document.getElementById("info-search-input");
+    this.btnClearInfoSearch = document.getElementById("btn-clear-info-search");
+    this.infoTbodyTasks = document.getElementById("info-tbody-tasks");
+    this.infoLiveTasksCount = document.getElementById("info-live-tasks-count");
   }
 
   bindEvents() {
@@ -733,6 +740,9 @@ class MeshDashboard {
 
     // Eventos de Dashboard Principal
     this.initDashboardListeners();
+
+    // Eventos de Pestaña Info
+    this.initInfoListeners();
   }
 
   updateSortHeaders() {
@@ -774,6 +784,8 @@ class MeshDashboard {
       this.renderWatchCards();
     } else if (tabName === "capture") {
       this.loadCaptureData();
+    } else if (tabName === "info") {
+      this.loadProjectInfo();
     }
   }
 
@@ -1300,6 +1312,8 @@ class MeshDashboard {
       this.renderDashboard(data);
     } else if (resp.action === "broadcast_action") {
       this.handleBroadcastActionResponse(data);
+    } else if (resp.action === "get_project_info") {
+      this.renderProjectInfo(data);
     }
   }
 
@@ -5051,6 +5065,225 @@ class MeshDashboard {
       .replace(/>/g, "&gt;")
       .replace(/"/g, "&quot;")
       .replace(/'/g, "&#039;");
+  }
+
+  // ==========================================================================
+  // Pestaña 13: Información y Condiciones del Proyecto (Info)
+  // ==========================================================================
+  initInfoListeners() {
+    if (this.btnRefreshInfo) {
+      this.btnRefreshInfo.addEventListener("click", () => {
+        this.loadProjectInfo();
+        this.showToast("Parámetros y condiciones actualizados");
+      });
+    }
+
+    if (this.infoSearchInput) {
+      this.infoSearchInput.addEventListener("input", (e) => {
+        const query = e.target.value.toLowerCase().trim();
+        if (this.btnClearInfoSearch) {
+          this.btnClearInfoSearch.style.display = query ? "inline-block" : "none";
+        }
+        this.filterInfoBlocks(query);
+      });
+    }
+
+    if (this.btnClearInfoSearch) {
+      this.btnClearInfoSearch.addEventListener("click", () => {
+        if (this.infoSearchInput) {
+          this.infoSearchInput.value = "";
+          this.infoSearchInput.dispatchEvent(new Event("input"));
+          this.infoSearchInput.focus();
+        }
+      });
+    }
+
+    // Scroll suave y resaltado al hacer clic en chips de navegación
+    document.querySelectorAll(".info-chip").forEach(chip => {
+      chip.addEventListener("click", (e) => {
+        const targetId = chip.getAttribute("href");
+        if (targetId && targetId.startsWith("#")) {
+          e.preventDefault();
+          const targetEl = document.querySelector(targetId);
+          if (targetEl) {
+            targetEl.scrollIntoView({ behavior: "smooth", block: "start" });
+            targetEl.classList.add("highlight");
+            setTimeout(() => targetEl.classList.remove("highlight"), 1200);
+          }
+        }
+      });
+    });
+  }
+
+  loadProjectInfo() {
+    this.sendAction("get_project_info");
+  }
+
+  filterInfoBlocks(query) {
+    const blocks = document.querySelectorAll(".info-block");
+    if (!query) {
+      blocks.forEach(b => {
+        b.style.display = "";
+        b.querySelectorAll("tbody tr").forEach(tr => tr.style.display = "");
+      });
+      return;
+    }
+
+    blocks.forEach(block => {
+      let blockMatches = false;
+      const title = block.querySelector("h3")?.textContent.toLowerCase() || "";
+      const paragraph = block.querySelector("p")?.textContent.toLowerCase() || "";
+
+      if (title.includes(query) || paragraph.includes(query)) {
+        blockMatches = true;
+      }
+
+      // Filtrar filas de tabla
+      const rows = block.querySelectorAll("tbody tr");
+      let visibleRows = 0;
+      rows.forEach(tr => {
+        const text = tr.textContent.toLowerCase();
+        if (text.includes(query) || blockMatches) {
+          tr.style.display = "";
+          visibleRows++;
+        } else {
+          tr.style.display = "none";
+        }
+      });
+
+      if (rows.length > 0) {
+        block.style.display = (visibleRows > 0 || blockMatches) ? "" : "none";
+      } else {
+        // Bloque de tarjetas o párrafos
+        const textContent = block.textContent.toLowerCase();
+        block.style.display = textContent.includes(query) ? "" : "none";
+      }
+    });
+  }
+
+  renderProjectInfo(data) {
+    if (!data) return;
+    const cfg = data.env_config || {};
+    const tasks = data.tasks_control || [];
+
+    // 1. Trazas
+    const enableTracesBadge = document.getElementById("info-live-enable-traces");
+    if (enableTracesBadge) {
+      enableTracesBadge.textContent = cfg.enable_traces ? "Traces Habilitados" : "Traces Deshabilitados (ENABLE_TRACES=False)";
+      enableTracesBadge.style.background = cfg.enable_traces ? "rgba(52, 211, 153, 0.15)" : "rgba(248, 113, 113, 0.15)";
+      enableTracesBadge.style.color = cfg.enable_traces ? "#34d399" : "#f87171";
+    }
+
+    const setTxt = (id, val) => {
+      const el = document.getElementById(id);
+      if (el) el.textContent = val !== undefined && val !== null ? val : "--";
+    };
+
+    setTxt("info-val-router-start-hour", `${String(cfg.router_trace_start_hour ?? 6).padStart(2, "0")}:00`);
+    setTxt("info-val-router-cooldown-sec", cfg.router_trace_interval_seconds ?? 40);
+    setTxt("info-val-router-reload-hours", cfg.router_trace_interval_hours ?? 24);
+    setTxt("info-val-router-max-hops", cfg.router_max_hops ?? 2);
+    setTxt("info-val-client-offpeak-min", cfg.traces_interval_offpeak_min ?? 5);
+    setTxt("info-val-client-reload-hours", cfg.traces_reload_interval_hours ?? 120);
+    setTxt("info-val-client-hops", cfg.traces_hops ?? 2);
+    setTxt("info-val-client-inactive-days", cfg.traces_max_inactive_days ?? 7);
+
+    // 2. Routers
+    const routerList = cfg.router_nodes || [];
+    const routerCountBadge = document.getElementById("info-live-router-count-badge");
+    if (routerCountBadge) {
+      routerCountBadge.textContent = `${routerList.length} Routers Configurados`;
+    }
+    setTxt("info-val-router-telem-hour", `${String(cfg.router_telemetry_start_hour ?? 7).padStart(2, "0")}:00`);
+    setTxt("info-val-base-node", cfg.base_node_short_name || "RAU0");
+
+    const routerListContainer = document.getElementById("info-val-router-list");
+    if (routerListContainer) {
+      if (routerList.length === 0) {
+        routerListContainer.textContent = "Ningún router especificado explícitamente en ROUTER_NODES (se utiliza auto-detección por rol ROUTER/REPEATER con traza exitosa).";
+        routerListContainer.style.color = "var(--text-muted)";
+      } else {
+        routerListContainer.innerHTML = routerList.map(r => `<span class="badge" style="background: rgba(56, 189, 248, 0.15); color: #38bdf8; margin: 2px 4px 2px 0;">${this.escapeHtml(r)}</span>`).join("");
+      }
+    }
+
+    // 3. Clima y AEMET
+    setTxt("info-val-aemet-prov", cfg.aemet_province || "Cádiz");
+    setTxt("info-val-aemet-city", cfg.aemet_city || "Chipiona");
+    setTxt("info-val-aemet-period", cfg.aemet_period || "1h");
+    setTxt("info-val-aemet-station", cfg.aemet_observation_station || "5972X");
+
+    // 4. Tabla de Tareas Cron en Vivo
+    if (this.infoTbodyTasks) {
+      const taskMetaMap = {
+        "send_trace": { desc: "Encolar traceroutes a routers matinales y clientes nocturnos", cadence: "Cada 1 min (según cooldown)" },
+        "router_telemetry_request": { desc: "Petición diaria de batería a routers cercanos a las 07:00 AM", cadence: "Diario (1440 min)" },
+        "aemet_fetch": { desc: "Descarga de alertas meteorológicas activas de AEMET", cadence: cfg.aemet_period ? `Según periodo (${cfg.aemet_period})` : "Cada 60 min" },
+        "aemet_weather_fetch": { desc: "Descarga de predicción meteorológica para /weather", cadence: "Cada 60 min" },
+        "aemet_forecast_fetch": { desc: "Descarga de predicción municipal diaria (7d) y horaria", cadence: "Cada 3 horas (180 min)" },
+        "aemet_observation_fetch": { desc: "Descarga de estación física meteorológica", cadence: "Cada 60 min" },
+        "maritime_aemet": { desc: "Descarga oficial de boletín marítimo costero", cadence: "12:05 y 20:05 Madrid" },
+        "maritime_aemet_success": { desc: "Última descarga exitosa de boletín marítimo costero", cadence: "12:05 y 20:05 Madrid" },
+        "maritime_aemet_attempt": { desc: "Último intento de descarga de boletín marítimo", cadence: "Reintento cada 10 min en ventana" },
+        "tides_fetch": { desc: "Descarga de extremos de marea para /marea", cadence: `Cada ${cfg.tides_period_min || 360} min (6h)` },
+        "marea_ondemand": { desc: "Descarga de marea bajo demanda por comando de usuario", cadence: "Bajo demanda (mín 10 min)" },
+        "aemet_key_expiry_check": { desc: "Comprobación de caducidad del token JWT de AEMET", cadence: "Diario (1440 min)" },
+        "aemet_key_expiry_warn": { desc: "Aviso emitido por radio ante caducidad inminente de API Key", cadence: "Diario (si expira en ≤10d)" },
+        "chiste_upload": { desc: "Subida a servidor de chistes aportados por usuarios", cadence: "Cada 5 min (si hay pendientes)" },
+        "chiste_download": { desc: "Descarga de nuevos chistes de la API", cadence: "Cada 10 min" },
+        "encuestas_expire": { desc: "Cierre de encuestas que hayan alcanzado su fecha fin", cadence: "Cada 1 min" },
+      };
+
+      if (!tasks || tasks.length === 0) {
+        this.infoTbodyTasks.innerHTML = `
+          <tr>
+            <td colspan="4" style="text-align: center; color: var(--text-muted); padding: 20px;">
+              No hay tareas registradas en tasks_control todavía.
+            </td>
+          </tr>
+        `;
+      } else {
+        let rowsHtml = "";
+        tasks.forEach(t => {
+          const name = t.name || "";
+          const meta = taskMetaMap[name] || {
+            desc: name.startsWith("maritime_") ? "Intento de descarga de boletín marítimo" :
+                  name.startsWith("aemet_publish_ch_") ? `Publicación de alertas en canal ${name.replace('aemet_publish_ch_', '')}` :
+                  name.startsWith("aemet_key_warn_") ? "Aviso diario de caducidad de API Key AEMET" : "Tarea de control del cron",
+            cadence: "Automática",
+          };
+
+          const ts = t.last_run_at;
+          const fullTime = ts ? this.formatFullDateTime(ts) : "--";
+          const relTime = ts ? this.formatRelativeOrDate(ts) : "--";
+          const extraBadge = t.extra ? `<div style="font-family: monospace; font-size: 0.72rem; color: var(--text-muted); margin-top: 2px;">info: ${this.escapeHtml(t.extra)}</div>` : "";
+
+          rowsHtml += `
+            <tr>
+              <td>
+                <span style="font-family: monospace; font-weight: 700; color: var(--primary);">${this.escapeHtml(name)}</span>
+                ${extraBadge}
+              </td>
+              <td style="font-size: 0.83rem; color: var(--text-main); line-height: 1.4;">
+                ${this.escapeHtml(meta.desc)}
+              </td>
+              <td>
+                <span class="badge" style="background: rgba(148, 163, 184, 0.12); color: var(--text-main); font-size: 0.76rem;">${this.escapeHtml(meta.cadence)}</span>
+              </td>
+              <td style="font-size: 0.82rem;">
+                <div style="font-weight: 600; color: var(--text-main);">${relTime}</div>
+                <div style="font-size: 0.74rem; color: var(--text-muted); margin-top: 1px;">${fullTime}</div>
+              </td>
+            </tr>
+          `;
+        });
+        this.infoTbodyTasks.innerHTML = rowsHtml;
+      }
+
+      if (this.infoLiveTasksCount) {
+        this.infoLiveTasksCount.textContent = `${tasks.length} tareas registradas`;
+      }
+    }
   }
 }
 

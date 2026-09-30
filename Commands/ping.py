@@ -2,6 +2,74 @@ from functions import log_p
 import json
 
 
+def is_repeated_by_base(metadata: dict, base_id=None, base_short=None, interface=None) -> bool:
+    """Verifica fehacientemente si el repetidor inmediato (relay_node) coincide con el nodo base.
+
+    Meshtastic envía en relay_node el byte inferior (1 byte hash: num & 0xFF) o el nodeNum
+    del último nodo que retransmitió la trama por radio.
+    """
+    relay_node = metadata.get("relay_node")
+    if relay_node is None:
+        node_from = metadata.get("node_from")
+        if isinstance(node_from, dict):
+            relay_node = node_from.get("relay_node")
+
+    if relay_node is None:
+        return False
+
+    base_nums = set()
+    base_hashes = set()
+
+    # 1. Desde base_id configurado (ej: '!875e3787' o '875e3787')
+    if base_id:
+        try:
+            num = int(str(base_id).lstrip('!'), 16)
+            base_nums.add(num)
+            base_hashes.add(num & 0xFF)
+        except Exception:
+            pass
+
+    # 2. Desde los nodos cargados en la interfaz si coinciden por short_name o ID
+    if interface and hasattr(interface, 'node_dict'):
+        for nid, n in (interface.node_dict or {}).items():
+            s_name = getattr(n, 'short_name', '') or ''
+            if (base_short and s_name.upper() == str(base_short).upper()) or (base_id and nid == base_id):
+                n_num = getattr(n, 'num', None)
+                if n_num is not None:
+                    try:
+                        n_num_int = int(n_num)
+                        base_nums.add(n_num_int)
+                        base_hashes.add(n_num_int & 0xFF)
+                    except Exception:
+                        pass
+
+    # 3. Fallback a BD si la interfaz no tenía el nodo en RAM
+    if not base_nums and (base_id or base_short):
+        try:
+            from Models.Database import Database
+            db = Database()
+            if base_id:
+                n = db.get_node(str(base_id))
+                if n and n.get('num'):
+                    n_num_int = int(n['num'])
+                    base_nums.add(n_num_int)
+                    base_hashes.add(n_num_int & 0xFF)
+            if base_short and not base_nums:
+                n = db.get_node_by_short_name(str(base_short))
+                if n and n.get('num'):
+                    n_num_int = int(n['num'])
+                    base_nums.add(n_num_int)
+                    base_hashes.add(n_num_int & 0xFF)
+        except Exception:
+            pass
+
+    try:
+        r_int = int(relay_node)
+        return (r_int in base_nums) or (r_int in base_hashes)
+    except Exception:
+        return False
+
+
 def ping_callback(interface, args, msg, metadata):
     metadata = metadata or {}
     node_from = metadata.get("node_from") if isinstance(metadata.get("node_from"), dict) else {}
@@ -17,15 +85,17 @@ def ping_callback(interface, args, msg, metadata):
     base_short = getattr(env, 'BASE_NODE_SHORT_NAME', None) or getattr(env, 'MESH_GATEWAY_SHORT_NAME', 'RAU0') or 'RAU0'
     base_id = getattr(env, 'BASE_NODE_ID', None)
 
-    # Calcular saltos efectivos respecto al nodo base/azotea
-    # Si el paquete vino repetido (hops > 0) y tenemos nodo base configurado,
-    # restamos 1 salto para reflejar los saltos reales hacia la azotea.
-    # Si vino directo al bot (raw_hops == 0), no se descuenta nada.
+    # Calcular saltos efectivos respecto al nodo base:
+    # Solo descontamos 1 salto si el paquete vino repetido (raw_hops > 0) Y hemos verificado
+    # fehacientemente que el repetidor inmediato (relay_node) coincide con nuestro nodo base.
+    repeated_by_base = False
     effective_hops = raw_hops
     if raw_hops is not None and raw_hops > 0 and (base_short or base_id):
-        effective_hops = max(0, raw_hops - 1)
+        repeated_by_base = is_repeated_by_base(metadata, base_id=base_id, base_short=base_short, interface=interface)
+        if repeated_by_base:
+            effective_hops = max(0, raw_hops - 1)
 
-    log_p(f'Pong a "{from_name or from_id or "desconocido"}", MQTT: {via_mqtt}, raw_hops: {raw_hops}, eff_hops: {effective_hops}')
+    log_p(f'Pong a "{from_name or from_id or "desconocido"}", MQTT: {via_mqtt}, raw_hops: {raw_hops}, eff_hops: {effective_hops}, rep_by_base: {repeated_by_base}')
 
     # Guardar ping en la base de datos
     try:
@@ -43,6 +113,8 @@ def ping_callback(interface, args, msg, metadata):
                     'rssi': node_from.get('rssi') if isinstance(node_from, dict) else metadata.get('rx_rssi'),
                     'hops': effective_hops,
                     'raw_hops': raw_hops,
+                    'repeated_by_base': repeated_by_base,
+                    'relay_node': metadata.get('relay_node'),
                     'via_mqtt': via_mqtt,
                 },
                 'node_to': node_to,
@@ -70,7 +142,6 @@ def ping_callback(interface, args, msg, metadata):
             else:
                 response = 'Pong desde Chipiona'
         elif raw_hops is not None and raw_hops > 0:
-            # Enlace repetido: mostramos los saltos efectivos sin SNR (para no mostrar SNR del enlace local)
             hops_txt = 'hop' if effective_hops == 1 else 'hops'
             response = f'Pong desde Chipiona, {effective_hops} {hops_txt}'
         else:

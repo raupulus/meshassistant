@@ -917,3 +917,39 @@ tr:hover td {
   transition: width 0.4s ease;
 }
 
+/* ==========================================================================
+   Pestaña 13: Información y Condiciones del Proyecto (Info)
+   ========================================================================== */
+.info-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: var(--bg-main);
+  border: 1px solid var(--border-color);
+  color: var(--text-muted);
+  padding: 4px 10px;
+  border-radius: 20px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  text-decoration: none;
+  transition: all 0.15s ease;
+}
+
+.info-chip:hover {
+  background: var(--primary-bg);
+  border-color: var(--primary);
+  color: var(--primary);
+  transform: translateY(-1px);
+}
+
+.info-block {
+  scroll-margin-top: 80px;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.info-block.highlight {
+  border-color: var(--primary);
+  box-shadow: 0 0 15px rgba(56, 189, 248, 0.2);
+}
+
+

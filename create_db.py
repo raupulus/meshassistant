@@ -711,6 +711,18 @@ def _migrate_timestamps_to_utc(conn: sqlite3.Connection) -> None:
     except Exception:
         pass
 
+    # Limpieza de tareas efímeras huérfanas en tasks_control con fechas dinámicas
+    try:
+        conn.execute("""
+            DELETE FROM tasks_control 
+            WHERE name LIKE 'maritime_attempt_%' 
+               OR name LIKE 'maritime_success_%' 
+               OR name LIKE 'bulletin_%' 
+               OR name LIKE 'aemet_key_warn_%'
+        """)
+    except Exception:
+        pass
+
     conn.commit()
 
 

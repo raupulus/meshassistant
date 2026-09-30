@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Meshassistant · Dashboard de Malla</title>
-  <link rel="stylesheet" href="style.css?v=2.6">
+  <link rel="stylesheet" href="style.css?v=2.7">
   <link rel="icon" type="image/x-icon" href="favicon.ico">
   <link rel="icon" type="image/png" sizes="32x32" href="favicon-32x32.png">
   <link rel="icon" type="image/png" sizes="128x128" href="favicon.png">
@@ -118,6 +118,10 @@
         <span class="tab-icon">📷</span>
         <span class="tab-label">Cap.</span>
         <span class="badge-count" id="count-captured">0</span>
+      </button>
+      <button class="tab-btn" data-tab="info" title="ℹ️ Información y Condiciones del Proyecto">
+        <span class="tab-icon">ℹ️</span>
+        <span class="tab-label">Info</span>
       </button>
     </nav>
 
@@ -1253,6 +1257,506 @@
       </div>
     </section>
 
+    <!-- Pestaña 13: Información y Condiciones del Proyecto (Info) -->
+    <section id="pane-info" class="tab-pane">
+      <!-- Cabecera de la Pestaña -->
+      <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 16px; flex-wrap: wrap; gap: 14px;">
+        <div style="max-width: 700px;">
+          <h2 style="font-size: 1.35rem; font-weight: 700; display: flex; align-items: center; gap: 8px;">
+            <span>ℹ️</span> Condiciones e Información del Proyecto
+          </h2>
+          <div style="font-size: 0.84rem; color: var(--text-muted); margin-top: 4px; line-height: 1.45;">
+            Guía de referencia rápida y recordatorio de reglas operativas, cadencias automáticas de cron, salvaguardas de radio LoRa, monitorización de infraestructura y arquitectura técnica del sistema.
+          </div>
+        </div>
+        <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+          <button class="btn-secondary" id="btn-refresh-info" style="display: flex; align-items: center; gap: 6px; font-size: 0.82rem; padding: 7px 14px; cursor: pointer;">
+            <span>🔄</span> Actualizar Parámetros
+          </button>
+        </div>
+      </div>
+
+      <!-- Barra de Búsqueda Rápida y Navegación por Secciones -->
+      <div class="card" style="padding: 12px 16px; margin-bottom: 20px; display: flex; flex-direction: column; gap: 10px;">
+        <div style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
+          <div style="flex: 1; min-width: 260px; position: relative;">
+            <input type="text" id="info-search-input" class="input-custom" placeholder="🔍 Filtrar condiciones, reglas, tiempos o parámetros (ej. 'router', '6:00', 'cooldown', 'batería', 'hops')..." style="width: 100%; box-sizing: border-box; padding: 8px 12px; font-size: 0.88rem;">
+          </div>
+          <button type="button" class="btn-secondary" id="btn-clear-info-search" style="font-size: 0.8rem; padding: 6px 12px; display: none;">
+            ✕ Limpiar filtro
+          </button>
+        </div>
+        <div class="info-nav-chips" style="display: flex; gap: 6px; flex-wrap: wrap; align-items: center;">
+          <span style="font-size: 0.76rem; color: var(--text-muted); font-weight: 600; margin-right: 4px;">Secciones:</span>
+          <a href="#info-sec-traces" class="info-chip">🗺️ Traceroutes</a>
+          <a href="#info-sec-routers" class="info-chip">📡 Routers</a>
+          <a href="#info-sec-broadcast" class="info-chip">📻 Sondeos &amp; NodeInfo</a>
+          <a href="#info-sec-weather" class="info-chip">🌤️ Clima &amp; AEMET</a>
+          <a href="#info-sec-security" class="info-chip">🛡️ Seguridad &amp; LoRa</a>
+          <a href="#info-sec-arch" class="info-chip">⚙️ Arquitectura &amp; BD</a>
+          <a href="#info-sec-tasks" class="info-chip">⏱️ Tareas Cron en Vivo</a>
+        </div>
+      </div>
+
+      <!-- Contenedor Principal de Secciones de Información -->
+      <div id="info-content-container" style="display: flex; flex-direction: column; gap: 20px;">
+
+        <!-- ==================================================================
+             SECCIÓN 1: TRACEROUTES Y TIEMPOS ENTRE TRAZAS
+             ================================================================== -->
+        <div class="card info-block" id="info-sec-traces" style="padding: 18px 20px;">
+          <div class="card-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+            <h3 style="font-size: 1.1rem; font-weight: 700; display: flex; align-items: center; gap: 8px; color: var(--primary);">
+              <span>🗺️</span> 1. Tiempos y Cadencias de Traceroutes (Trazas LoRa)
+            </h3>
+            <span class="badge" id="info-live-enable-traces" style="background: rgba(52, 211, 153, 0.15); color: #34d399;">
+              Traces Habilitados
+            </span>
+          </div>
+
+          <p style="font-size: 0.86rem; color: var(--text-main); margin-bottom: 14px; line-height: 1.5;">
+            Las trazas permiten cartografiar la topología y medir la calidad de enlace (SNR y saltos). Para <strong>evitar saturar el canal de radio LoRa</strong>, el sistema aplica políticas diferenciadas entre la infraestructura troncal (routers) y los clientes habituales, según la hora del día.
+          </p>
+
+          <div class="table-responsive" style="margin-bottom: 14px;">
+            <table class="data-table" style="font-size: 0.84rem;">
+              <thead>
+                <tr>
+                  <th style="width: 28%;">Condición / Tipo</th>
+                  <th style="width: 24%;">Tiempo / Parámetro</th>
+                  <th>Comportamiento y Justificación Operativa</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><strong>📡 Trazas de Routers (Matinales)</strong></td>
+                  <td><span class="badge" style="background: rgba(56, 189, 248, 0.15); color: #38bdf8;">A partir de las <span id="info-val-router-start-hour">06:00</span> AM</span></td>
+                  <td>Los repetidores de infraestructura se trazan preferentemente a primera hora de la mañana para comprobar el estado de la red sin esperar al ciclo nocturno.</td>
+                </tr>
+                <tr>
+                  <td><strong>⏱️ Cooldown entre Routers</strong></td>
+                  <td><span class="badge" style="background: rgba(251, 191, 36, 0.15); color: #fbbf24;"><span id="info-val-router-cooldown-sec">40</span> segundos</span></td>
+                  <td>Pausa de enfriamiento obligatoria entre trazas consecutivas a distintos routers para liberar el medio tras cada respuesta de radio.</td>
+                </tr>
+                <tr>
+                  <td><strong>🔄 Renovación de Traza en Routers</strong></td>
+                  <td><span class="badge" style="background: rgba(56, 189, 248, 0.12); color: var(--text-main);">Cada <span id="info-val-router-reload-hours">24</span> horas</span></td>
+                  <td>Tras completar un trace exitoso hacia un router, se le concede una validez de 24 horas antes de volver a encolarlo automáticamente.</td>
+                </tr>
+                <tr>
+                  <td><strong>🦘 Máximo de Saltos en Routers</strong></td>
+                  <td><span class="badge" style="background: rgba(148, 163, 184, 0.15); color: var(--text-main);">≤ <span id="info-val-router-max-hops">2</span> saltos brutos</span></td>
+                  <td>Referencia directa desde el bot: admite enlaces directos (0 saltos), 1 salto (repetido por base) o máximo 2 saltos en la red.</td>
+                </tr>
+                <tr>
+                  <td><strong>🔁 Reintentos en Fallos de Router</strong></td>
+                  <td><span class="badge" style="background: rgba(248, 113, 113, 0.15); color: #f87171;">2h (hasta 3 veces) ➔ 24h</span></td>
+                  <td>Si un router no responde, se reintenta cada <strong>2 horas</strong> hasta un máximo de <strong>3 intentos</strong>. Tras el 3er fallo se asume apagado/averiado y pasa a cadencia lenta de <strong>24 horas</strong>.</td>
+                </tr>
+                <tr>
+                  <td><strong>☀️ Clientes en Horario Diurno (08:00 - 23:00)</strong></td>
+                  <td><span class="badge" style="background: rgba(248, 113, 113, 0.15); color: #f87171;">Desactivadas / Restringidas (1/h)</span></td>
+                  <td>Durante el día no se trazan clientes normales para <strong>no ocupar el canal ni interferir con las conversaciones de los usuarios</strong>. Solo se procesan trazas de routers.</td>
+                </tr>
+                <tr>
+                  <td><strong>🌙 Clientes en Horario Nocturno (23:00 - 08:00)</strong></td>
+                  <td><span class="badge" style="background: rgba(167, 139, 250, 0.15); color: #a78bfa;">1 trace cada <span id="info-val-client-offpeak-min">5</span> minutos</span></td>
+                  <td>De noche se aprovecha el canal libre para refrescar las rutas hacia los nodos de la comunidad de forma paulatina y respetuosa.</td>
+                </tr>
+                <tr>
+                  <td><strong>⏳ Renovación de Traza en Clientes</strong></td>
+                  <td><span class="badge" style="background: rgba(56, 189, 248, 0.12); color: var(--text-main);">Cada <span id="info-val-client-reload-hours">120</span> horas (5 días)</span></td>
+                  <td>Una vez completado con éxito, no se vuelve a molestar al nodo cliente con traceroutes automáticos durante 5 días.</td>
+                </tr>
+                <tr>
+                  <td><strong>🦘 Máximo de Saltos en Clientes</strong></td>
+                  <td><span class="badge" style="background: rgba(148, 163, 184, 0.15); color: var(--text-main);">≤ <span id="info-val-client-hops">2</span> saltos</span></td>
+                  <td>Se descartan nodos a más de 2 saltos para evitar colisiones y pérdida de paquetes en rutas excesivamente lejanas.</td>
+                </tr>
+                <tr>
+                  <td><strong>📅 Criterio de Actividad Reciente</strong></td>
+                  <td><span class="badge" style="background: rgba(148, 163, 184, 0.15); color: var(--text-main);">Últimos <span id="info-val-client-inactive-days">7</span> días</span></td>
+                  <td>Solo se seleccionan nodos que hayan transmitido al menos una vez en los últimos 7 días. Nodos apagados por más tiempo se ignoran.</td>
+                </tr>
+                <tr>
+                  <td><strong>🚫 Exclusión Estricta de Nodos MQTT</strong></td>
+                  <td><span class="badge" style="background: rgba(248, 113, 113, 0.15); color: #f87171;">Omitidos (Solo RF)</span></td>
+                  <td>Los nodos que solo se han escuchado a través de MQTT (`via_mqtt=1`) nunca se trazan por radio.</td>
+                </tr>
+                <tr>
+                  <td><strong>⚡ Trazas Manuales (desde Web)</strong></td>
+                  <td><span class="badge" style="background: rgba(52, 211, 153, 0.15); color: #34d399;">Prioridad Instantánea</span></td>
+                  <td>Los traceroutes solicitados manualmente por el operador desde el dashboard se encolan con `pending` y se ejecutan de inmediato en el bucle principal, saltándose los cooldowns del cron.</td>
+                </tr>
+                <tr>
+                  <td><strong>🛡️ Salvaguarda de Concurrencia y Limpieza</strong></td>
+                  <td><span class="badge" style="background: rgba(251, 191, 36, 0.15); color: #fbbf24;">Máx 1 en curso · Expira en 15m</span></td>
+                  <td>Solo puede haber 1 traza activa en toda la red a la vez. Si una traza queda colgada más de 15 minutos sin confirmación del hardware serie, se marca como expirada automáticamente.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- ==================================================================
+             SECCIÓN 2: MONITORIZACIÓN DE ROUTERS Y REPETIDORES
+             ================================================================== -->
+        <div class="card info-block" id="info-sec-routers" style="padding: 18px 20px;">
+          <div class="card-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+            <h3 style="font-size: 1.1rem; font-weight: 700; display: flex; align-items: center; gap: 8px; color: #38bdf8;">
+              <span>📡</span> 2. Monitorización de Routers y Repetidores
+            </h3>
+            <span class="badge" id="info-live-router-count-badge" style="background: rgba(56, 189, 248, 0.15); color: #38bdf8;">
+              Routers Vigilados
+            </span>
+          </div>
+
+          <p style="font-size: 0.86rem; color: var(--text-main); margin-bottom: 14px; line-height: 1.5;">
+            Los routers y repetidores son nodos estratégicos que sostienen la cobertura comarcal. El asistente aplica reglas especiales de supervisión, telemetría de energía matinal y filtrado de enlaces:
+          </p>
+
+          <div class="table-responsive" style="margin-bottom: 14px;">
+            <table class="data-table" style="font-size: 0.84rem;">
+              <thead>
+                <tr>
+                  <th style="width: 28%;">Aspecto / Función</th>
+                  <th style="width: 24%;">Configuración Actual</th>
+                  <th>Regla y Comportamiento Técnico</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><strong>📋 Criterio de Inclusión en Routers</strong></td>
+                  <td>
+                    <div style="display: flex; flex-direction: column; gap: 4px;">
+                      <span class="badge" style="background: rgba(56, 189, 248, 0.15); color: #38bdf8;">Lista Fija en env.py</span>
+                      <span class="badge" style="background: rgba(52, 211, 153, 0.15); color: #34d399;">Auto-detectados con Éxito</span>
+                    </div>
+                  </td>
+                  <td>
+                    <strong>1) Routers configurados:</strong> Los definidos en <code>ROUTER_NODES</code> se muestran <em>siempre</em> (estén online u offline).<br>
+                    <strong>2) Auto-detectados:</strong> Si un nodo tiene rol <code>ROUTER</code> o <code>REPEATER</code>, <em>solo</em> se añade si <strong>ha respondido con éxito un traceroute en algún momento</strong> (para no listar nodos fantasma recibidos por rebotes esporádicos).
+                  </td>
+                </tr>
+                <tr>
+                  <td><strong>🔋 Petición Matinal de Telemetría (Batería)</strong></td>
+                  <td><span class="badge" style="background: rgba(52, 211, 153, 0.15); color: #34d399;">A partir de las <span id="info-val-router-telem-hour">07:00</span> AM</span></td>
+                  <td>Una vez al día (cooldown 1440 min / 24h), el cron encola una solicitud <code>__REQ_TELEMETRY__</code> a todos los routers cercanos (≤ 2 saltos) para recabar batería %, voltaje, utilización de canal y uptime tras la noche.</td>
+                </tr>
+                <tr>
+                  <td><strong>🔌 Sensores de Potencia Externa INA</strong></td>
+                  <td><span class="badge" style="background: rgba(251, 191, 36, 0.15); color: #fbbf24;">INA1 / INA2 / INA3</span></td>
+                  <td>El bot monitoriza y almacena en la tabla <code>nodes</code> los voltajes de sensores INA (paneles solares, baterías auxiliares) para supervisar la alimentación de repetidores remotos.</td>
+                </tr>
+                <tr>
+                  <td><strong>🏠 Descuento de Salto del Nodo Base</strong></td>
+                  <td><span class="badge" style="background: rgba(148, 163, 184, 0.15); color: var(--text-main);">Base: <span id="info-val-base-node">RAU0</span> (verificado)</span></td>
+                  <td>En <code>/ping</code>, solo se descuenta 1 salto si se verifica fehacientemente mediante el repetidor (<code>relay_node</code>) que el paquete fue retransmitido de verdad por el nodo base local. Si llega directo (0 saltos) o repetido por otro nodo, no se descuenta.</td>
+                </tr>
+                <tr>
+                  <td><strong>📝 Lista Configurada en env.py</strong></td>
+                  <td colspan="2">
+                    <div id="info-val-router-list" style="font-family: monospace; font-size: 0.8rem; background: var(--bg-input); padding: 8px 12px; border-radius: var(--radius-sm); color: var(--primary); word-break: break-all;">
+                      Cargando lista de routers...
+                    </div>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- ==================================================================
+             SECCIÓN 3: SONDEOS DE RED, NODEINFO Y BROADCAST
+             ================================================================== -->
+        <div class="card info-block" id="info-sec-broadcast" style="padding: 18px 20px;">
+          <div class="card-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+            <h3 style="font-size: 1.1rem; font-weight: 700; display: flex; align-items: center; gap: 8px; color: #a78bfa;">
+              <span>📻</span> 3. Sondeos de Red, Peticiones NodeInfo y Emisiones Broadcast
+            </h3>
+            <span class="badge" style="background: rgba(167, 139, 250, 0.15); color: #a78bfa;">
+              Airtime &amp; Duty Cycle
+            </span>
+          </div>
+
+          <p style="font-size: 0.86rem; color: var(--text-main); margin-bottom: 14px; line-height: 1.5;">
+            Las peticiones de identidad (NodeInfo) y las emisiones a toda la malla (<code>^all</code>) requieren salvaguardas estrictas porque cada nodo en cobertura intentará transmitir de vuelta, lo que puede saturar el canal de radio:
+          </p>
+
+          <div class="table-responsive" style="margin-bottom: 14px;">
+            <table class="data-table" style="font-size: 0.84rem;">
+              <thead>
+                <tr>
+                  <th style="width: 28%;">Tipo de Emisión / Acción</th>
+                  <th style="width: 24%;">Cooldown &amp; Salvaguarda</th>
+                  <th>Comportamiento y Mecanismo</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><strong>👤 Petición NodeInfo Individual</strong></td>
+                  <td><span class="badge" style="background: rgba(56, 189, 248, 0.15); color: #38bdf8;">Unicast Punto a Punto</span></td>
+                  <td>Al pulsar el botón <em>NodeInfo</em> en la tabla de nodos, se encola <code>__REQ_NODEINFO__</code> en el outbox hacia el nodo destino. Si soporta puerto 4 (`NODEINFO_APP`), se solicita confirmación con ACK.</td>
+                </tr>
+                <tr>
+                  <td><strong>🔍 Sondear NodeInfos (Broadcast)</strong></td>
+                  <td><span class="badge" style="background: rgba(248, 113, 113, 0.15); color: #f87171;">120s + Modal de Confirmación</span></td>
+                  <td>Envía <code>wantResponse=True</code> hacia <code>^all</code>. Provoca que todos los nodos activos respondan con sus nombres y claves. <em>Requiere confirmación previa en ventana modal</em>.</td>
+                </tr>
+                <tr>
+                  <td><strong>🧭 Sondear Posiciones (GPS Broadcast)</strong></td>
+                  <td><span class="badge" style="background: rgba(248, 113, 113, 0.15); color: #f87171;">120s + Modal de Confirmación</span></td>
+                  <td>Solicita a todos los nodos con GPS o posición fija que transmitan sus coordenadas. Protegido por cooldown de 2 minutos.</td>
+                </tr>
+                <tr>
+                  <td><strong>🔋 Sondear Baterías (Broadcast)</strong></td>
+                  <td><span class="badge" style="background: rgba(248, 113, 113, 0.15); color: #f87171;">120s + Modal de Confirmación</span></td>
+                  <td>Solicita telemetría de dispositivo (batería y voltaje) a toda la malla LoRa simultáneamente. Protegido por cooldown de 2 minutos.</td>
+                </tr>
+                <tr>
+                  <td><strong>📢 Anunciar Bot (NodeInfo propio)</strong></td>
+                  <td><span class="badge" style="background: rgba(52, 211, 153, 0.15); color: #34d399;">Cooldown 60 segundos</span></td>
+                  <td>Emite la identidad del bot (nombre, short name, clave pública) a la malla. No pide respuesta de los demás nodos.</td>
+                </tr>
+                <tr>
+                  <td><strong>📍 Anunciar Posición (GPS propio)</strong></td>
+                  <td><span class="badge" style="background: rgba(52, 211, 153, 0.15); color: #34d399;">Cooldown 60 segundos</span></td>
+                  <td>Emite las coordenadas geográficas de la estación base al canal. No pide respuesta.</td>
+                </tr>
+                <tr>
+                  <td><strong>🚫 Regla Especial de /ping en Canal 0 (SFNarrow)</strong></td>
+                  <td><span class="badge" style="background: rgba(239, 68, 68, 0.15); color: #ef4444;">Sin Respuesta en Canal Público</span></td>
+                  <td>Para evitar inundar el canal general provincial, el bot <strong>omite intencionadamente la respuesta a /ping si se envía en el Canal 0 SFNarrow</strong>. Solo responde a /ping en canales secundarios o mensajes privados.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- ==================================================================
+             SECCIÓN 4: CLIMA, AEMET, MARÍTIMO Y MAREAS
+             ================================================================== -->
+        <div class="card info-block" id="info-sec-weather" style="padding: 18px 20px;">
+          <div class="card-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+            <h3 style="font-size: 1.1rem; font-weight: 700; display: flex; align-items: center; gap: 8px; color: #fbbf24;">
+              <span>🌤️</span> 4. Clima, Alertas AEMET, Marítimo y Mareas
+            </h3>
+            <span class="badge" style="background: rgba(251, 191, 36, 0.15); color: #fbbf24;">
+              Datos Offline &amp; Cron
+            </span>
+          </div>
+
+          <p style="font-size: 0.86rem; color: var(--text-main); margin-bottom: 14px; line-height: 1.5;">
+            El servicio meteorológico descarga la información oficial de AEMET y calcula mareas y fases solares de forma 100% autónoma para servir comandos sin depender de que internet esté levantado en el momento del comando:
+          </p>
+
+          <div class="table-responsive" style="margin-bottom: 14px;">
+            <table class="data-table" style="font-size: 0.84rem;">
+              <thead>
+                <tr>
+                  <th style="width: 28%;">Servicio / Módulo</th>
+                  <th style="width: 24%;">Cadencia / Horario</th>
+                  <th>Detalle Operativo</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><strong>🚨 Alertas AEMET por Radio</strong></td>
+                  <td><span class="badge" style="background: rgba(248, 113, 113, 0.15); color: #f87171;">Descarga <span id="info-val-aemet-period">1h</span> · Difusión diurna</span></td>
+                  <td>Descarga avisos meteorológicos de la provincia configurada (<strong id="info-val-aemet-prov">Cádiz</strong>). La difusión por radio se realiza en horario diurno (08:00 a 22:00) troceando en máx 3 partes de 200B.</td>
+                </tr>
+                <tr>
+                  <td><strong>🔑 Caducidad de API Key AEMET</strong></td>
+                  <td><span class="badge" style="background: rgba(251, 191, 36, 0.15); color: #fbbf24;">Aviso a 10 días de expirar</span></td>
+                  <td>El cron inspecciona diariamente el token JWT de AEMET. Si faltan ≤ 10 días para su vencimiento, emite un aviso diario por el canal privado de administración.</td>
+                </tr>
+                <tr>
+                  <td><strong>🌤️ Predicción Municipal (/weather)</strong></td>
+                  <td><span class="badge" style="background: rgba(56, 189, 248, 0.15); color: #38bdf8;">Cada 3 horas (180 min)</span></td>
+                  <td>Descarga predicción diaria a 7 días y predicción horaria para el municipio configurado (<strong id="info-val-aemet-city">Chipiona</strong>), almacenándola en <code>aemet_forecast_daily</code>.</td>
+                </tr>
+                <tr>
+                  <td><strong>🌡️ Estación Meteorológica Física</strong></td>
+                  <td><span class="badge" style="background: rgba(52, 211, 153, 0.15); color: #34d399;">Cada 60 minutos</span></td>
+                  <td>Descarga datos reales de observación física (temperatura, viento, racha, presión) de la estación más cercana (estación <code id="info-val-aemet-station">5972X</code>).</td>
+                </tr>
+                <tr>
+                  <td><strong>🌊 Boletín Marítimo Costero (/maritimo)</strong></td>
+                  <td><span class="badge" style="background: rgba(56, 189, 248, 0.15); color: #38bdf8;">12:05 y 20:05 (3 reintentos)</span></td>
+                  <td>AEMET publica dos boletines oficiales al día. El bot intenta la descarga a las 12:05 y 20:05 con 3 reintentos espaciados cada 10 min (:15, :25, :35).</td>
+                </tr>
+                <tr>
+                  <td><strong>🌊 Mareas y Pleamares (/marea)</strong></td>
+                  <td><span class="badge" style="background: rgba(167, 139, 250, 0.15); color: #a78bfa;">Cada 6 horas (360 min)</span></td>
+                  <td>Descarga extremos de marea de fuentes oficiales con respaldo 100% offline mediante modelo armónico astronómico local incorporado.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- ==================================================================
+             SECCIÓN 5: SEGURIDAD, ANTI-ABUSO Y LÍMITES LORA
+             ================================================================== -->
+        <div class="card info-block" id="info-sec-security" style="padding: 18px 20px;">
+          <div class="card-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+            <h3 style="font-size: 1.1rem; font-weight: 700; display: flex; align-items: center; gap: 8px; color: #ef4444;">
+              <span>🛡️</span> 5. Reglas de Seguridad, Anti-Abuso y Límites Físicos LoRa
+            </h3>
+            <span class="badge" style="background: rgba(239, 68, 68, 0.15); color: #ef4444;">
+              Protección de Malla
+            </span>
+          </div>
+
+          <p style="font-size: 0.86rem; color: var(--text-main); margin-bottom: 14px; line-height: 1.5;">
+            El protocolo Meshtastic opera sobre un ancho de banda muy estrecho en 868 MHz. Estas reglas garantizan que el bot nunca inunde el espectro y vigilan nodos anómalos o mal configurados:
+          </p>
+
+          <div class="table-responsive" style="margin-bottom: 14px;">
+            <table class="data-table" style="font-size: 0.84rem;">
+              <thead>
+                <tr>
+                  <th style="width: 28%;">Regla / Límite</th>
+                  <th style="width: 24%;">Valor Estricto</th>
+                  <th>Propósito y Funcionamiento</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><strong>📏 Tamaño Máximo por Mensaje</strong></td>
+                  <td><span class="badge" style="background: rgba(251, 191, 36, 0.15); color: #fbbf24;">200 bytes</span></td>
+                  <td>Cualquier texto mayor de 200 bytes se trunca en firmware. Toda respuesta del bot se procesa con <code>split_messages()</code> para fragmentar por palabras sin perder contenido.</td>
+                </tr>
+                <tr>
+                  <td><strong>📦 Máximo de Partes por Comando</strong></td>
+                  <td><span class="badge" style="background: rgba(251, 191, 36, 0.15); color: #fbbf24;">Máximo 3 partes LoRa</span></td>
+                  <td>Si un comando supera 3 partes (~600 bytes), se trunca con <code>…</code> para no acaparar el medio ni agotar la tasa de transmisión.</td>
+                </tr>
+                <tr>
+                  <td><strong>⏱️ Pausa entre Partes Consecutivas</strong></td>
+                  <td><span class="badge" style="background: rgba(56, 189, 248, 0.15); color: #38bdf8;">2.5 segundos</span></td>
+                  <td>Espera de 2.5s entre fragmentos consecutivos para permitir que otros nodos transmitan. <em>Nunca se aplica pausa tras la última parte</em>.</td>
+                </tr>
+                <tr>
+                  <td><strong>👁️ Vigilancia: Telemetría Excesiva</strong></td>
+                  <td><span class="badge" style="background: rgba(239, 68, 68, 0.15); color: #ef4444;">Intervalo &lt; 27 minutos</span></td>
+                  <td>MeshWatcher detecta y auto-reporta nodos que transmiten telemetría de dispositivo con una frecuencia menor a 27 minutos (la recomendación comunitaria es ≥ 30 min).</td>
+                </tr>
+                <tr>
+                  <td><strong>🦘 Vigilancia: Exceso de Saltos</strong></td>
+                  <td><span class="badge" style="background: rgba(239, 68, 68, 0.15); color: #ef4444;">Saltos &gt; 3 hops</span></td>
+                  <td>Reporta paquetes que llegan con más de 3 saltos, síntoma habitual de bucles de propagación o nodos con <code>hop_limit</code> desmesurado.</td>
+                </tr>
+                <tr>
+                  <td><strong>📍 Vigilancia: Traceroutes Repetitivos</strong></td>
+                  <td><span class="badge" style="background: rgba(239, 68, 68, 0.15); color: #ef4444;">&gt; 2 traces en 10 min</span></td>
+                  <td>Alerta de nodos que lanzan traceroutes continuos contra el bot, protegiendo contra abusos deliberados o scripts automáticos.</td>
+                </tr>
+                <tr>
+                  <td><strong>🚫 Bloqueos y Rate Limiting</strong></td>
+                  <td><span class="badge" style="background: rgba(239, 68, 68, 0.15); color: #ef4444;">Lista Negra Persistente</span></td>
+                  <td>El operador puede bloquear nodos de forma manual o temporal desde la pestaña Seguridad. Los nodos bloqueados son descartados antes de ejecutar cualquier comando.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- ==================================================================
+             SECCIÓN 6: ARQUITECTURA, PERSISTENCIA Y ZONAS HORARIAS
+             ================================================================== -->
+        <div class="card info-block" id="info-sec-arch" style="padding: 18px 20px;">
+          <div class="card-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+            <h3 style="font-size: 1.1rem; font-weight: 700; display: flex; align-items: center; gap: 8px; color: #34d399;">
+              <span>⚙️</span> 6. Arquitectura, Procesos y Persistencia (Reglas de Oro)
+            </h3>
+            <span class="badge" style="background: rgba(52, 211, 153, 0.15); color: #34d399;">
+              Principios de Diseño
+            </span>
+          </div>
+
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 14px; margin-top: 10px;">
+            <div style="background: var(--bg-input); padding: 14px; border-radius: var(--radius-sm); border-left: 3px solid var(--primary);">
+              <h4 style="font-size: 0.92rem; font-weight: 700; color: var(--primary); margin-bottom: 6px;">
+                📻 1. Proceso Único de Puerto Serie
+              </h4>
+              <p style="font-size: 0.82rem; color: var(--text-main); line-height: 1.45;">
+                <strong>main.py</strong> es el <em>único</em> proceso que abre y retiene el puerto <code>/dev/serial0</code>. <strong>cron_tasks.py</strong> nunca toca el serie ni hace acciones de radio directamente; encola trabajo en SQLite (tabla <code>traces</code> o <code>outbox</code>) y <code>main.py</code> lo procesa secuencialmente.
+              </p>
+            </div>
+
+            <div style="background: var(--bg-input); padding: 14px; border-radius: var(--radius-sm); border-left: 3px solid #a78bfa;">
+              <h4 style="font-size: 0.92rem; font-weight: 700; color: #a78bfa; margin-bottom: 6px;">
+                🌐 2. Pasarela Gateway e IPC en Tiempo Real
+              </h4>
+              <p style="font-size: 0.82rem; color: var(--text-main); line-height: 1.45;">
+                <strong>Gateway.py</strong> corre en el puerto <strong>8680</strong> ofreciendo servidor WebSocket y Web UI 100% offline. Se comunica con el demonio principal a través de un socket de datagramas Unix local no bloqueante (<code>/tmp/meshassistant_events.sock</code>).
+              </p>
+            </div>
+
+            <div style="background: var(--bg-input); padding: 14px; border-radius: var(--radius-sm); border-left: 3px solid #fbbf24;">
+              <h4 style="font-size: 0.92rem; font-weight: 700; color: #fbbf24; margin-bottom: 6px;">
+                🕒 3. Regla Inquebrantable de Fechas (UTC vs Local)
+              </h4>
+              <p style="font-size: 0.82rem; color: var(--text-main); line-height: 1.45;">
+                <strong>Backend y Base de Datos:</strong> Se guardan <strong>100% en UTC estricto</strong> con sufijo <code>Z</code> obligatorio (<code>functions.now_utc_iso()</code>).<br>
+                <strong>Frontend Web:</strong> Todas las fechas se convierten mediante Intl a <strong>hora local de España peninsular (<code>Europe/Madrid</code>)</strong>.
+              </p>
+            </div>
+
+            <div style="background: var(--bg-input); padding: 14px; border-radius: var(--radius-sm); border-left: 3px solid #34d399;">
+              <h4 style="font-size: 0.92rem; font-weight: 700; color: #34d399; margin-bottom: 6px;">
+                💾 4. Política de Retención de Datos
+              </h4>
+              <p style="font-size: 0.82rem; color: var(--text-main); line-height: 1.45;">
+                <strong>Toda la información histórica válida se conserva indefinidamente</strong> (pings, traces completados, histórico de telemetría y nodos). La base de datos es muy ligera (~8 MB/año) y el espacio en la RPi es abundante. No se purga historial de radio.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <!-- ==================================================================
+             SECCIÓN 7: MONITOR DE TAREAS CRON EN VIVO
+             ================================================================== -->
+        <div class="card info-block" id="info-sec-tasks" style="padding: 18px 20px;">
+          <div class="card-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 8px;">
+            <div>
+              <h3 style="font-size: 1.1rem; font-weight: 700; display: flex; align-items: center; gap: 8px; color: #38bdf8;">
+                <span>⏱️</span> 7. Monitor de Tareas del Cron en Tiempo Real
+              </h3>
+              <div style="font-size: 0.82rem; color: var(--text-muted); margin-top: 2px;">
+                Estado y última ejecución de las rutinas registradas en la tabla <code>tasks_control</code> de SQLite.
+              </div>
+            </div>
+            <span class="badge" id="info-live-tasks-count" style="background: rgba(56, 189, 248, 0.15); color: #38bdf8;">
+              0 tareas registradas
+            </span>
+          </div>
+
+          <div class="table-responsive">
+            <table class="data-table" id="info-table-tasks">
+              <thead>
+                <tr>
+                  <th style="width: 25%;">Identificador de Tarea</th>
+                  <th style="width: 30%;">Descripción Funcional</th>
+                  <th style="width: 18%;">Cadencia Teórica</th>
+                  <th style="width: 27%;">Última Ejecución Registrada</th>
+                </tr>
+              </thead>
+              <tbody id="info-tbody-tasks">
+                <tr>
+                  <td colspan="4" style="text-align: center; color: var(--text-muted); padding: 20px;">
+                    Cargando estado de las tareas periódicas desde el Gateway...
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+      </div> <!-- #info-content-container -->
+    </section>
+
   </main>
   </div> <!-- .app-layout -->
 
@@ -1493,6 +1997,6 @@
   <!-- Contenedor de Alertas Toast -->
   <div id="toast-container"></div>
 
-  <script src="app.js?v=3.2"></script>
+  <script src="app.js?v=3.3"></script>
 </body>
 </html>

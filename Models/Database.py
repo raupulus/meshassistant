@@ -735,6 +735,29 @@ class Database:
             )
             conn.commit()
 
+    def get_task_info(self, name: str) -> Optional[dict]:
+        """Obtiene la información completa de una tarea (name, last_run_at, extra)."""
+        with closing(self._connect()) as conn:
+            cur = conn.execute('SELECT name, last_run_at, extra FROM tasks_control WHERE name = ?', (name,))
+            row = cur.fetchone()
+            return dict(row) if row else None
+
+    def get_all_tasks_control(self) -> List[dict]:
+        """Devuelve todas las tareas registradas en tasks_control ordenadas por última ejecución.
+
+        Filtra marcas efímeras heredadas que contenían fechas dinámicas en el nombre.
+        """
+        with closing(self._connect()) as conn:
+            cur = conn.execute('''
+                SELECT name, last_run_at, extra
+                FROM tasks_control
+                WHERE name NOT LIKE 'maritime_%_202%'
+                  AND name NOT LIKE 'bulletin_%'
+                  AND name NOT LIKE 'aemet_key_warn_%'
+                ORDER BY last_run_at DESC
+            ''')
+            return [dict(row) for row in cur.fetchall()]
+
     def get_latest_trace_route_info(
         self,
         identifier: str,
@@ -891,8 +914,8 @@ class Database:
         reload_hours: int = 120,
         router_reload_hours: int = 24,
         router_max_hops: int = 2,
-        router_retry_short_hours: int = 1,
-        router_max_retries: int = 5,
+        router_retry_short_hours: int = 2,
+        router_max_retries: int = 3,
         router_retry_long_hours: int = 24,
         retry_hours: int = 24,
         max_inactive_days: int = 7,
@@ -901,31 +924,30 @@ class Database:
     ) -> Optional[str]:
         """Devuelve el próximo node_id candidato para traceroute.
 
-        Compensación de saltos: Se añade +1 salto al límite configurado para contemplar
-        el salto local Bot <-> RAU0 (ej. hops_limit=2 equivale a <=3 saltos brutos desde el bot).
+        Compensación de saltos: router_max_hops se toma como referencia de saltos brutos desde el bot (0, 1 o 2 saltos).
 
         Filtro de actividad: Descarta nodos sin señales recientes (>7 días) o que se hayan alejado.
 
         Prioridad 1: Nodos routers cercanos (en router_identifiers o con role ROUTER/ROUTER_LATE/REPEATER)
-                    con hops <= router_max_hops + 1 (<=3 brutos).
+                    con hops <= router_max_hops (<=2 brutos desde el bot, directos incluidos).
                     - Se ejecutan preferentemente a partir de router_start_hour (06:00 AM).
                     - Éxito previo ('done'): re-trazar cada router_reload_hours (24h).
-                    - Fallo previo ('error') con < router_max_retries (5): reintentar cada router_retry_short_hours (1h).
-                    - Fallo previo ('error') con >= router_max_retries (5): enfriamiento de router_retry_long_hours (24h).
+                    - Fallo previo ('error') con < router_max_retries (3): reintentar cada router_retry_short_hours (2h).
+                    - Fallo previo ('error') con >= router_max_retries (3): enfriamiento de router_retry_long_hours (24h).
         Prioridad 2: Nodos normales y routers más lejanos (hops <= hops_limit + 1, no MQTT, activos en 7 días)
                     - Éxito previo: cada reload_hours (120h = 5 días).
                     - Fallo puntual: reintento tras retry_hours (24h).
                     - Tras 5 fallos consecutivos sin respuesta, se descarta definitivamente hasta recibir un update en 'nodes'.
         """
         router_idents = [str(r) for r in (router_identifiers or [])]
-        eff_router_hops = int(router_max_hops) + 1
+        eff_router_hops = int(router_max_hops)
         eff_hops_limit = int(hops_limit) + 1
         inactive_sec = int(max_inactive_days) * 86400
         current_hour = now_madrid().hour
         router_routine_allowed = (current_hour >= int(router_start_hour))
 
         with closing(self._connect()) as conn:
-            # 1. Comprobar primero si algún ROUTER CERCANO (<= router_max_hops + 1) necesita traceroute (prioridad 1)
+            # 1. Comprobar primero si algún ROUTER CERCANO (<= router_max_hops) necesita traceroute (prioridad 1)
             query_routers = '''
                 WITH last_processed AS (
                     SELECT "to" AS node_id, MAX(updated_at) AS last_updated

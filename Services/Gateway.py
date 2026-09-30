@@ -988,6 +988,64 @@ class GatewayService:
                     "cooldown_seconds": cooldown,
                 }
 
+            elif action == "get_project_info":
+                # Resumen completo de configuración, cadencias, reglas y tareas del cron
+                tasks_raw = self.db.get_all_tasks_control() if hasattr(self.db, "get_all_tasks_control") else []
+                routers_cfg = getattr(env, "ROUTER_NODES", []) or getattr(env, "ROUTERS_LIST", [])
+                if isinstance(routers_cfg, str):
+                    routers_cfg = [r.strip() for r in routers_cfg.split(",") if r.strip()]
+
+                project_info = {
+                    "env_config": {
+                        "enable_traces": bool(getattr(env, "ENABLE_TRACES", True)),
+                        "traces_hops": int(getattr(env, "TRACES_HOPS", 2) or 2),
+                        "traces_reload_interval_hours": int(getattr(env, "TRACES_RELOAD_INTERVAL", 120) or 120),
+                        "traces_retry_interval_hours": int(getattr(env, "TRACES_RETRY_INTERVAL", 24) or 24),
+                        "traces_max_inactive_days": int(getattr(env, "TRACES_MAX_INACTIVE_DAYS", 7) or 7),
+                        "traces_peak_start_hour": int(getattr(env, "TRACES_PEAK_START_HOUR", 8) or 8),
+                        "traces_peak_end_hour": int(getattr(env, "TRACES_PEAK_END_HOUR", 23) or 23),
+                        "traces_interval_peak_min": int(getattr(env, "TRACES_INTERVAL_PEAK", 60) or 60),
+                        "traces_interval_offpeak_min": int(getattr(env, "TRACES_INTERVAL_OFFPEAK", 5) or 5),
+                        "router_nodes": routers_cfg,
+                        "router_trace_start_hour": int(getattr(env, "ROUTER_TRACE_START_HOUR", 6) or 6),
+                        "router_trace_interval_seconds": int(getattr(env, "ROUTER_TRACE_INTERVAL_SECONDS", 40) or 40),
+                        "router_trace_interval_hours": int(getattr(env, "ROUTER_TRACE_INTERVAL_HOURS", 24) or 24),
+                        "router_max_hops": int(getattr(env, "ROUTER_MAX_HOPS", 2) or 2),
+                        "router_retry_short_hours": int(getattr(env, "ROUTER_RETRY_SHORT_HOURS", 2) or 2),
+                        "router_max_retries": int(getattr(env, "ROUTER_MAX_RETRIES", 3) or 3),
+                        "router_retry_long_hours": int(getattr(env, "ROUTER_RETRY_LONG_HOURS", 24) or 24),
+                        "router_telemetry_start_hour": int(getattr(env, "ROUTER_TELEMETRY_START_HOUR", 7) or 7),
+                        "base_node_short_name": getattr(env, "BASE_NODE_SHORT_NAME", None) or getattr(env, "MESH_GATEWAY_SHORT_NAME", "RAU0") or "RAU0",
+                        "base_node_id": getattr(env, "BASE_NODE_ID", None),
+                        "aemet_province": getattr(env, "AEMET_PROVINCE", "Cádiz"),
+                        "aemet_city": getattr(env, "AEMET_CITY", "Chipiona"),
+                        "aemet_period": getattr(env, "AEMET_PERIOD", "1h"),
+                        "aemet_maritime_coast_code": getattr(env, "AEMET_MARITIME_COAST_CODE", "42"),
+                        "aemet_observation_station": getattr(env, "AEMET_OBSERVATION_STATION", "5972X"),
+                        "aemet_expiry_warning_days": int(getattr(env, "AEMET_EXPIRY_WARNING_DAYS", 10) or 10),
+                        "tides_period_min": int(getattr(env, "TIDES_PERIOD_MIN", 360) or 360),
+                        "debug": bool(getattr(env, "DEBUG", False)),
+                    },
+                    "system_rules": {
+                        "mesh_max_bytes": 200,
+                        "mesh_max_parts": 3,
+                        "mesh_part_delay_sec": 2.5,
+                        "alert_telemetry_interval_min": 27,
+                        "alert_hops_threshold": 3,
+                        "alert_traces_count_in_10m": 2,
+                        "ping_sfnarrow_channel_0": "Desactivado en canal 0 (SFNarrow) para evitar spam público",
+                        "broadcast_cooldowns": {
+                            "announce_nodeinfo": 60,
+                            "announce_position": 60,
+                            "request_nodeinfo": 120,
+                            "request_position": 120,
+                            "request_telemetry": 120,
+                        },
+                    },
+                    "tasks_control": tasks_raw,
+                }
+                response["data"] = project_info
+
             elif action == "restart_serial":
                 response["data"] = {"requested": True, "message": "Solicitud de reinicio de enlace serie registrada"}
 

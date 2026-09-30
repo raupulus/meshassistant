@@ -48,11 +48,12 @@ class TestPingRouters(unittest.TestCase):
 
     def test_ping_via_base_decrements_hop_and_no_snr(self):
         mock = MockInterface()
-        # 1 hop at bot -> 0 hops to base (repeated by RAU0)
+        # 1 hop at bot -> 0 hops to base (repeated by RAU0, byte hash 135 de !875e3787)
         meta = {
             'node_from': {'id': '!2222', 'name': 'RooftopNode', 'hops': 1, 'snr': 12.0, 'via_mqtt': False},
             'node_to': {'id': '!bot'},
             'is_direct': True,
+            'relay_node': 135,
         }
         ping_callback(mock, [], '/ping', meta)
         self.assertEqual(len(mock.replies), 1)
@@ -61,15 +62,30 @@ class TestPingRouters(unittest.TestCase):
 
     def test_ping_two_hops_decrements_to_one_hop(self):
         mock = MockInterface()
-        # 2 hops at bot -> 1 hop to base
+        # 2 hops at bot -> 1 hop to base (verificado que el último salto fue RAU0)
         meta = {
             'node_from': {'id': '!3333', 'name': 'FarNode', 'hops': 2, 'snr': 12.0, 'via_mqtt': False},
             'node_to': {'id': '!bot'},
             'is_direct': True,
+            'relay_node': 135,
         }
         ping_callback(mock, [], '/ping', meta)
         self.assertEqual(len(mock.replies), 1)
         self.assertEqual(mock.replies[0], "Pong desde Chipiona, 1 hop")
+        self.assertNotIn("SNR", mock.replies[0])
+
+    def test_ping_repeated_by_other_node_does_not_decrement(self):
+        mock = MockInterface()
+        # 2 hops at bot, pero repetido por otro repetidor (relay_node=52 != RAU0): NO descuenta
+        meta = {
+            'node_from': {'id': '!3333', 'name': 'FarNode', 'hops': 2, 'snr': 12.0, 'via_mqtt': False},
+            'node_to': {'id': '!bot'},
+            'is_direct': True,
+            'relay_node': 52,
+        }
+        ping_callback(mock, [], '/ping', meta)
+        self.assertEqual(len(mock.replies), 1)
+        self.assertEqual(mock.replies[0], "Pong desde Chipiona, 2 hops")
         self.assertNotIn("SNR", mock.replies[0])
 
     def test_ping_mqtt(self):

@@ -1493,6 +1493,18 @@ class SerialInterface:
                     })
 
 
+                relay_node = packet.get('relayNode') or packet.get('relay_node')
+                try:
+                    relay_node_int = int(relay_node) if relay_node is not None else None
+                except Exception:
+                    relay_node_int = None
+
+                next_hop = packet.get('nextHop') or packet.get('next_hop')
+                try:
+                    next_hop_int = int(next_hop) if next_hop is not None else None
+                except Exception:
+                    next_hop_int = None
+
                 metadata = {
                     "id": packet.get('id'),
                     "reply_id": packet.get('id'),
@@ -1506,6 +1518,8 @@ class SerialInterface:
                     "rx_snr": fromNodeInfo.snr,
                     "rx_rssi": fromNodeInfo.rssi,
                     "via_mqtt": fromNodeInfo.via_mqtt,
+                    "relay_node": relay_node_int,
+                    "next_hop": next_hop_int,
                 }
 
                 # Emitir evento en tiempo real a la pasarela WiFi (IPC no bloqueante, en RAM)
@@ -1523,6 +1537,8 @@ class SerialInterface:
                         "rssi": fromNodeInfo.rssi,
                         "hops": fromNodeInfo.hops,
                         "is_direct": is_direct,
+                        "relay_node": relay_node_int,
+                        "next_hop": next_hop_int,
                         "via_mqtt": fromNodeInfo.via_mqtt,
                     }, ts=to_utc_iso(rx_time))
                 except Exception:

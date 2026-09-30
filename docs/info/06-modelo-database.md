@@ -156,6 +156,14 @@ db = Database(db_path="...")    # ruta explícita (tests)
 | `get_dashboard_metrics(exclude_node_ids=None)` | Agrega y calcula todas las métricas operativas del sistema y de la red LoRa: desglose de nodos (totales, RF, MQTT, activos en 1h, 24h, 7d, inactivos), distribución de calidad SNR (promedio, excelente, buena, regular, débil), distribución de roles de nodo, serie temporal horaria de actividad en las últimas 24h (`activity_24h` / `hourly_activity`), nodos escuchados más recientemente (`recent_nodes`, excluyendo automáticamente el nodo local del bot para mostrar solo nodos remotos de la malla) y resumen de estadísticas. |
 | `get_latest_channel_metrics()` | Obtiene el registro más reciente de métricas de canal LoRa (`channel_util`, `air_util_tx`) disponible en la tabla `nodes`, sirviendo de respaldo fiable para la pasarela Gateway. |
 
+### Control de Tareas Periódicas (`tasks_control`)
+| Método | Descripción |
+|---|---|
+| `get_task_last_run(name)` | Obtiene la fecha ISO en UTC de la última ejecución registrada de una tarea. |
+| `get_task_info(name)` | Obtiene el diccionario completo de una tarea (`name`, `last_run_at`, `extra`) o `None` si no existe. |
+| `set_task_run(name, when=None, extra=None)` | Registra o actualiza la ejecución de una tarea en UTC y opcionalmente almacena metadatos en `extra`. |
+| `get_all_tasks_control()` | Obtiene todas las tareas periódicas canónicas registradas en `tasks_control` (filtrando marcas efímeras) ordenadas por última ejecución para el monitor de la pestaña Info. |
+
 ### Cola (pendiente)
 | Método | Descripción |
 |---|---|

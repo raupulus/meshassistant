@@ -28,14 +28,14 @@ cron_tasks.send_trace()                      main.py loop()
 1. Si `ENABLE_TRACES` es `False`, no hace nada.
 2. Si ya hay una traza pendiente (`status='pending'`, como las lanzadas **manualmente desde la Web UI**), se respeta y no se encola otra para no duplicar.
 3. Selecciona candidato con `Database.get_next_node_to_trace(...)`:
-   - **Compensación de Nodo Base (+1 salto):** Dado que el bot está cableado por UART a la base (`RAU0`), se añade +1 a los límites de saltos (`hops <= ROUTER_MAX_HOPS + 1` y `hops <= TRACES_HOPS + 1`) para cubrir con exactitud los saltos exteriores reales deseados.
+   - **Referencia de Saltos en Routers:** `ROUTER_MAX_HOPS` (def. 2) se evalúa como saltos brutos desde el bot (`hops <= ROUTER_MAX_HOPS`), cubriendo enlaces directos a 0 saltos, 1 salto (repetido por base) o máximo 2 saltos en la red. Para clientes generales se evalúa `hops <= TRACES_HOPS + 1`.
    - **Filtro de Inactividad y Alejamiento (7 días):** Descarta automáticamente nodos que lleven más de 7 días sin ser escuchados cerca (`last_heard < now - 7d` o `hops > hops_limit + 1`). Esto evita insistir en nodos turistas o repetidores caídos.
-   - **Prioridad 1 (Routers cercanos):** Los routers configurados (`ROUTER_NODES`) y aquellos con rol oficial (`ROUTER`/`ROUTER_LATE`/`REPEATER`) que estén a `hops <= ROUTER_MAX_HOPS + 1` (def. 2+1=3 brutos).
+   - **Prioridad 1 (Routers cercanos):** Los routers configurados (`ROUTER_NODES`) y aquellos con rol oficial (`ROUTER`/`ROUTER_LATE`/`REPEATER`) que estén a `hops <= ROUTER_MAX_HOPS` (def. $\le 2$ saltos brutos desde el bot, directos a 0 saltos incluidos).
      * **Ventana Horaria:** Se ejecutan preferentemente a partir de las **06:00 AM** (`ROUTER_TRACE_START_HOUR=6`), cuando la malla está en calma.
      * **Intervalo rápido entre routers:** **40 segundos** (`ROUTER_TRACE_INTERVAL_SECONDS=40`) para despachar la auditoría matinal completa rápidamente antes del inicio del tráfico diurno.
      * **Éxito previo (`status='done'`):** Se traza **1 vez al día** (cada **24 horas**, `ROUTER_TRACE_INTERVAL_HOURS=24`).
-     * **Fallo puntual (`status='error'`, < 5 fallos consecutivos):** Se reintenta cada **1 hora** (`ROUTER_RETRY_SHORT_HOURS=1`).
-     * **Fallo persistente ($\ge$ 5 fallos consecutivos):** Se penaliza con **24 horas** de enfriamiento (`ROUTER_RETRY_LONG_HOURS=24`) para no saturar la red.
+     * **Fallo puntual (`status='error'`, < 3 fallos consecutivos):** Se reintenta cada **2 horas** (`ROUTER_RETRY_SHORT_HOURS=2`) hasta un máximo de **3 intentos**.
+     * **Fallo persistente ($\ge$ 3 fallos consecutivos):** Se penaliza con **24 horas** de enfriamiento (`ROUTER_RETRY_LONG_HOURS=24`) para no saturar la red.
    - **Prioridad 2 (Clientes normales y routers lejanos):**
      * **Cadencia tras éxito:** Se trazan **1 vez cada 5 días** (cada **120 horas**, `TRACES_RELOAD_INTERVAL=120`).
      * **Reintento tras fallo:** Se espera **24 horas** (`TRACES_RETRY_INTERVAL=24`).

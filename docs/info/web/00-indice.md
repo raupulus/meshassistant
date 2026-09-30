@@ -20,7 +20,7 @@ Está pensado para monitorizar y operar el bot de Meshtastic desde cualquier nav
 | # | Documento | Contenido |
 |---|---|---|
 | 01 | [Arquitectura del Servidor HTTP](01-arquitectura-servidor-http.md) | Hook HTTP nativo, resolución segura de estáticos y prevención de path traversal. |
-| 02 | [Componentes y Pestañas](02-componentes-y-pestanas.md) | Detalle de las pestañas: Dashboard General, Chat en vivo, Routers, Vigilancia, Nodos, Traceroutes, Encuestas, Clima, Programación, Seguridad, Auditoría, Comandos y Capturas. |
+| 02 | [Componentes y Pestañas](02-componentes-y-pestanas.md) | Detalle de las pestañas: Dashboard General, Chat en vivo, Routers, Vigilancia, Nodos, Traceroutes, Encuestas, Clima, Programación, Seguridad, Auditoría, Comandos, Capturas e Info. |
 | 03 | [Guía Offline y Estilos](03-guia-offline-estilos.md) | Estructura de `style.css` y `app.js`, diseño responsive y utilidades. |
 
 ---

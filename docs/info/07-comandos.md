@@ -80,7 +80,16 @@ Todo callback **registra el comando** con `Database().log_command(...)` (en
 
 ---
 
-## Detalle de Comandos Meteorológicos y Marítimos
+## Detalle de Comandos de Conectividad y Red
+
+### `/ping` (alias `/test`)
+- **Directo (0 saltos RF):** Si el paquete llega directamente a la antena del bot sin repetidores, responde indicando el SNR medido: `Pong desde Chipiona (SNR: +8.5 dB)`.
+- **Repetido con verificación del nodo base:** Si el paquete llega repetido (`raw_hops > 0`), el bot comprueba si el repetidor inmediato (`relay_node` en la cabecera LoRa de Meshtastic) coincide con el identificador numérico o byte hash (`num & 0xFF`) del nodo base configurado (`BASE_NODE_ID` / `BASE_NODE_SHORT_NAME`, por defecto `RAU0`):
+  - **Confirmado por el nodo base:** Se descuenta 1 salto (`effective_hops = raw_hops - 1`) para reflejar los saltos reales hacia la azotea exterior. Si el origen emitió directo a la base, responderá `Pong desde Chipiona, 0 hops`.
+  - **Repetido por otro nodo o sin confirmar:** No se descuenta ningún salto de forma arbitraria (`effective_hops = raw_hops`), respondiendo `Pong desde Chipiona, <N> hops` (o `1 hop`).
+- **Vía MQTT:** Si el paquete se recibió a través de un gateway de internet (`via_mqtt=True`), responde `Pong, via MQTT` sin mediciones de RF local.
+
+---
 
 ### `/tiempo` (alias `/weather`)
 * **Uso estándar:** `/tiempo` o `/weather`
