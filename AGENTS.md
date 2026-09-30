@@ -268,7 +268,7 @@ Todos los planes de implementación ejecutados se guardan como archivo markdown 
 
 | Paquete | Mínimo en requirements | Probado | Última publicada |
 |---|---|---|---|
-| meshtastic | `>=2.7.5` | 2.7.5 | 2.7.8 |
+| meshtastic | `>=2.7.5` | 2.7.11 | 2.7.11 |
 | pypubsub | `>=4.0.3` | 4.0.3 | 4.0.3 |
 | requests | `>=2.32.0` | 2.32.5 | 2.34.x |
 
